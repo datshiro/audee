@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
+import { READ_ONLY_MCP_TOOLS } from '../fence/constants.js';
 import { ConfigSchema, type Config } from './schema.js';
 
 export function expandHome(p: string): string {
@@ -69,6 +70,14 @@ const RULES: Rule[] = [
   function regexes(cfg, problems) {
     compiles(cfg.channels.teams.mr_url_pattern, 'channels.teams.mr_url_pattern', problems);
     for (const [name, cap] of Object.entries(cfg.capabilities)) cap.routes.forEach((r, i) => compiles(r.match, `capabilities.${name}.routes[${i}].match`, problems));
+  },
+  function mcpReadNarrowsOnly(cfg, problems) {
+    for (const [name, cap] of Object.entries(cfg.capabilities)) {
+      if (cap.profile !== 'mcp_read') continue;
+      const servers = cap.mcp ?? [];
+      for (const s of servers) if (!(s in READ_ONLY_MCP_TOOLS)) problems.push(`capabilities.${name}: mcp server "${s}" is not a read-only server audee allows (${Object.keys(READ_ONLY_MCP_TOOLS).join(', ')})`);
+      for (const t of cap.tools ?? []) if (!servers.some((s) => READ_ONLY_MCP_TOOLS[s]?.includes(t))) problems.push(`capabilities.${name}: tool "${t}" is not a read-only tool of ${servers.join(', ') || 'any listed server'}`);
+    }
   },
 ];
 

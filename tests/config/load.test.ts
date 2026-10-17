@@ -35,4 +35,6 @@ describe('config', () => {
     expect(message).toContain('not a configured capability');
     expect(message.split('\n')).toHaveLength(3);
   });
+  it('TestConfigRejectsWriteToolInMcpRead', () => expect(rejection('mcp-read-write-tool.yaml')).toContain('update_dashboard'));
+  it('TestConfigRejectsUnknownMcpServer', () => expect(rejection('mcp-read-unknown-server.yaml')).toContain('argocd'));
 });
