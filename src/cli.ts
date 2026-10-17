@@ -2,12 +2,15 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { pinSkill } from './capability/pin-skill.js';
 import { expandHome, loadConfig } from './config/load.js';
+import { formatChecks, ownerAuthProbe, runDoctor } from './doctor.js';
+import { rerun } from './rerun.js';
 import { serve } from './serve.js';
 import { shadowReport } from './shadow-report.js';
+import { shortId } from './teams/detect.js';
 
 const USAGE = `usage: audee [-config path] <command>
   serve         run the Teams agent
-  doctor        check the setup
+  doctor [--probe]  check the setup (--probe runs one owner session in the daemon environment)
   rerun <id>    redo a request (MR URL or Teams message id)
   pin-skill     pin the code-mapping skill to a git ref
   shadow-report compare shadow classifications with Ciel's`;
@@ -42,7 +45,7 @@ export async function main(argv: string[], out: (s: string) => void, signal?: Ab
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);
       try {
-        await serve(configPath, controller.signal);
+        await serve(configPath, controller.signal, { out });
         return 0;
       } catch (e) {
         out(`serve: ${(e as Error).message}`);
@@ -50,6 +53,33 @@ export async function main(argv: string[], out: (s: string) => void, signal?: Ab
       } finally {
         process.off('SIGINT', stop);
         process.off('SIGTERM', stop);
+      }
+    }
+    case 'doctor': {
+      try {
+        const cfg = loadConfig(configPath);
+        const checks = await runDoctor(cfg, rest[0] === '--probe' ? { authProbe: () => ownerAuthProbe(cfg) } : {});
+        for (const line of formatChecks(checks)) out(line);
+        return checks.every((c) => c.ok) ? 0 : 1;
+      } catch (e) {
+        out(`doctor: ${(e as Error).message}`);
+        return 1;
+      }
+    }
+    case 'rerun': {
+      const target = rest[0];
+      if (target === undefined) {
+        out('usage: audee rerun <mr-url | message-id>');
+        return 2;
+      }
+      try {
+        const job = rerun(loadConfig(configPath), target);
+        out(`queued: ${target}`);
+        out(`reply to ${shortId(job.principal.replace(/^teams:/u, ''))} in chat ${shortId(job.chatId.replace(/^19:/u, ''))}`);
+        return 0;
+      } catch (e) {
+        out(`rerun: ${(e as Error).message}`);
+        return 1;
       }
     }
     case 'shadow-report': {

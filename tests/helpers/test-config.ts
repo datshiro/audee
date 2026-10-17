@@ -16,7 +16,9 @@ export type TestConfigOptions = {
   grants?: Record<string, string[]>; // overrides `can` for a person named by id
   kbDir?: string;
   mcpRead?: { name: string; trigger: string; mcp: string[]; tools: string[] };
-  review?: { prompt?: string; postFindings?: boolean; workdir?: string; routes?: Array<{ match: string; prompt: string }> };
+  review?: { prompt?: string; postFindings?: boolean; workdir?: string; routes?: Array<{ match: string; prompt: string }>; seatbelt?: boolean };
+  keychainEnv?: Record<string, string>;
+  onedriveDir?: string;
   mapping?: { skillDir?: string; skillSource?: string; prompt?: string };
   teams?: { chats?: string[]; aliases?: string[]; mrUrlPattern?: string; historySize?: number; quietAfter?: string; shadow?: boolean; workHours?: { days: string[]; start: string; end: string } };
   authOwner?: 'subscription' | 'api_key';
@@ -38,6 +40,7 @@ export function testConfig(o: TestConfigOptions = {}): Config {
     o.review?.prompt !== undefined ? `prompt: ${q(o.review.prompt)}` : '',
     o.review?.postFindings !== undefined ? `post_findings: ${o.review.postFindings}` : '',
     o.review?.workdir !== undefined ? `workdir: ${q(o.review.workdir)}` : '',
+    o.review?.seatbelt !== undefined ? `seatbelt: ${o.review.seatbelt}` : '',
     o.review?.routes !== undefined ? `routes: [${o.review.routes.map((r) => `{ match: ${q(r.match)}, prompt: ${q(r.prompt)} }`).join(', ')}]` : '',
   ].filter((s) => s !== '').join(', ');
   const mapping = [
@@ -47,7 +50,7 @@ export function testConfig(o: TestConfigOptions = {}): Config {
     o.mapping?.prompt !== undefined ? `prompt: ${q(o.mapping.prompt)}` : '',
   ].filter((s) => s !== '').join(', ');
   const teams = [
-    `onedrive_dir: ${q(dir)}`,
+    `onedrive_dir: ${q(o.onedriveDir ?? dir)}`,
     `chats: [${(o.teams?.chats ?? ['19:abc@thread.v2']).map(q).join(', ')}]`,
     o.teams?.aliases !== undefined ? `aliases: [${o.teams.aliases.map(q).join(', ')}]` : '',
     o.teams?.mrUrlPattern !== undefined ? `mr_url_pattern: ${q(o.teams.mrUrlPattern)}` : '',
@@ -72,7 +75,8 @@ capabilities:
   review: { ${review} }
   code_mapping: { ${mapping} }
   kb_query: { profile: kb_read, lane: kb${o.kbPerPersonLimit !== undefined ? `, per_person_limit: ${o.kbPerPersonLimit}` : ''}${o.kbDir !== undefined ? `, kb_dir: ${o.kbDir}` : ''} }
-${mcpRead}`;
+${mcpRead}keychain_env: ${JSON.stringify(o.keychainEnv ?? {})}
+`;
   const path = join(dir, 'config.yaml');
   writeFileSync(path, yaml);
   return loadConfig(path);
