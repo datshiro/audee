@@ -1,0 +1,12 @@
+[
+  "--strict-mcp-config",
+  "--mcp-config",
+  "MCP_CONFIG",
+  "--disallowedTools",
+  "mcp__gitlab__approve_mr,mcp__gitlab__merge_mr,mcp__gitlab__ship_mr,mcp__gitlab__update_mr,mcp__gitlab__create_mr,mcp__gitlab__play_job,mcp__gitlab__retry_pipeline,Bash(git push *),Bash(printenv *),Bash(env *),Bash(ps *),Bash(security *),Bash(/usr/bin/printenv *),Bash(/usr/bin/env *),Bash(/bin/ps *),Bash(/usr/bin/security *),mcp__kb__kb_save,mcp__kb__kb_promote,mcp__kb__kb_enrich,mcp__kb__kb_batch_enrich,mcp__kb__kb_file_answer",
+  "-p",
+  "--output-format",
+  "json",
+  "--permission-mode",
+  "auto"
+]
