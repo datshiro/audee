@@ -23,6 +23,7 @@ export type Event = {
   allowed?: boolean;
   toolUses?: string[];
   denials?: string[];
+  token?: boolean; // shadow: the intent came from a trigger word, not the classifier
 };
 
 export const eventsPath = (dataDir: string): string => join(dataDir, 'events.jsonl');
@@ -33,7 +34,7 @@ const CIEL_OMITEMPTY: Array<[keyof Event, string]> = [
   ['mrUrl', 'mr'], ['sessionId', 'session_id'], ['costUsd', 'cost_usd'], ['numTurns', 'num_turns'], ['durationMs', 'duration_ms'],
 ];
 const AUDEE_FIELDS: Array<[keyof Event, string]> = [
-  ['shadow', 'shadow'], ['principal', 'principal'], ['allowed', 'allowed'], ['toolUses', 'tool_uses'], ['denials', 'denials'],
+  ['shadow', 'shadow'], ['principal', 'principal'], ['allowed', 'allowed'], ['toolUses', 'tool_uses'], ['denials', 'denials'], ['token', 'token'],
 ];
 
 export function eventLine(e: Event, now = new Date()): string {

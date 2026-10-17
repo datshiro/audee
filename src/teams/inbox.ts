@@ -55,6 +55,8 @@ export function parseInboxFile(raw: string | Buffer): InboxFile {
     throw new Error('chatId, meId and message.id are required');
   }
   if (!isPlainObject(message.body)) message.body = {};
+  // Ciel's time.Time field rejects a malformed createdDateTime as not-JSON; a row must never keep the file's values.
+  if (message.createdDateTime !== undefined && (typeof message.createdDateTime !== 'string' || Number.isNaN(Date.parse(message.createdDateTime)))) throw new NotInboxJsonError();
   return { version, chatId, meId, message, name: '' };
 }
 
