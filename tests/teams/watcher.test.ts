@@ -8,7 +8,7 @@ import { eventsPath } from '../../src/events.js';
 import { setNotify } from '../../src/notify.js';
 import type { Job } from '../../src/queue/job.js';
 import { reviewCooldownMs } from '../../src/queue/queue.js';
-import { busyText, deniedText, failedReply, kbQueryEmptyReply, kbQueryQueuedReply, mappingQueuedReply, queuedReply, recentReply, replyHTML } from '../../src/render/html.js';
+import { busyText, deniedText, failedReply, kbQueryEmptyReply, kbQueryPendingReply, kbQueryQueuedReply, mappingQueuedReply, pendingText, queuedReply, recentReply, replyHTML, unavailableText } from '../../src/render/html.js';
 import { InterruptedError, type RunInput, type RunResult } from '../../src/runner/run.js';
 import { loadState, outcomeFailed, outcomeSkipped } from '../../src/state/state.js';
 import { giveUpAfterMs, Inbox, type InboxFile, parseInboxFile, trailReason } from '../../src/teams/inbox.js';
@@ -422,6 +422,30 @@ describe('watcher', () => {
     expect(await watcher.runJob(job, none)).toBe('done');
     expect(calls).toBe(0);
     expect(replies(outbox)).toHaveLength(1);
+  });
+
+  it('TestUnconfiguredCapabilityGetsUnavailableReply', async () => {
+    const { watcher, state, outbox, cfg, notes } = harness({ result: new Error('must not classify') });
+    delete cfg.capabilities['kb_query'];
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'anh Dat kb_query past segment hoạt động thế nào?')), none);
+    expect(state.pendingJobs()).toEqual([]);
+    expect(replies(outbox)).toEqual([{ version: 1, chatId: CHAT, mentionUserId: 'linh', html: unavailableText('kb_query') }]);
+    expect(notes.some((n) => n.includes('not configured'))).toBe(true);
+    expect(state.hasSeen('1791513774214')).toBe(true);
+  });
+
+  it('TestClassifyFailureEventKeepsNoModelText', async () => {
+    const { watcher, cfg } = harness({ result: new Error('session failed: Colleague asks Dat about the secret lunch plan') });
+    await watcher.handle(file(inboxJSON('1', 'colleague', new Date(), 'Dat ơi')), none).catch(() => undefined);
+    const last = events(cfg.data_dir).at(-1);
+    expect(last).toMatchObject({ kind: 'classify', status: 'failed', reason: 'claude session failed' });
+    expect(JSON.stringify(last)).not.toContain('lunch');
+  });
+
+  it('TestLimitReplyNamesTheRightKind', () => {
+    expect(pendingText('kb_query')).toBe(kbQueryPendingReply);
+    expect(pendingText('review')).not.toContain('kb_query');
+    expect(pendingText('grafana')).not.toContain('kb_query');
   });
 });
 

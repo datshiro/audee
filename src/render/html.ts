@@ -49,6 +49,17 @@ export function deniedText(capability: string): string {
   return `Bạn chưa được cấp quyền dùng <b>${escapeHTML(capability)}</b>. Hãy nhờ Đạt cấp quyền nhé.`;
 }
 
+// A kind with no capability in the config: the owner has to enable it.
+export function unavailableText(capability: string): string {
+  return `<b>${escapeHTML(capability)}</b> chưa được bật. Hãy báo Đạt nhé.`;
+}
+
+// The requester already has as many requests waiting as allowed.
+export function pendingText(kind: string): string {
+  if (kind === 'kb_query') return kbQueryPendingReply;
+  return 'Bạn đang có yêu cầu chưa xong, đợi xong rồi gửi tiếp nhé.';
+}
+
 export function busyText(): string {
   return 'Hàng đợi đang đầy, bạn thử lại sau ít phút nhé.';
 }

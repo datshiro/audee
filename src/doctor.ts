@@ -34,7 +34,7 @@ export type DoctorDeps = {
   authProbe?: () => Promise<Check>; // opt-in: a tiny session on the owner's auth in the daemon's environment
 };
 
-const BASH_CAPABLE = new Set(['review', 'code_mapping', '*']);
+const BASH_PROFILES = new Set<ProfileName>(['review', 'mapping']);
 const SECRET_KEY = /TOKEN|SECRET|KEY|PASSWORD/iu;
 
 export function sdkPackage(): { version: string; claudeCodeVersion?: string } {
@@ -152,7 +152,7 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
   if (teammates.length > 0) {
     const has = (deps.hasKeychainItem ?? hasKeychainItem)(cfg.auth.api_key_keychain_item);
     check('teammate api key', has, has ? `Keychain item ${cfg.auth.api_key_keychain_item} exists` : `Keychain item ${cfg.auth.api_key_keychain_item} is missing (security add-generic-password -a "$USER" -s ${cfg.auth.api_key_keychain_item} -w)`);
-    const bashCapable = teammates.filter((p) => p.can.some((c) => BASH_CAPABLE.has(c))).map((p) => p.name);
+    const bashCapable = teammates.filter((p) => p.can.some((c) => (c === '*' ? Object.values(cfg.capabilities) : [cfg.capabilities[c]]).some((cap) => cap !== undefined && BASH_PROFILES.has(cap.profile)))).map((p) => p.name);
     if (bashCapable.length > 0) {
       const guarded = verified.apiKeyGuard === verified.claudeCode;
       check('api key guard', guarded, guarded ? `passed on ${verified.claudeCode}` : `teammates have Bash-capable capabilities but the API key guard has not passed on this version (${bashCapable.join(', ')})`);

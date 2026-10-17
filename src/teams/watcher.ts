@@ -14,7 +14,7 @@ import { appendEvent, type Event } from '../events.js';
 import { notify } from '../notify.js';
 import { type Job, jobKey } from '../queue/job.js';
 import { type EnqueueResult, Queue, type RunOutcome } from '../queue/queue.js';
-import { busyText, deniedText, failedText, kbQueryEmptyReply, kbQueryPendingReply, queuedReply, queuedText, recentReply, replyHTML } from '../render/html.js';
+import { busyText, deniedText, failedText, kbQueryEmptyReply, pendingText, queuedReply, queuedText, recentReply, replyHTML, unavailableText } from '../render/html.js';
 import { InterruptedError, type runAgent } from '../runner/run.js';
 import type { HistoryEntry, MessageRecord, State } from '../state/state.js';
 import { outcomeClassified, outcomeSkipped } from '../state/state.js';
@@ -182,7 +182,7 @@ export class Watcher {
         dec = await this.detector.classify(this.history(f.chatId, msg), msg, this.classifySession(authFor(this.cfg, person), signal));
       } catch (e) {
         const reason = e instanceof ClassifyError ? e.reason : 'claude session failed';
-        appendEvent(this.dataDir, { kind: 'classify', status: 'failed', msgId: msg.id, reason: reason === 'classify timed out' ? `classify timed out: ${(e as Error).message}` : (e as Error).message, durationMs: this.now().getTime() - started });
+        appendEvent(this.dataDir, { kind: 'classify', status: 'failed', msgId: msg.id, reason, durationMs: this.now().getTime() - started });
         throw new TrailError(`classify message ${msg.id}: ${(e as Error).message}`, reason);
       }
       appendEvent(this.dataDir, { kind: 'classify', status: 'classified', msgId: msg.id, addressed: dec.addressedToMe, intent: dec.intent, mrs: dec.mrUrls.length, durationMs: this.now().getTime() - started, principal: person.ids[0] ?? principal ?? '' });
@@ -232,6 +232,7 @@ export class Watcher {
         notify('audee: code mapping requested', dec.summary);
         return 'notified: unexpected message id';
       }
+      if (!this.configured('code_mapping', chatId, userId)) return 'unavailable: code_mapping';
       if (!isAllowed(person, 'code_mapping')) {
         this.outbox.reply(chatId, userId, deniedText('code_mapping'));
         return 'denied: code_mapping';
@@ -245,6 +246,7 @@ export class Watcher {
       notify('audee: someone needs you', dec.summary);
       return 'notified';
     }
+    if (!this.configured('review', chatId, userId)) return 'unavailable: review';
     if (!isAllowed(person, 'review')) {
       this.outbox.reply(chatId, userId, deniedText('review'));
       return 'denied: review';
@@ -259,7 +261,7 @@ export class Watcher {
       if (result === 'queued' || result === 'cooldown' || result === 'busy') lists[result]?.push(url);
       if (result === 'duplicate') lists['cooldown']?.push(url); // already queued from another message: not reviewed twice
       actions.push({ queued: 'review queued', cooldown: 'reviewed recently', busy: 'dropped: queue full', duplicate: 'already queued', limit: 'limit reached' }[result]);
-      if (result === 'limit') this.outbox.reply(chatId, userId, kbQueryPendingReply);
+      if (result === 'limit') this.outbox.reply(chatId, userId, pendingText('review'));
     }
     this.tell(chatId, userId, queuedReply, lists['queued'] ?? []);
     this.tell(chatId, userId, recentReply, lists['cooldown'] ?? []);
@@ -273,6 +275,7 @@ export class Watcher {
     const principal = principalOf(msg) ?? '';
     const userId = userIdOf(principal);
     if (!messageIdRe.test(msg.id)) return `${capability} ignored: unexpected message id`;
+    if (!this.configured(capability, chatId, userId)) return `unavailable: ${capability}`;
     if (!isAllowed(person, capability)) {
       this.outbox.reply(chatId, userId, deniedText(capability));
       return `denied: ${capability}`;
@@ -289,6 +292,14 @@ export class Watcher {
     return this.enqueueOne(job);
   }
 
+  // review, code_mapping and kb_query are built-in kinds the config may leave out; queueing one would throw.
+  private configured(kind: string, chatId: string, userId: string): boolean {
+    if (this.cfg.capabilities[kind] !== undefined) return true;
+    this.outbox.reply(chatId, userId, unavailableText(kind));
+    notify('audee: capability not configured', `${kind} was requested but is not in the config`);
+    return false;
+  }
+
   // Replies for one queued job, by the queue's answer; reviews are batched in act().
   private enqueueOne(job: Job, opts: { ignoreCooldown?: boolean } = {}): string {
     const userId = userIdOf(job.principal);
@@ -303,7 +314,7 @@ export class Watcher {
         this.notice(job, recentReply);
         return 'reviewed recently';
       case 'limit':
-        this.outbox.reply(job.chatId, userId, kbQueryPendingReply);
+        this.outbox.reply(job.chatId, userId, pendingText(job.kind));
         return `${job.kind} skipped: requester has one pending`;
       case 'busy':
         this.notice(job, busyText());

@@ -121,4 +121,13 @@ describe('doctor', () => {
     const absent = await runDoctor(cfg, { ...deps, settingsPath: join(tmp(), 'nope.json') });
     expect(absent.find((c) => c.name === 'settings env')).toMatchObject({ ok: true });
   });
+
+  it('TestDoctorBashCapableByProfile', async () => {
+    const { cfg, deps } = setup({ people: 1, grants: { p1: ['kb_query'] } });
+    const kb = cfg.capabilities['kb_query'];
+    if (kb === undefined) throw new Error('kb_query missing');
+    cfg.capabilities['kb_query'] = { ...kb, profile: 'review' };
+    const checks = await runDoctor(cfg, deps);
+    expect(checks.find((c) => c.name === 'api key guard')?.ok).toBe(false);
+  });
 });
