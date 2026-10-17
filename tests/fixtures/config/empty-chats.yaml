@@ -1,0 +1,16 @@
+data_dir: ~/.audee
+auth: { owner: subscription, teammates: api_key, api_key_keychain_item: audee-anthropic }
+concurrency:
+  max_concurrent: 3
+  lanes:
+    heavy: { concurrency: 1, buffer: 32 }
+    kb: { concurrency: 2, buffer: 32 }
+people:
+  - { name: dat, owner: true, ids: ["teams:owner-1"], can: ["*"] }
+channels:
+  teams:
+    onedrive_dir: /tmp/onedrive
+    chats: []
+capabilities:
+  review: { profile: review, lane: heavy, budget_usd: 8 }
+  kb_query: { profile: kb_read, lane: kb }
