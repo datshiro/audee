@@ -58,13 +58,21 @@ const minutes = (clock: string): number => {
 };
 
 // A session on the owner's auth with the environment the daemon uses (sessionEnv: no CLAUDE_CONFIG_DIR, USER kept).
+// Proves the daemon path (runAgent's env and auth), so it loads no settings, hooks or tools: the cost stays small and fixed.
 export async function ownerAuthProbe(cfg: Config): Promise<Check> {
+  const options: Options = {
+    cwd: tmpdir(), tools: [], settingSources: [], strictMcpConfig: true, persistSession: false, permissionPrompts: 'none',
+    permissionMode: 'dontAsk', systemPrompt: { type: 'preset', preset: 'claude_code' }, model: cfg.classifier.model, maxBudgetUsd: 0.25,
+  };
+  const auth = cfg.auth.owner;
   try {
-    const options = buildOptions({ profile: 'classifier', cwd: tmpdir(), mcpServers: {}, model: cfg.classifier.model, effort: 'low', budgetUsd: 0.05, seatbelt: false });
-    const result = await runAgent({ options, prompt: 'Reply with the single word ok', timeoutMs: 90_000, auth: cfg.auth.owner, ...(cfg.auth.owner === 'api_key' ? { apiKeyItem: cfg.auth.api_key_keychain_item } : {}) });
-    return { name: 'auth probe', ok: !result.isError, detail: result.isError ? `session reported an error (${cfg.auth.owner})` : `owner session ran on ${cfg.auth.owner} in the daemon environment` };
+    const result = await runAgent({ options, prompt: 'Reply with the single word ok', timeoutMs: 90_000, auth, ...(auth === 'api_key' ? { apiKeyItem: cfg.auth.api_key_keychain_item } : {}) });
+    return { name: 'auth probe', ok: !result.isError, detail: result.isError ? `session reported an error (${auth})` : `owner session ran on ${auth} in the daemon environment (cost $${(result.costUsd ?? 0).toFixed(3)})` };
   } catch (e) {
-    return { name: 'auth probe', ok: false, detail: (e as Error).message };
+    const message = (e as Error).message;
+    // A budget stop happens only after billed calls: the login worked, the probe was just too expensive.
+    if (/maximum budget/iu.test(message)) return { name: 'auth probe', ok: true, detail: `warning: owner session authenticated on ${auth} but stopped at the probe budget; ${message}` };
+    return { name: 'auth probe', ok: false, detail: message };
   }
 }
 
