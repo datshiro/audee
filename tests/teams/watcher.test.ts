@@ -14,7 +14,7 @@ import { loadState, outcomeFailed, outcomeSkipped } from '../../src/state/state.
 import { giveUpAfterMs, Inbox, type InboxFile, parseInboxFile, trailReason } from '../../src/teams/inbox.js';
 import type { ChatMessage } from '../../src/teams/message.js';
 import { Outbox } from '../../src/teams/outbox.js';
-import { outcomeDenied, quietAlertDue, rerunDir, Watcher } from '../../src/teams/watcher.js';
+import { ensureRerunDir, outcomeDenied, quietAlertDue, rerunDir, Watcher } from '../../src/teams/watcher.js';
 import { testConfig, type TestConfigOptions } from '../helpers/test-config.js';
 
 const CHAT = '19:chat@thread.v2';
@@ -395,6 +395,33 @@ describe('watcher', () => {
     expect(await watcher.runJob(job, none)).toBe('interrupted');
     expect(replies(outbox)).toEqual([]);
     expect(state.startReview(MR, reviewCooldownMs)).toBe(false); // the cooldown stays
+  });
+
+  it('TestShadowNeverRunsSavedJobsOrReruns', async () => {
+    let calls = 0;
+    const review: Capability = async () => { calls++; return { event: { status: 'done' } }; };
+    const { watcher, state, cfg } = harness({ capabilities: { review }, teams: { shadow: true } });
+    const job: Job = { kind: 'review', channel: 'teams', chatId: CHAT, principal: 'teams:kha', requesterName: 'kha', mrUrl: MR, requestedAt: new Date().toISOString() };
+    state.addJob(job);
+    ensureRerunDir(cfg.data_dir);
+    writeFileSync(join(rerunDir(cfg.data_dir), 'r.json'), JSON.stringify(job));
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 50);
+    await watcher.run(stop.signal);
+    await watcher.queue.stop();
+    expect(calls).toBe(0);
+    expect(state.pendingJobs()).toHaveLength(1);
+    expect(readdirSync(rerunDir(cfg.data_dir))).toEqual(['r.json']);
+  });
+
+  it('TestRunJobRechecksGrant', async () => {
+    let calls = 0;
+    const review: Capability = async () => { calls++; return { event: { status: 'done' } }; };
+    const { watcher, outbox } = harness({ capabilities: { review }, grants: { kha: ['kb_query'] } });
+    const job: Job = { kind: 'review', channel: 'teams', chatId: CHAT, principal: 'teams:kha', requesterName: 'kha', mrUrl: MR, requestedAt: new Date().toISOString() };
+    expect(await watcher.runJob(job, none)).toBe('done');
+    expect(calls).toBe(0);
+    expect(replies(outbox)).toHaveLength(1);
   });
 });
 

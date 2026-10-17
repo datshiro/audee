@@ -1,7 +1,7 @@
 // Single-instance lock: a file holding { pid, started }. Node has no flock, so liveness is the PID plus its
 // start time (a reused PID has a different one).
 import { execFileSync } from 'node:child_process';
-import { closeSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
+import { linkSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 
 export type LockRecord = { pid: number; started: string };
 
@@ -44,32 +44,50 @@ export function acquireLock(path: string, deps: LockDeps = {}): () => void {
   const startOf = deps.startOf ?? processStart;
   const alive = deps.alive ?? signalable;
   const mine: LockRecord = { pid, started: startOf(pid) ?? '' };
-  const record = JSON.stringify(mine);
   const alreadyRunning = (other: number): Error => new Error(`audee is already running (pid ${other})`);
 
-  let fd: number | undefined;
-  try {
-    fd = openSync(path, 'wx', 0o600);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-  }
-  if (fd !== undefined) {
-    writeSync(fd, record);
-    closeSync(fd);
-  } else {
+  // The record is written first and linked into place, so the lock file never exists without it.
+  const create = (): boolean => {
+    const tmp = `${path}.${pid}`;
+    writeFileSync(tmp, JSON.stringify(mine), { mode: 0o600 });
+    try {
+      linkSync(tmp, path);
+      return true;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      return false;
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  };
+
+  if (!create()) {
     const existing = readRecord(path);
     if (existing !== undefined && existing.pid !== pid && alive(existing.pid) && startOf(existing.pid) === existing.started) throw alreadyRunning(existing.pid);
     if (existing !== undefined && existing.pid === pid && existing.started === mine.started) throw alreadyRunning(existing.pid);
-    // Stale: replace atomically, then confirm we won.
-    const tmp = `${path}.${pid}`;
-    writeFileSync(tmp, record, { mode: 0o600 });
-    renameSync(tmp, path);
-    const now = readRecord(path);
-    if (now === undefined || now.pid !== pid) throw alreadyRunning(now?.pid ?? -1);
+    // Stale: move it aside, and give it back if another starter replaced it meanwhile.
+    const aside = `${path}.stale.${pid}`;
+    try {
+      renameSync(path, aside);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    }
+    const moved = readRecord(aside);
+    if (moved !== undefined && (moved.pid !== existing?.pid || moved.started !== existing.started)) {
+      try {
+        linkSync(aside, path);
+      } catch {
+        // the winner's lock is back in place, or a third starter holds it
+      }
+      rmSync(aside, { force: true });
+      throw alreadyRunning(moved.pid);
+    }
+    rmSync(aside, { force: true });
+    if (!create()) throw alreadyRunning(readRecord(path)?.pid ?? -1);
   }
   return () => {
     const current = readRecord(path);
-    if (current !== undefined && current.pid === pid) {
+    if (current !== undefined && current.pid === pid && current.started === mine.started) {
       try {
         unlinkSync(path);
       } catch {

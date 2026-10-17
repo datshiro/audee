@@ -102,7 +102,9 @@ export class Watcher {
 
   // Scans until the signal aborts. Detection runs here, one message at a time; capability sessions run on the queue.
   async run(signal: AbortSignal): Promise<void> {
-    this.queue.start();
+    // Shadow only classifies: saved jobs and reruns wait for live mode, so shadow never starts a session that acts.
+    const shadow = this.cfg.channels.teams.shadow;
+    if (!shadow) this.queue.start();
     while (!signal.aborted) {
       const n = await this.source.scan(signal, this.handler);
       if (n > 0) this.state.inboxArrived(this.now());
@@ -110,7 +112,7 @@ export class Watcher {
       this.inbox?.expire(now);
       this.state.pruneRequests(new Date(now.getTime() - rawRetentionMs));
       expireScratchDirs(this.dataDir, new Date(now.getTime() - rawRetentionMs));
-      this.takeReruns();
+      if (!shadow) this.takeReruns();
       this.checkQuiet(now);
       if (signal.aborted) break;
       await sleep(scanEveryMs, undefined, { signal }).catch(() => undefined);
@@ -393,6 +395,7 @@ export class Watcher {
     const profile = this.cfg.capabilities[job.kind]?.profile;
     const capability = profile === undefined ? undefined : this.capabilities[profile];
     if (person === undefined || capability === undefined) return failed(person === undefined ? 'requester is no longer configured' : `capability ${job.kind} is not configured`);
+    if (!isAllowed(person, job.kind)) return failed(`requester is no longer allowed ${job.kind}`);
     appendEvent(this.dataDir, { kind: job.kind, status: 'started', ...(job.mrUrl !== undefined ? { mrUrl: job.mrUrl } : {}), ...(job.messageId !== undefined ? { msgId: job.messageId } : {}), principal: job.principal });
     let outcome: CapabilityOutcome;
     try {

@@ -70,7 +70,15 @@ export class Queue {
     this.controller = new AbortController();
     setMaxListeners(4 * this.cfg.concurrency.max_concurrent + 8, this.controller.signal);
     for (const job of this.state.pendingJobs()) {
-      if (!this.inflight((j) => sameJob(j, job))) this.lane(job).queued.push(job);
+      if (this.inflight((j) => sameJob(j, job))) continue;
+      const lane = this.lanes.find((l) => l.name === this.cfg.capabilities[job.kind]?.lane);
+      if (lane === undefined) {
+        // A capability removed from the config: throwing here would stop every restart, so the job is dropped.
+        console.error(`dropped saved ${job.kind} job ${jobKey(job)}: the capability is no longer configured`);
+        this.state.removeJob(job);
+        continue;
+      }
+      lane.queued.push(job);
     }
     this.schedule();
   }

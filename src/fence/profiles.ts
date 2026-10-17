@@ -55,7 +55,8 @@ export function buildOptions(input: ProfileInput): Options {
   if (input.schema !== undefined) options.outputFormat = { type: 'json_schema', schema: input.schema };
 
   const settings: Settings = {};
-  if (input.seatbelt) settings.sandbox = { enabled: true, failIfUnavailable: true };
+  // Sandboxed Bash must not skip the permission rules or fall back to running unsandboxed.
+  if (input.seatbelt) settings.sandbox = { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: false, allowUnsandboxedCommands: false };
   if (input.apiKeyHelper !== undefined) settings.apiKeyHelper = input.apiKeyHelper;
   const gate = (spec: GateSpec): Options['hooks'] => ({ PreToolUse: [makeGate(spec)] });
 

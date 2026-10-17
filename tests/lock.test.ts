@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { acquireLock, processStart } from '../src/lock.js';
 
@@ -44,5 +44,14 @@ describe('single-instance lock', () => {
     writeFileSync(path, 'garbage');
     acquireLock(path)();
     expect(existsSync(path)).toBe(false);
+  });
+
+  it('TestLockLeavesNoTempFiles', () => {
+    const path = lockPath();
+    writeFileSync(path, '');
+    const release = acquireLock(path);
+    expect(readdirSync(dirname(path))).toEqual(['audee.lock']);
+    release();
+    expect(readdirSync(dirname(path))).toEqual([]);
   });
 });

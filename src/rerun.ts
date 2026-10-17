@@ -11,6 +11,7 @@ import { rerunDir } from './teams/watcher.js';
 export const messageIdRe = /^[0-9]{10,}$/u;
 
 export function rerun(cfg: Config, target: string, dataDir = expandHome(cfg.data_dir)): Job {
+  if (cfg.channels.teams.shadow) throw new Error('audee runs in shadow mode, which never runs a request; rerun it with Ciel');
   const isMR = new RegExp(cfg.channels.teams.mr_url_pattern, 'u').exec(target)?.[0] === target;
   if (!isMR && !messageIdRe.test(target)) throw new Error(`"${target}" is neither an MR URL matching mr_url_pattern nor a Teams message id`);
   const state = loadState(dataDir);

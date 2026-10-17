@@ -172,4 +172,15 @@ describe('queue', () => {
     expect(fake.maxByLane['kb']).toBe(1);
     await q.stop();
   });
+
+  it('TestQueueStartDropsUnconfiguredKind', async () => {
+    const cfg = testConfig({});
+    const state = loadState(cfg.data_dir);
+    state.addJob(job('retired_capability', '1791513774214'));
+    const runner = fakeRunner();
+    const q = new Queue(cfg, state, runner.run);
+    expect(() => q.start()).not.toThrow();
+    expect(state.pendingJobs()).toEqual([]);
+    await q.stop();
+  });
 });

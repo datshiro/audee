@@ -37,4 +37,9 @@ describe('rerun', () => {
     const written = files.map((f) => JSON.parse(readFileSync(join(rerunDir(cfg.data_dir), f), 'utf8')) as Job);
     expect(written).toEqual(expect.arrayContaining([review, mapping]));
   });
+
+  it('TestRerunRefusedInShadow', () => {
+    const cfg = testConfig({ teams: { mrUrlPattern: MR_PATTERN, shadow: true } });
+    expect(() => rerun(cfg, MR)).toThrow('shadow mode');
+  });
 });
