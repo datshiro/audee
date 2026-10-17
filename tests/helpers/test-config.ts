@@ -12,12 +12,15 @@ export type TestConfigOptions = {
   kbPerPersonLimit?: number;
   maxInflight?: number;
   people?: number;
+  kbDir?: string;
+  mcpRead?: { name: string; trigger: string; mcp: string[]; tools: string[] };
 };
 
 // A valid config with the given concurrency shape and `people` teammates (teams:p1 ... teams:pN) plus the owner.
 export function testConfig(o: TestConfigOptions = {}): Config {
   const dir = mkdtempSync(join(tmpdir(), 'audee-cfg-'));
   const people = Array.from({ length: o.people ?? 5 }, (_, i) => `  - { name: p${i + 1}, ids: ["teams:p${i + 1}"], can: ["*"], max_inflight: ${o.maxInflight ?? 2} }`).join('\n');
+  const mcpRead = o.mcpRead === undefined ? '' : `  ${o.mcpRead.name}: { profile: mcp_read, lane: kb, budget_usd: 2, timeout: 10m, trigger: ${o.mcpRead.trigger}, mcp: [${o.mcpRead.mcp.join(', ')}], tools: [${o.mcpRead.tools.join(', ')}] }\n`;
   const yaml = `data_dir: ${dir}
 concurrency:
   max_concurrent: ${o.maxConcurrent ?? 3}
@@ -34,8 +37,8 @@ channels:
 capabilities:
   review: { profile: review, lane: heavy }
   code_mapping: { profile: mapping, lane: heavy }
-  kb_query: { profile: kb_read, lane: kb${o.kbPerPersonLimit !== undefined ? `, per_person_limit: ${o.kbPerPersonLimit}` : ''} }
-`;
+  kb_query: { profile: kb_read, lane: kb${o.kbPerPersonLimit !== undefined ? `, per_person_limit: ${o.kbPerPersonLimit}` : ''}${o.kbDir !== undefined ? `, kb_dir: ${o.kbDir}` : ''} }
+${mcpRead}`;
   const path = join(dir, 'config.yaml');
   writeFileSync(path, yaml);
   return loadConfig(path);

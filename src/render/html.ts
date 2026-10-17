@@ -40,6 +40,10 @@ export const kbQueryClipped = '… (câu trả lời dài hơn, đã cắt bớt
 export const maxKBQuerySources = maxNotes;
 export const maxKBQuerySourceChar = 200;
 
+// audee: read-only capabilities other than kb_query (mcp_read, such as Grafana)
+export const readQueuedReply = '👀 <b>Đang tra cứu.</b> Có câu trả lời mình sẽ gửi nhé.';
+export const readFailedReply = '❌ <b>Tra cứu bị lỗi.</b> Mình sẽ xem lại.';
+
 // audee additions
 export function deniedText(capability: string): string {
   return `Bạn chưa được cấp quyền dùng <b>${escapeHTML(capability)}</b>. Hãy nhờ Đạt cấp quyền nhé.`;
@@ -53,13 +57,15 @@ export function busyText(): string {
 export function queuedText(kind: string): string {
   if (kind === 'review') return queuedReply;
   if (kind === 'kb_query') return kbQueryQueuedReply;
-  return mappingQueuedReply;
+  if (kind === 'code_mapping') return mappingQueuedReply;
+  return readQueuedReply;
 }
 
 export function failedText(kind: string): string {
   if (kind === 'review') return failedReply;
   if (kind === 'kb_query') return kbQueryFailedReply;
-  return mappingFailedReply;
+  if (kind === 'code_mapping') return mappingFailedReply;
+  return readFailedReply;
 }
 
 // ciel/actions.go:389-404
