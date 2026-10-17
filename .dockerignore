@@ -1,0 +1,7 @@
+.env
+bin/
+debug.log
+plans/
+.git/
+.claude/
+.opencode/

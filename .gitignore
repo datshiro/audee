@@ -1,0 +1,5 @@
+.env
+bin/
+debug.log
+plans/
+/audee
