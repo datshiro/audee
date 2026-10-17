@@ -3,3 +3,5 @@ bin/
 debug.log
 plans/
 /audee
+node_modules/
+dist/
