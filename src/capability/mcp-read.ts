@@ -4,8 +4,8 @@ import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions } from '../fence/profiles.js';
 import { readFailedReply } from '../render/html.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
-import { freshDir, keepOutput, readOnlyOutcome } from './kb-query.js';
-import { capabilityConfig, messageDir, sessionInput } from './session.js';
+import { readOnlyOutcome } from './kb-query.js';
+import { capabilityConfig, freshDir, keepOutput, messageDir, sessionInput } from './session.js';
 import type { Capability, CapabilityOutcome } from './types.js';
 
 export const mcpReadSchema: Record<string, unknown> = {

@@ -1,6 +1,6 @@
 // Port of Ciel's kb_query (ciel/kbquery.go): a read-only KB answer on the kb_read profile.
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join, normalize, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { parse } from 'yaml';
@@ -11,7 +11,7 @@ import { failedText, kbQueryFailedReply, kbQueryReplyHTML, kbQueryWithheldReply,
 import { leaksSecret } from '../render/secrets.js';
 import { sessionEnv } from '../runner/env.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
-import { capabilityConfig, messageDir, sessionEvent, sessionInput } from './session.js';
+import { capabilityConfig, freshDir, keepOutput, keepResult, messageDir, sessionEvent, sessionInput } from './session.js';
 import type { Capability, CapabilityContext, CapabilityOutcome } from './types.js';
 
 const execFileAsync = promisify(execFile);
@@ -150,22 +150,6 @@ export function parseKBQueryOutput(result: RunResult, kind = 'kb_query'): KbQuer
 }
 
 export const kbQueryDir = (dataDir: string, messageId: string | undefined): string => messageDir(dataDir, 'kbquery', messageId);
-
-export function keepResult(dir: string, res: KbQueryResult): void {
-  writeFileSync(join(dir, 'result.json'), JSON.stringify(res, null, 2), { mode: 0o600 });
-}
-
-// What the session's output looked like, kept beside the question for the owner to inspect.
-export function keepOutput(dir: string, result: RunResult | undefined, error?: string): void {
-  const out = result === undefined ? { error } : { isError: result.isError, text: result.text, structured: result.structured, sessionId: result.sessionId, costUsd: result.costUsd, turns: result.turns, denials: result.denials, toolUses: result.toolUses, ...(error !== undefined ? { error } : {}) };
-  writeFileSync(join(dir, 'output.json'), JSON.stringify(out, null, 2), { mode: 0o600 });
-}
-
-// A fresh scratch folder: a rerun must not see the last attempt's files.
-export function freshDir(dir: string): void {
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-}
 
 // Shared by kb_query and mcp_read: parse, filter, render. Returns the outcome for a result the session produced.
 export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: string, result: RunResult, started: number, title: string): CapabilityOutcome {

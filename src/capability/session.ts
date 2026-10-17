@@ -1,4 +1,5 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { authFor } from '../authz/people.js';
 import type { Capability as CapabilityConfig } from '../config/schema.js';
@@ -46,4 +47,22 @@ export function messageDir(dataDir: string, sub: string, messageId: string | und
     throw new Error(`message id "${messageId ?? ''}" is not a plain folder name`);
   }
   return join(dataDir, sub, messageId);
+}
+
+// A fresh scratch folder: a rerun must not see the last attempt's files, and expiry dates it by mtime.
+export function freshDir(dir: string): void {
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+}
+
+// What the session's output looked like, kept beside the request for the owner to inspect.
+export function keepOutput(dir: string, result: RunResult | undefined, error?: string): void {
+  const out = result === undefined
+    ? { error }
+    : { isError: result.isError, text: result.text, structured: result.structured, sessionId: result.sessionId, costUsd: result.costUsd, turns: result.turns, denials: result.denials, toolUses: result.toolUses, ...(error !== undefined ? { error } : {}) };
+  writeFileSync(join(dir, 'output.json'), JSON.stringify(out, null, 2), { mode: 0o600 });
+}
+
+export function keepResult(dir: string, res: unknown): void {
+  writeFileSync(join(dir, 'result.json'), JSON.stringify(res, null, 2), { mode: 0o600 });
 }
