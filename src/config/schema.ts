@@ -105,6 +105,8 @@ export const ConfigSchema = z.strictObject({
     model: z.string().default('claude-opus-5-5'),
     effort: z.enum(['low', 'medium', 'high']).default('low'),
     timeout: Duration.prefault('3m'),
+    // api_key sends every classification to the API key (and auth.base_url, when set) instead of the owner's login.
+    auth: z.enum(['subscription', 'api_key']).default('subscription'),
   }).prefault({}),
   capabilities: Capabilities,
   keychain_env: z.record(z.string(), z.string()).default({}),

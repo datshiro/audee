@@ -447,6 +447,16 @@ describe('watcher', () => {
     expect(pendingText('review')).not.toContain('kb_query');
     expect(pendingText('grafana')).not.toContain('kb_query');
   });
+
+  it('TestClassifierUsesItsOwnAuth', async () => {
+    const { watcher, cfg, inputs } = harness();
+    cfg.classifier.auth = 'api_key';
+    cfg.classifier.model = 'claude-opus-4-8';
+    cfg.auth.base_url = 'https://gateway.example';
+    await watcher.handle(file(inboxJSON('1', 'colleague', new Date(), 'Dat ơi')), none);
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]).toMatchObject({ auth: 'api_key', apiKeyItem: 'audee-anthropic', baseUrl: 'https://gateway.example', options: { model: 'claude-opus-4-8' } });
+  });
 });
 
 // utimesSync is referenced so the import stays used in every build of this file

@@ -73,7 +73,7 @@ export function shadowHandler(deps: ShadowDeps): (f: InboxFile, signal: AbortSig
       appendEvent(dataDir, { kind: 'classify', status: 'classified', shadow: true, token: true, msgId: msg.id, intent: token.capability, addressed: true, principal, allowed: person !== undefined && isAllowed(person, token.capability) }, now());
       return;
     }
-    const auth = cfg.auth.owner;
+    const auth = cfg.classifier.auth;
     const started = now().getTime();
     try {
       const dec = await detector.classify(history, msg, {

@@ -148,20 +148,31 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     check('mcp servers', false, `${(e as Error).message} (read ${userConfigPath})`);
   }
 
-  // 6. teammates: the Keychain item, and the API key guard for Bash-capable grants
+  // 6. teammates: on the API key, the Keychain item and the API key guard for Bash-capable grants; on the owner's
+  // login, a warning, since their Bash-capable sessions run as the owner and can reach the login token.
   const teammates = cfg.people.filter((p) => !p.owner);
   if (teammates.length > 0) {
-    const has = (deps.hasKeychainItem ?? hasKeychainItem)(cfg.auth.api_key_keychain_item);
-    check('teammate api key', has, has ? `Keychain item ${cfg.auth.api_key_keychain_item} exists` : `Keychain item ${cfg.auth.api_key_keychain_item} is missing (security add-generic-password -a "$USER" -s ${cfg.auth.api_key_keychain_item} -w)`);
     const bashCapable = teammates.filter((p) => p.can.some((c) => (c === '*' ? Object.values(cfg.capabilities) : [cfg.capabilities[c]]).some((cap) => cap !== undefined && BASH_PROFILES.has(cap.profile)))).map((p) => p.name);
-    if (bashCapable.length > 0) {
-      const guarded = verified.apiKeyGuard === verified.claudeCode;
-      check('api key guard', guarded, guarded ? `passed on ${verified.claudeCode}` : `teammates have Bash-capable capabilities but the API key guard has not passed on this version (${bashCapable.join(', ')})`);
+    if (cfg.auth.teammates === 'subscription') {
+      check('teammates', true, bashCapable.length > 0
+        ? `warning: teammates run on the owner's login, and Bash-capable grants (${bashCapable.join(', ')}) can reach its token`
+        : "teammates run on the owner's login with Bash-free capabilities");
     } else {
-      check('api key guard', true, 'teammates use only Bash-free capabilities');
+      const has = (deps.hasKeychainItem ?? hasKeychainItem)(cfg.auth.api_key_keychain_item);
+      check('teammate api key', has, has ? `Keychain item ${cfg.auth.api_key_keychain_item} exists` : `Keychain item ${cfg.auth.api_key_keychain_item} is missing (security add-generic-password -a "$USER" -s ${cfg.auth.api_key_keychain_item} -w)`);
+      if (bashCapable.length > 0) {
+        const guarded = verified.apiKeyGuard === verified.claudeCode;
+        check('api key guard', guarded, guarded ? `passed on ${verified.claudeCode}` : `teammates have Bash-capable capabilities but the API key guard has not passed on this version (${bashCapable.join(', ')})`);
+      } else {
+        check('api key guard', true, 'teammates use only Bash-free capabilities');
+      }
     }
   } else {
     check('teammates', true, 'owner only');
+  }
+  if (cfg.classifier.auth === 'api_key') {
+    const has = (deps.hasKeychainItem ?? hasKeychainItem)(cfg.auth.api_key_keychain_item);
+    check('classifier api key', has, has ? `Keychain item ${cfg.auth.api_key_keychain_item} exists` : `Keychain item ${cfg.auth.api_key_keychain_item} is missing (security add-generic-password -a "$USER" -s ${cfg.auth.api_key_keychain_item} -w)`);
   }
   if (cfg.auth.base_url !== undefined) check('api gateway', true, `${cfg.auth.base_url} for API-key sessions`);
 

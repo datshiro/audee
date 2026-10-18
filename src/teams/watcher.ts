@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { authFor, authSettings, isAllowed, type Person, resolvePerson } from '../authz/people.js';
+import { authSettings, isAllowed, type Person, resolvePerson } from '../authz/people.js';
 import { kbQuery } from '../capability/kb-query.js';
 import { expireScratchDirs, mapping } from '../capability/mapping.js';
 import { mcpRead } from '../capability/mcp-read.js';
@@ -179,7 +179,7 @@ export class Watcher {
     if (candidate) {
       const started = this.now().getTime();
       try {
-        dec = await this.detector.classify(this.history(f.chatId, msg), msg, this.classifySession(authFor(this.cfg, person), signal));
+        dec = await this.detector.classify(this.history(f.chatId, msg), msg, this.classifySession(this.cfg.classifier.auth, signal));
       } catch (e) {
         const reason = e instanceof ClassifyError ? e.reason : 'claude session failed';
         appendEvent(this.dataDir, { kind: 'classify', status: 'failed', msgId: msg.id, reason, durationMs: this.now().getTime() - started });

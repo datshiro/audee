@@ -130,4 +130,21 @@ describe('doctor', () => {
     const checks = await runDoctor(cfg, deps);
     expect(checks.find((c) => c.name === 'api key guard')?.ok).toBe(false);
   });
+
+  it('TestDoctorTeammatesOnLoginWarnInsteadOfGuard', async () => {
+    const { cfg, deps } = setup({ people: 1, grants: { p1: ['review'] } });
+    cfg.auth.teammates = 'subscription';
+    const checks = await runDoctor(cfg, { ...deps, hasKeychainItem: () => false });
+    expect(checks.find((c) => c.name === 'teammates')).toMatchObject({ ok: true });
+    expect(checks.find((c) => c.name === 'teammates')?.detail).toContain('warning:');
+    expect(checks.find((c) => c.name === 'api key guard')).toBeUndefined();
+    expect(checks.find((c) => c.name === 'teammate api key')).toBeUndefined();
+  });
+
+  it('TestDoctorClassifierKeyChecked', async () => {
+    const { cfg, deps } = setup();
+    cfg.classifier.auth = 'api_key';
+    const missing = await runDoctor(cfg, { ...deps, hasKeychainItem: () => false });
+    expect(missing.find((c) => c.name === 'classifier api key')?.ok).toBe(false);
+  });
 });

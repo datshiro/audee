@@ -45,9 +45,6 @@ const RULES: Rule[] = [
     const owners = cfg.people.filter((p) => p.owner).length;
     if (owners !== 1) problems.push(`people: exactly one owner is required (found ${owners})`);
   },
-  function teammatesAuth(cfg, problems) {
-    if (cfg.auth.teammates !== 'api_key') problems.push(`auth.teammates must be api_key (got ${cfg.auth.teammates})`);
-  },
   function mcpRead(cfg, problems) {
     for (const [name, cap] of Object.entries(cfg.capabilities)) {
       if (cap.profile === 'mcp_read') {
