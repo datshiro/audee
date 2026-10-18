@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "chatId": "19:test-chat@thread.v2",
+  "meId": "me-id",
+  "message": {
+    "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#chats('19%3Atest-chat%40thread.v2')/messages/$entity",
+    "id": "1791513774214",
+    "replyToId": "1791513774214",
+    "etag": "1791513774214",
+    "messageType": "message",
+    "createdDateTime": "2026-10-09T02:42:54.214Z",
+    "lastModifiedDateTime": "2026-10-09T02:42:54.214Z",
+    "lastEditedDateTime": null,
+    "deletedDateTime": null,
+    "subject": null,
+    "summary": null,
+    "chatId": "19:test-chat@thread.v2",
+    "importance": "normal",
+    "locale": "en-us",
+    "webUrl": "https://teams.microsoft.com/l/message/19%3Atest-chat%40thread.v2/1791513774214?context=%7b%22contextType%22%3a%22chat%22%7d&tenantId=tenant-id",
+    "channelIdentity": null,
+    "policyViolation": null,
+    "eventDetail": null,
+    "from": {
+      "application": null,
+      "device": null,
+      "user": {
+        "@odata.type": "#microsoft.graph.teamworkUserIdentity",
+        "id": "colleague-id",
+        "displayName": "Colleague",
+        "userIdentityType": "aadUser",
+        "tenantId": "tenant-id"
+      }
+    },
+    "body": {
+      "contentType": "text",
+      "content": "Oke lát a gửi",
+      "plainTextContent": "Oke lát a gửi"
+    },
+    "attachments": [],
+    "mentions": [],
+    "reactions": [],
+    "messageLink": "https://teams.microsoft.com/l/message/19:test-chat@thread.v2/1791513774214?context=%7B%22contextType%22:%22chat%22%7D",
+    "threadType": "chat",
+    "conversationId": "19:test-chat@thread.v2"
+  }
+}

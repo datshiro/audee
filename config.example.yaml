@@ -1,0 +1,74 @@
+# Copy to ~/.audee/config.yaml. Secrets never go here: see keychain_env.
+data_dir: ~/.audee
+
+auth:
+  # owner runs may use the Team seat; teammate runs use the API key (decision 5).
+  owner: subscription          # subscription | api_key
+  teammates: api_key           # api_key | subscription (teammates' work on the owner's login)
+  api_key_keychain_item: audee-anthropic
+  # base_url: https://litellm.example.com   # optional Anthropic-compatible gateway for API-key sessions
+
+concurrency:
+  max_concurrent: 3            # capability sessions running at once, across all lanes
+  lanes:
+    heavy: { concurrency: 1, buffer: 32 }   # review, code_mapping
+    kb:    { concurrency: 2, buffer: 32 }   # kb_query, mcp_read capabilities (read-only, so parallel)
+
+people:                        # max_inflight: queued + running jobs of any kind (default 2)
+  - { name: dat, owner: true, ids: ["teams:<your-sender-id>"], can: ["*"], max_inflight: 4 }
+  # - { name: minh, ids: ["teams:<sender-id>"], can: [kb_query, review], max_inflight: 2 }
+
+channels:
+  teams:
+    onedrive_dir: ~/Library/CloudStorage/OneDrive-VNGCorporation/Ciel
+    chats: ["19:<chat-id>@thread.v2"]   # only these chats are handled; every other chat is ignored
+    aliases: [Dat, Đạt]
+    mr_url_pattern: 'https://gitlab\.gt\.vng\.vn/[^\s"''<>]+/-/merge_requests/\d+'
+    history_size: 6
+    quiet_after: 4h
+    work_hours: { days: [mon, tue, wed, thu, fri], start: "09:00", end: "18:00" }
+    shadow: false              # true: read copies of Ciel's handled files, classify only (phase 11)
+
+classifier: { model: claude-opus-5-5, effort: low, timeout: 3m }   # auth: api_key sends classification to the API key (and auth.base_url)
+
+capabilities:
+  review:
+    profile: review
+    lane: heavy
+    model: claude-opus-5-5
+    budget_usd: 8
+    timeout: 45m
+    workdir: ~/.claude/kb
+    prompt: "/apo-review-mr {url}"
+    post_findings: true
+    routes: []                 # [{match: <regex>, prompt: <template>}], first match wins
+    seatbelt: false
+  code_mapping:
+    profile: mapping
+    lane: heavy
+    model: claude-opus-5-5
+    budget_usd: 5
+    timeout: 30m
+    skill_source: ~/.claude/kb/.claude/skills/kb-eventsource-ops
+    skill_dir: ~/.audee/skills/kb-eventsource-ops
+    seatbelt: false
+  kb_query:
+    profile: kb_read
+    lane: kb
+    model: claude-opus-5-5
+    budget_usd: 3
+    timeout: 15m
+    kb_dir: ~/.claude/kb
+    per_person_limit: 1
+  # grafana:                   # opt-in read-only MCP capability, triggered by the word grafana_query
+  #   profile: mcp_read
+  #   lane: kb
+  #   model: claude-opus-5-5
+  #   budget_usd: 2
+  #   timeout: 10m
+  #   trigger: grafana_query
+  #   mcp: [grafana]
+  #   tools: [search_dashboards, get_dashboard_by_uid, query_prometheus, query_loki_logs]   # the only allowed set
+  #   per_person_limit: 1
+
+keychain_env: {}               # ENV_VAR: keychain-item, for MCP servers that read ${VAR}
