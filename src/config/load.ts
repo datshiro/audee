@@ -79,7 +79,11 @@ const RULES: Rule[] = [
 ];
 
 export function loadConfig(path: string): Config {
-  const raw: unknown = parse(readFileSync(expandHome(path), 'utf8'));
+  return validateConfig(parse(readFileSync(expandHome(path), 'utf8')));
+}
+
+// The parsed config, or an error listing every problem: the schema first, then the cross-field rules.
+export function validateConfig(raw: unknown): Config {
   const parsed = ConfigSchema.safeParse(raw);
   if (!parsed.success) throw new Error(parsed.error.issues.map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`).join('\n'));
   const problems: string[] = [];

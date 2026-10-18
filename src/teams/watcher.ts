@@ -13,7 +13,7 @@ import type { Config, ProfileName } from '../config/schema.js';
 import { appendEvent, type Event } from '../events.js';
 import { notify } from '../notify.js';
 import { type Job, jobKey } from '../queue/job.js';
-import { type EnqueueResult, Queue, type RunOutcome } from '../queue/queue.js';
+import { CancelledError, type CancelResult, type EnqueueResult, Queue, type RunOutcome } from '../queue/queue.js';
 import { busyText, deniedText, failedText, kbQueryEmptyReply, pendingText, queuedReply, queuedText, recentReply, replyHTML, unavailableText } from '../render/html.js';
 import { InterruptedError, type runAgent } from '../runner/run.js';
 import type { HistoryEntry, MessageRecord, State } from '../state/state.js';
@@ -292,17 +292,41 @@ export class Watcher {
   }
 
   // review, code_mapping and kb_query are built-in kinds the config may leave out; queueing one would throw.
+  // A disabled capability answers the same way, so its trigger never falls through to the classifier.
   private configured(kind: string, chatId: string, userId: string): boolean {
-    if (this.cfg.capabilities[kind] !== undefined) return true;
+    const cap = this.cfg.capabilities[kind];
+    if (cap?.enabled === true) return true;
     this.outbox.reply(chatId, userId, unavailableText(kind));
-    notify('audee: capability not configured', `${kind} was requested but is not in the config`);
+    notify('audee: capability not configured', `${kind} was requested but is ${cap === undefined ? 'not in the config' : 'disabled'}`);
     return false;
   }
 
-  // Replies for one queued job, by the queue's answer; reviews are batched in act().
+  // The dashboard's retry: the recorded request again, ignoring the review cooldown, like `audee rerun`.
+  retry(kind: string, key: string): EnqueueResult {
+    if (this.cfg.channels.teams.shadow) throw new Error('audee runs in shadow mode, which never runs a request');
+    if (this.cfg.capabilities[kind]?.enabled !== true) throw new Error(`capability ${kind} is not enabled`);
+    const job = this.state.findRequest(key);
+    if (job === undefined || job.kind !== kind) throw new Error(`no ${kind} request for ${key} in audee's history`);
+    if (kind !== 'review' && (job.input ?? '') === '') throw new Error(`the text of request ${key} is no longer kept`);
+    const result = this.queue.enqueue(job, { ignoreCooldown: true });
+    this.tellEnqueued(job, result);
+    return result;
+  }
+
+  // The dashboard's stop: a queued job is answered here; a running one through runJob once its session aborts.
+  cancel(kind: string, key: string): CancelResult {
+    const { result, job } = this.queue.cancel(kind, key);
+    if (result === 'removed' && job !== undefined) this.fail(job, 'cancelled by owner', 'cancelled');
+    return result;
+  }
+
   private enqueueOne(job: Job, opts: { ignoreCooldown?: boolean } = {}): string {
+    return this.tellEnqueued(job, this.queue.enqueue(job, opts));
+  }
+
+  // Replies for one queued job, by the queue's answer; reviews are batched in act().
+  private tellEnqueued(job: Job, result: EnqueueResult): string {
     const userId = userIdOf(job.principal);
-    const result: EnqueueResult = this.queue.enqueue(job, opts);
     switch (result) {
       case 'queued':
         this.notice(job, queuedText(job.kind));
@@ -391,14 +415,19 @@ export class Watcher {
     }
   }
 
+  // A job that will not run: recorded, the review cooldown lifted, and the requester told.
+  private fail(job: Job, reason: string, status = 'failed'): void {
+    appendEvent(this.dataDir, { kind: job.kind, status, reason, ...(job.mrUrl !== undefined ? { mrUrl: job.mrUrl } : {}), ...(job.messageId !== undefined ? { msgId: job.messageId } : {}), principal: job.principal });
+    if (job.kind === 'review' && job.mrUrl !== undefined) this.state.forgetReview(job.mrUrl);
+    this.notice(job, failedText(job.kind));
+    notify(`audee: ${job.kind} ${status}`, jobKey(job));
+  }
+
   // The queue's runner: one capability session for the job, with every outcome answered.
   async runJob(job: Job, signal: AbortSignal): Promise<RunOutcome> {
     const userId = userIdOf(job.principal);
-    const failed = (reason: string): RunOutcome => {
-      appendEvent(this.dataDir, { kind: job.kind, status: 'failed', reason, ...(job.mrUrl !== undefined ? { mrUrl: job.mrUrl } : {}), ...(job.messageId !== undefined ? { msgId: job.messageId } : {}), principal: job.principal });
-      if (job.kind === 'review' && job.mrUrl !== undefined) this.state.forgetReview(job.mrUrl);
-      this.notice(job, failedText(job.kind));
-      notify(`audee: ${job.kind} failed`, jobKey(job));
+    const failed = (reason: string, status = 'failed'): RunOutcome => {
+      this.fail(job, reason, status);
       return 'done';
     };
     const person = resolvePerson(this.cfg, job.principal);
@@ -406,11 +435,13 @@ export class Watcher {
     const capability = profile === undefined ? undefined : this.capabilities[profile];
     if (person === undefined || capability === undefined) return failed(person === undefined ? 'requester is no longer configured' : `capability ${job.kind} is not configured`);
     if (!isAllowed(person, job.kind)) return failed(`requester is no longer allowed ${job.kind}`);
+    if (this.cfg.capabilities[job.kind]?.enabled === false) return failed(`capability ${job.kind} is disabled`);
     appendEvent(this.dataDir, { kind: job.kind, status: 'started', ...(job.mrUrl !== undefined ? { mrUrl: job.mrUrl } : {}), ...(job.messageId !== undefined ? { msgId: job.messageId } : {}), principal: job.principal });
     let outcome: CapabilityOutcome;
     try {
       outcome = await capability({ cfg: this.cfg, job, person, run: this.runAgent, dataDir: this.dataDir, signal, secrets: this.secrets, ...(this.userConfigPath !== undefined ? { userConfigPath: this.userConfigPath } : {}) });
     } catch (e) {
+      if (signal.reason instanceof CancelledError) return failed('cancelled by owner', 'cancelled');
       if (e instanceof InterruptedError || signal.aborted) return 'interrupted';
       return failed(e instanceof Error ? e.message : String(e));
     }
