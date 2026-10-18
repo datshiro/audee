@@ -10,6 +10,7 @@ const fixture = (name: string): string => fileURLToPath(new URL(`../fixtures/${n
 const SLOW = fixture('fake-claude-slow.sh');
 const FAILING = fixture('fake-claude.sh');
 const ENV_DUMP = fixture('fake-claude-env.sh');
+const STDERR_ARGV = fixture('fake-claude-stderr-argv.sh');
 
 async function pidGone(pid: number, withinMs: number): Promise<boolean> {
   const deadline = Date.now() + withinMs;
@@ -72,5 +73,24 @@ describe('runner', () => {
     expect(env.some((l) => l.startsWith('USER='))).toBe(true);
     expect(env.some((l) => l.startsWith('CLAUDE_CONFIG_DIR='))).toBe(false);
     await expect(runAgent({ options, prompt: 'x', timeoutMs: 1000, auth: 'api_key' })).rejects.toThrow('no keychain item is configured');
+  }, 20_000);
+
+  it('TestRunnerRedactsMcpSecretsFromErrors', async () => {
+    const token = 'FAKETOKEN-redact-7c2e91';
+    const options = {
+      pathToClaudeCodeExecutable: STDERR_ARGV,
+      mcpServers: {
+        grafana: { command: 'grafana-mcp', env: { GRAFANA_SERVICE_ACCOUNT_TOKEN: token } },
+        remote: { type: 'http' as const, url: 'https://mcp.example/sse?key=url-secret-91', headers: { Authorization: 'Bearer header-secret-55' } },
+      },
+    };
+    const err = await runAgent({ options, prompt: 'x', timeoutMs: 10_000, auth: 'subscription' }).then(
+      () => { throw new Error('the session should have failed'); },
+      (e: unknown) => e as Error,
+    );
+    expect(err.message).toMatch(/^session failed: /);
+    expect(err.message).toContain('stderr: fatal: bad args:'); // the CLI's output is kept, only the values go
+    expect(err.message).toContain('[redacted]');
+    for (const secret of [token, 'url-secret-91', 'header-secret-55']) expect(err.message).not.toContain(secret);
   }, 20_000);
 });

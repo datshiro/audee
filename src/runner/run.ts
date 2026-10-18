@@ -38,6 +38,27 @@ function withApiKeyHelper(options: Options, item: string | undefined): Options {
   return { ...options, settings: { ...current, apiKeyHelper: apiKeyHelperCommand(item) } };
 }
 
+// The SDK appends the CLI's stderr to its errors, and the MCP config (tokens included) is on the CLI's command line,
+// so every value that could hold a secret is replaced before the message reaches events, files or notifications.
+function mcpSecrets(options: Options): string[] {
+  const values: string[] = [];
+  for (const server of Object.values(options.mcpServers ?? {})) {
+    const s = server as { env?: unknown; headers?: unknown; args?: unknown; url?: unknown };
+    for (const group of [s.env, s.headers]) {
+      if (typeof group === 'object' && group !== null) for (const v of Object.values(group)) if (typeof v === 'string') values.push(v);
+    }
+    if (Array.isArray(s.args)) for (const a of s.args) if (typeof a === 'string') values.push(a);
+    if (typeof s.url === 'string') values.push(s.url);
+  }
+  return values.filter((v) => v.length >= 8).sort((a, b) => b.length - a.length);
+}
+
+export function redactMcpSecrets(message: string, options: Options): string {
+  let out = message;
+  for (const v of mcpSecrets(options)) out = out.replaceAll(v, '[redacted]');
+  return out;
+}
+
 function collectToolUses(message: SDKMessage, toolUses: string[]): void {
   if (message.type !== 'assistant') return;
   for (const block of message.message.content) if (block.type === 'tool_use') toolUses.push(block.name);
@@ -67,7 +88,7 @@ export async function runAgent(input: RunInput): Promise<RunResult> {
   } catch (e) {
     if (input.signal?.aborted === true) throw new InterruptedError();
     if (timedOut) throw new Error(`timed out after ${input.timeoutMs} ms`);
-    throw new Error(`session failed: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`session failed: ${redactMcpSecrets(e instanceof Error ? e.message : String(e), options)}`);
   } finally {
     clearTimeout(timer);
     input.signal?.removeEventListener('abort', onAbort);
