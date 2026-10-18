@@ -1,7 +1,7 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { authFor } from '../authz/people.js';
+import { authFor, authSettings } from '../authz/people.js';
 import type { Capability as CapabilityConfig } from '../config/schema.js';
 import type { Event } from '../events.js';
 import type { RunInput, RunResult } from '../runner/run.js';
@@ -10,13 +10,11 @@ import type { CapabilityContext } from './types.js';
 // The RunInput every capability builds: the profile's options, the config timeout, the person's auth and the
 // shutdown signal. Nothing else reaches the session.
 export function sessionInput(ctx: CapabilityContext, cap: CapabilityConfig, options: Options, prompt: string, extra: { tmpdir?: string } = {}): RunInput {
-  const auth = authFor(ctx.cfg, ctx.person);
   return {
     options,
     prompt,
     timeoutMs: cap.timeout,
-    auth,
-    ...(auth === 'api_key' ? { apiKeyItem: ctx.cfg.auth.api_key_keychain_item } : {}),
+    ...authSettings(ctx.cfg, authFor(ctx.cfg, ctx.person)),
     signal: ctx.signal,
     ...(extra.tmpdir !== undefined ? { tmpdir: extra.tmpdir } : {}),
   };

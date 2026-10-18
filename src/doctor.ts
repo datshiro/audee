@@ -5,6 +5,7 @@ import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSyn
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { authSettings } from './authz/people.js';
 import { kbQueryDirs } from './capability/kb-query.js';
 import { expandHome } from './config/load.js';
 import type { Config, ProfileName } from './config/schema.js';
@@ -66,7 +67,7 @@ export async function ownerAuthProbe(cfg: Config): Promise<Check> {
   };
   const auth = cfg.auth.owner;
   try {
-    const result = await runAgent({ options, prompt: 'Reply with the single word ok', timeoutMs: 90_000, auth, ...(auth === 'api_key' ? { apiKeyItem: cfg.auth.api_key_keychain_item } : {}) });
+    const result = await runAgent({ options, prompt: 'Reply with the single word ok', timeoutMs: 90_000, ...authSettings(cfg, auth) });
     return { name: 'auth probe', ok: !result.isError, detail: result.isError ? `session reported an error (${auth})` : `owner session ran on ${auth} in the daemon environment (cost $${(result.costUsd ?? 0).toFixed(3)})` };
   } catch (e) {
     const message = (e as Error).message;
@@ -162,6 +163,7 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
   } else {
     check('teammates', true, 'owner only');
   }
+  if (cfg.auth.base_url !== undefined) check('api gateway', true, `${cfg.auth.base_url} for API-key sessions`);
 
   // 7, 17. folders
   if (teams.shadow) {

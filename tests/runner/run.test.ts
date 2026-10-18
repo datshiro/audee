@@ -93,4 +93,16 @@ describe('runner', () => {
     expect(err.message).toContain('[redacted]');
     for (const secret of [token, 'url-secret-91', 'header-secret-55']) expect(err.message).not.toContain(secret);
   }, 20_000);
+
+  it('TestRunnerGatewayOnlyForApiKey', async () => {
+    const gateway = 'https://gateway.example/litellm';
+    const dump = async (auth: 'subscription' | 'api_key'): Promise<string[]> => {
+      const dir = await mkdtemp(join(tmpdir(), 'audee-run-'));
+      const envOut = join(dir, 'env');
+      await runAgent({ options: { pathToClaudeCodeExecutable: ENV_DUMP }, prompt: 'x', timeoutMs: 10_000, auth, apiKeyItem: 'audee-anthropic', baseUrl: gateway, extraEnv: { FAKE_CLAUDE_ARGV_OUT: join(dir, 'argv'), FAKE_CLAUDE_ENV_OUT: envOut } }).catch(() => undefined);
+      return (await readFile(envOut, 'utf8')).split('\n');
+    };
+    expect(await dump('api_key')).toContain(`ANTHROPIC_BASE_URL=${gateway}`);
+    expect((await dump('subscription')).some((l) => l.startsWith('ANTHROPIC_BASE_URL='))).toBe(false); // the login never goes to the gateway
+  }, 20_000);
 });

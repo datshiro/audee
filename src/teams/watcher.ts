@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { authFor, isAllowed, type Person, resolvePerson } from '../authz/people.js';
+import { authFor, authSettings, isAllowed, type Person, resolvePerson } from '../authz/people.js';
 import { kbQuery } from '../capability/kb-query.js';
 import { expireScratchDirs, mapping } from '../capability/mapping.js';
 import { mcpRead } from '../capability/mcp-read.js';
@@ -206,8 +206,7 @@ export class Watcher {
   classifySession(auth: 'subscription' | 'api_key', signal: AbortSignal) {
     return {
       run: this.runAgent, model: this.cfg.classifier.model, effort: this.cfg.classifier.effort, timeoutMs: this.cfg.classifier.timeout,
-      cwd: expandHome(this.cfg.capabilities['review']?.workdir ?? '~/.claude/kb'), auth,
-      ...(auth === 'api_key' ? { apiKeyItem: this.cfg.auth.api_key_keychain_item } : {}), signal,
+      cwd: expandHome(this.cfg.capabilities['review']?.workdir ?? '~/.claude/kb'), ...authSettings(this.cfg, auth), signal,
     };
   }
 

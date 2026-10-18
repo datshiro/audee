@@ -73,6 +73,7 @@ export type ClassifySession = {
   cwd: string;
   auth: 'subscription' | 'api_key';
   apiKeyItem?: string;
+  baseUrl?: string;
   signal: AbortSignal;
 };
 
@@ -183,7 +184,8 @@ export class Detector {
     const options = buildOptions({ profile: 'classifier', cwd: session.cwd, mcpServers: {}, model: session.model, effort: session.effort, schema: decisionSchema, seatbelt: false });
     const input: RunInput = {
       options, prompt: this.prompt(history, msg), timeoutMs: session.timeoutMs, auth: session.auth,
-      ...(session.apiKeyItem !== undefined ? { apiKeyItem: session.apiKeyItem } : {}), signal: session.signal,
+      ...(session.apiKeyItem !== undefined ? { apiKeyItem: session.apiKeyItem } : {}),
+      ...(session.baseUrl !== undefined ? { baseUrl: session.baseUrl } : {}), signal: session.signal,
     };
     let result;
     try {

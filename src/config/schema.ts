@@ -71,6 +71,8 @@ export const ConfigSchema = z.strictObject({
     owner: z.enum(['subscription', 'api_key']).default('subscription'),
     teammates: z.enum(['subscription', 'api_key']).default('api_key'),
     api_key_keychain_item: z.string().default('audee-anthropic'),
+    // An Anthropic-compatible gateway (LiteLLM) for API-key sessions; subscription sessions always use the login.
+    base_url: z.string().regex(/^https:\/\/[^\s/?#]+(\/[^\s?#]*)?$/u, 'must be an https URL').optional(),
   }).prefault({}),
   concurrency: z.strictObject({
     max_concurrent: z.number().int().positive().default(3),

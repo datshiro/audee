@@ -7,6 +7,7 @@ export type RunInput = {
   timeoutMs: number;
   auth: 'subscription' | 'api_key';
   apiKeyItem?: string;
+  baseUrl?: string; // API-key sessions only: an Anthropic-compatible gateway
   tmpdir?: string;
   signal?: AbortSignal;
   extraEnv?: Record<string, string>; // tests only
@@ -80,7 +81,8 @@ export async function runAgent(input: RunInput): Promise<RunResult> {
   const toolUses: string[] = [];
   let result: SDKResultMessage | undefined;
   try {
-    const env = { ...sessionEnv({ tmpdir: input.tmpdir }), ...(input.extraEnv ?? {}) };
+    const gateway = input.auth === 'api_key' && input.baseUrl !== undefined ? { ANTHROPIC_BASE_URL: input.baseUrl } : {};
+    const env = { ...sessionEnv({ tmpdir: input.tmpdir }), ...gateway, ...(input.extraEnv ?? {}) };
     for await (const message of query({ prompt: input.prompt, options: { ...options, env, abortController: controller } })) {
       collectToolUses(message, toolUses);
       if (message.type === 'result') result = message;

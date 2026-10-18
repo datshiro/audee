@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../../src/config/load.js';
@@ -37,4 +40,15 @@ describe('config', () => {
   });
   it('TestConfigRejectsWriteToolInMcpRead', () => expect(rejection('mcp-read-write-tool.yaml')).toContain('update_dashboard'));
   it('TestConfigRejectsUnknownMcpServer', () => expect(rejection('mcp-read-unknown-server.yaml')).toContain('argocd'));
+
+  it('TestConfigGatewayMustBeHttps', () => {
+    const example = readFileSync(EXAMPLE, 'utf8');
+    const write = (url: string): string => {
+      const path = join(mkdtempSync(join(tmpdir(), 'audee-cfg-')), 'config.yaml');
+      writeFileSync(path, example.replace('  api_key_keychain_item: audee-anthropic', `  api_key_keychain_item: audee-anthropic\n  base_url: ${url}`));
+      return path;
+    };
+    expect(loadConfig(write('https://gateway.example')).auth.base_url).toBe('https://gateway.example');
+    expect(() => loadConfig(write('http://gateway.example'))).toThrow('auth.base_url: must be an https URL');
+  });
 });

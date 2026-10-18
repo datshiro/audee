@@ -6,6 +6,7 @@ auth:
   owner: subscription          # subscription | api_key
   teammates: api_key           # api_key only; subscription is rejected for teammates
   api_key_keychain_item: audee-anthropic
+  # base_url: https://litellm.example.com   # optional Anthropic-compatible gateway for API-key sessions
 
 concurrency:
   max_concurrent: 3            # capability sessions running at once, across all lanes

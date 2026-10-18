@@ -2,7 +2,7 @@
 // It never moves, deletes or edits Ciel's files, never queues a job, and never writes to the OneDrive outbox.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isAllowed, resolvePerson } from '../authz/people.js';
+import { authSettings, isAllowed, resolvePerson } from '../authz/people.js';
 import { expandHome } from '../config/load.js';
 import type { Config } from '../config/schema.js';
 import { appendEvent } from '../events.js';
@@ -78,8 +78,7 @@ export function shadowHandler(deps: ShadowDeps): (f: InboxFile, signal: AbortSig
     try {
       const dec = await detector.classify(history, msg, {
         run, model: cfg.classifier.model, effort: cfg.classifier.effort, timeoutMs: cfg.classifier.timeout,
-        cwd: expandHome(cfg.capabilities['review']?.workdir ?? '~/.claude/kb'), auth,
-        ...(auth === 'api_key' ? { apiKeyItem: cfg.auth.api_key_keychain_item } : {}), signal,
+        cwd: expandHome(cfg.capabilities['review']?.workdir ?? '~/.claude/kb'), ...authSettings(cfg, auth), signal,
       });
       const needed = capabilityOfIntent[dec.intent];
       const allowed = person !== undefined && (needed === undefined || isAllowed(person, needed));
