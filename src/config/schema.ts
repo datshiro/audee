@@ -24,6 +24,7 @@ const Duration = z.string().transform((text, ctx) => {
 const Route = z.strictObject({ match: z.string(), prompt: z.string() });
 
 const Capability = z.strictObject({
+  enabled: z.boolean().default(true), // false: still recognised, so a request gets the "not enabled" reply
   profile: z.enum(PROFILES),
   lane: z.string(),
   model: z.string().default('claude-opus-5-5'),
@@ -110,6 +111,8 @@ export const ConfigSchema = z.strictObject({
   }).prefault({}),
   capabilities: Capabilities,
   keychain_env: z.record(z.string(), z.string()).default({}),
+  // The dashboard, served by `audee serve` on 127.0.0.1 only.
+  admin: z.strictObject({ port: z.number().int().min(1024).max(65535).default(7420) }).prefault({}),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

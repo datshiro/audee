@@ -51,6 +51,7 @@ type Persisted = {
   jobs: Job[]; // queued or running, so a restart resumes them
   requests: Record<string, Job>; // job key -> latest request, for `audee rerun`
   messages: MessageRecord[]; // what happened to each claimed inbox file, oldest first
+  paused?: boolean; // the owner paused the queue from the dashboard: queued jobs wait
 };
 
 export class State {
@@ -63,6 +64,7 @@ export class State {
   jobs: Job[] = [];
   requests: Record<string, Job> = {};
   messages: MessageRecord[] = [];
+  paused = false;
 
   constructor(path: string) {
     this.path = path;
@@ -151,6 +153,11 @@ export class State {
     }
   }
 
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+    this.save();
+  }
+
   pendingJobs(): Job[] {
     return [...this.jobs];
   }
@@ -198,6 +205,7 @@ export class State {
       seen: this.seen, shadowSeen: this.shadowSeen, reviews: this.reviews, history: this.history,
       ...(this.lastInboxAt !== undefined ? { lastInboxAt: this.lastInboxAt } : {}),
       jobs: this.jobs, requests: this.requests, messages: this.messages,
+      ...(this.paused ? { paused: true } : {}),
     };
     const tmp = this.path + '.tmp';
     writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
@@ -218,5 +226,6 @@ export function loadState(dataDir: string): State {
   s.jobs = raw.jobs ?? [];
   s.requests = raw.requests ?? {};
   s.messages = raw.messages ?? [];
+  s.paused = raw.paused === true;
   return s;
 }

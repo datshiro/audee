@@ -72,3 +72,5 @@ capabilities:
   #   per_person_limit: 1
 
 keychain_env: {}               # ENV_VAR: keychain-item, for MCP servers that read ${VAR}
+
+admin: { port: 7420 }            # dashboard on 127.0.0.1; `audee dashboard` prints the sign-in link

@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { adminToken } from './admin/server.js';
 import { pinSkill } from './capability/pin-skill.js';
 import { expandHome, loadConfig } from './config/load.js';
 import { formatChecks, ownerAuthProbe, runDoctor } from './doctor.js';
@@ -9,7 +10,8 @@ import { shadowReport } from './shadow-report.js';
 import { shortId } from './teams/detect.js';
 
 const USAGE = `usage: audee [-config path] <command>
-  serve         run the Teams agent
+  serve         run the Teams agent (and the dashboard on 127.0.0.1)
+  dashboard     print the dashboard's sign-in link
   doctor [--probe]  check the setup (--probe runs one owner session in the daemon environment)
   rerun <id>    redo a request (MR URL or Teams message id)
   pin-skill     pin the code-mapping skill to a git ref
@@ -79,6 +81,17 @@ export async function main(argv: string[], out: (s: string) => void, signal?: Ab
         return 0;
       } catch (e) {
         out(`rerun: ${(e as Error).message}`);
+        return 1;
+      }
+    }
+    case 'dashboard': {
+      try {
+        const cfg = loadConfig(configPath);
+        // The token rides in the fragment, which the browser never sends to a server or puts in a Referer.
+        out(`http://127.0.0.1:${cfg.admin.port}/#token=${adminToken(expandHome(cfg.data_dir))}`);
+        return 0;
+      } catch (e) {
+        out(`dashboard: ${(e as Error).message}`);
         return 1;
       }
     }

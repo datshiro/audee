@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:web": "pnpm --dir web install --frozen-lockfile && pnpm --dir web build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run --project unit",
     "test:live": "vitest run --project live",

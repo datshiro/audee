@@ -1,7 +1,7 @@
 ---
 title: audee teammate agent
 status: in-progress
-last_verified: 2026-10-17
+last_verified: 2026-10-18
 claude_code_version: 2.1.302
 ---
 # audee teammate agent
@@ -23,5 +23,15 @@ Started 2026-10-17 under launchd (`com.audee.agent`, shadow mode, owner only, on
 - 2026-10-17, after reprocessing that chat's 106 kept messages (shadow-seen marks cleared; state backed up to `~/.audee/state.json.bak-261017`): compared 16, agreement 16/16 (100.0%), would be denied 16 (colleagues not yet in `people`).
 - 2026-10-18: classifier moved to `claude-opus-4-8` on the LiteLLM gateway (`classifier.auth: api_key`, `auth.base_url`); capability work stays on the owner's login, and teammates will use it too (`auth.teammates: subscription`, reversing plan decision 5). Comparisons from here on measure the 4.8 classifier.
 - Day 2 (2026-10-18, 09:09): compared 21, agreement 21/21 (100.0%), would be denied 21. All 21 were classified before the gateway switch (Opus 5.5 on the owner's login); no message has been classified on the gateway yet.
+
+## Dashboard
+`audee serve` also serves an admin web UI and API on `127.0.0.1:<admin.port>` (default 7420); `audee dashboard` prints the
+sign-in link (the token, kept in `<data_dir>/admin-token`, rides in the URL fragment). Build the UI with `pnpm build:web`
+(output `web/dist`, not committed). Every API call needs the bearer token and a `127.0.0.1`/`localhost` Host header.
+- Monitor: overview (mode, queue, cost, failures, 14-day activity, per capability and per person), event history and the message trail, with filters and search.
+- Control: stop a running job or remove a queued one (the requester gets the failure reply; a `cancelled` event is written), retry a recorded request (not in shadow mode), pause/resume the queue (persisted in state.json).
+- Configure: capabilities (on/off via `enabled`, model, budget, timeout, lane, MCP tools limited to the read-only list), people and grants, classifier, auth, concurrency, Teams settings. An edit is applied to config.yaml with its comments kept, must pass the schema, the fence rules and doctor, is backed up as `config.yaml.bak-<yymmdd-hhmmss>`, and then reloads the daemon in place: running sessions are interrupted and resume from the start. A reload that fails keeps the previous config and shows the error. `data_dir` changes need a restart.
+- Verified 2026-10-18 against a sandbox copy of the data dir (port 7421): overview, retry/remove with a paused queue, capability toggle saved and reloaded, phone width, dark theme. Independent review: no critical findings and the security boundary held. The four medium findings were fixed (cancelling a queued job, the checks a reload runs, the restart-cost wording, protecting saved jobs). Still open: a shutdown that races an in-flight reload resets the connection; a cancelled job's Teams reply says "failed"; config backups are never pruned; nothing detects two tabs editing at once.
+
 ## Architecture
 (written in phase 14)

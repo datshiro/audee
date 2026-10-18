@@ -5,6 +5,16 @@ import { type Job, jobKey, sameJob } from './job.js';
 
 export type RunOutcome = 'done' | 'interrupted';
 export type EnqueueResult = 'queued' | 'duplicate' | 'limit' | 'cooldown' | 'busy';
+export type CancelResult = 'cancelled' | 'removed' | 'not_found';
+export type LaneSnapshot = { name: string; concurrency: number; buffer: number; running: Array<{ job: Job; startedAt: Date }>; queued: Job[] };
+
+// The abort reason of a job the owner stopped, so the runner can tell it from a shutdown (which keeps the job).
+export class CancelledError extends Error {
+  constructor() {
+    super('cancelled by owner');
+    this.name = 'CancelledError';
+  }
+}
 export type Runner = (job: Job, signal: AbortSignal) => Promise<RunOutcome>;
 
 export const reviewCooldownMs = 30 * 60 * 1000; // ciel/actions.go:18 reviewCooldown
@@ -14,7 +24,7 @@ type Lane = { name: string; concurrency: number; buffer: number; queued: Job[]; 
 
 export class Queue {
   private readonly lanes: Lane[];
-  private readonly running = new Set<Job>();
+  private readonly running = new Map<Job, { controller: AbortController; startedAt: Date }>();
   private readonly settled: Promise<void>[] = [];
   private controller = new AbortController();
   private stopping = true;
@@ -40,7 +50,7 @@ export class Queue {
   private inflight(match: (j: Job) => boolean): number {
     let n = 0;
     for (const lane of this.lanes) n += lane.queued.filter(match).length;
-    for (const j of this.running) if (match(j)) n++;
+    for (const j of this.running.keys()) if (match(j)) n++;
     return n;
   }
 
@@ -90,8 +100,45 @@ export class Queue {
     await Promise.allSettled(this.settled);
   }
 
+  // A paused queue keeps accepting jobs but starts none until resumed.
+  setPaused(paused: boolean): void {
+    this.state.setPaused(paused);
+    this.schedule();
+  }
+
+  get paused(): boolean {
+    return this.state.paused;
+  }
+
+  // Removes a queued job (returned, for the caller to answer), or aborts a running one; either way it is gone
+  // from state.json once settled.
+  cancel(kind: string, key: string): { result: CancelResult; job?: Job } {
+    const match = (j: Job): boolean => j.kind === kind && jobKey(j) === key;
+    for (const lane of this.lanes) {
+      const i = lane.queued.findIndex(match);
+      if (i < 0) continue;
+      const [job] = lane.queued.splice(i, 1);
+      if (job === undefined) break;
+      this.state.removeJob(job);
+      return { result: 'removed', job };
+    }
+    for (const [job, run] of this.running) {
+      if (!match(job)) continue;
+      run.controller.abort(new CancelledError());
+      return { result: 'cancelled', job };
+    }
+    return { result: 'not_found' };
+  }
+
+  snapshot(): LaneSnapshot[] {
+    return this.lanes.map((lane) => ({
+      name: lane.name, concurrency: lane.concurrency, buffer: lane.buffer, queued: [...lane.queued],
+      running: [...this.running].filter(([job]) => this.cfg.capabilities[job.kind]?.lane === lane.name).map(([job, run]) => ({ job, startedAt: run.startedAt })),
+    }));
+  }
+
   private schedule(): void {
-    if (this.stopping) return;
+    if (this.stopping || this.state.paused) return;
     let started = true;
     while (started) {
       started = false;
@@ -111,11 +158,12 @@ export class Queue {
 
   private launch(lane: Lane, job: Job): void {
     lane.running++;
-    this.running.add(job);
-    const signal = this.controller.signal;
+    const controller = new AbortController();
+    this.running.set(job, { controller, startedAt: this.now() });
+    const signal = AbortSignal.any([this.controller.signal, controller.signal]);
     const settled = new Promise<RunOutcome>((resolve) => resolve(this.run(job, signal)))
       .then((outcome) => {
-        if (outcome !== 'interrupted') this.state.removeJob(job);
+        if (outcome !== 'interrupted' || controller.signal.aborted) this.state.removeJob(job);
       }, () => {
         this.state.removeJob(job);
       })
