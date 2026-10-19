@@ -4,7 +4,7 @@ import type { Capability as CapabilityConfig } from '../config/schema.js';
 import { REVIEW_MCP_SERVERS } from '../fence/constants.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions } from '../fence/profiles.js';
-import { failedReply, firstLine, replyHTML, reviewedReply } from '../render/html.js';
+import { failedReply, firstLine, replyHTML, reviewedReply, reviewNothingReply } from '../render/html.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
 import { capabilityConfig, sessionEvent, sessionInput } from './session.js';
 import type { Capability, CapabilityOutcome } from './types.js';
@@ -23,6 +23,9 @@ export const postFindingsAnswer = `Publishing: the user wants confirmed findings
 them, the answer is "Post review comments on the MR". Post every finding as an inline diff comment on its
 file and line (mcp__gitlab__post_review_findings with file and new_line); only a finding whose line is not in the
 diff may fall back to a general note. Then add one summary comment (mcp__gitlab__comment_mr).
+If you end up posting nothing on the MR (for example a rule says to post nothing), still post one short comment
+with mcp__gitlab__comment_mr saying the review ran and why nothing was posted, unless GitLab is unreachable.
+That comment does not count as posting: finish with "REVIEW_POSTED: no: <the same reason>".
 `;
 
 // actions.go:34-36
@@ -108,8 +111,11 @@ export const review: Capability = async (ctx) => {
   }
   const base = { ...sessionEvent(result, Date.now() - started), kind: 'review', mrUrl };
   if (!res.posted) {
-    // Nothing on the MR for the requester to check, so tell the owner instead of the chat.
-    return { notifyOwner: `review posted nothing: ${res.reason}`, event: { ...base, status: 'nothing', reason: res.reason } };
+    return {
+      reply: { html: replyHTML(reviewNothingReply(res.reason, Object.values(ctx.secrets)), mrUrl) },
+      notifyOwner: `review posted nothing: ${res.reason}`,
+      event: { ...base, status: 'nothing', reason: res.reason },
+    };
   }
   return { reply: { html: replyHTML(reviewedReply, mrUrl) }, notifyOwner: `review done: ${mrUrl}`, event: { ...base, status: 'posted' } };
 };

@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { clip, deniedText, escapeHTML, fitAnswer, kbQueryReplyHTML, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewedReply } from '../../src/render/html.js';
+import { clip, deniedText, escapeHTML, fitAnswer, kbQueryReplyHTML, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewedReply, reviewNothingReply } from '../../src/render/html.js';
 import { runeLength } from '../../src/render/text.js';
 
 const count = (s: string, needle: string): number => s.split(needle).length - 1;
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
 
 describe('reply html', () => {
+  it('review nothing reply escapes, defangs, caps and hides secrets', () => {
+    expect(reviewNothingReply('targets <main> see https://evil.example', [])).toContain('Lý do: targets &lt;main&gt; see hxxps://evil.example');
+    expect(runeLength(reviewNothingReply('x'.repeat(1000), []))).toBeLessThan(400);
+    const hidden = reviewNothingReply('token=abcdefgh12345678', []);
+    expect(hidden).not.toContain('Lý do');
+    expect(reviewNothingReply('uses s3cr3t-value-123', ['s3cr3t-value-123'])).not.toContain('s3cr3t');
+  });
+
   // ciel/ciel_test.go:134
   it('TestReviewedHTML', () => {
     const got = replyHTML(reviewedReply, 'https://gitlab.example.com/g/p/-/merge_requests/5?a=1&b="2"');

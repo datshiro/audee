@@ -1,7 +1,7 @@
 ---
 title: audee teammate agent
 status: in-progress
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 claude_code_version: 2.1.302
 ---
 # audee teammate agent
@@ -23,6 +23,11 @@ Started 2026-10-17 under launchd (`com.audee.agent`, shadow mode, owner only, on
 - 2026-10-17, after reprocessing that chat's 106 kept messages (shadow-seen marks cleared; state backed up to `~/.audee/state.json.bak-261017`): compared 16, agreement 16/16 (100.0%), would be denied 16 (colleagues not yet in `people`).
 - 2026-10-18: classifier moved to `claude-opus-4-8` on the LiteLLM gateway (`classifier.auth: api_key`, `auth.base_url`); capability work stays on the owner's login, and teammates will use it too (`auth.teammates: subscription`, reversing plan decision 5). Comparisons from here on measure the 4.8 classifier.
 - Day 2 (2026-10-18, 09:09): compared 21, agreement 21/21 (100.0%), would be denied 21. All 21 were classified before the gateway switch (Opus 5.5 on the owner's login); no message has been classified on the gateway yet.
+
+## Cutover
+- 2026-10-19 09:32: Ciel stopped (`com.ciel.agent` booted out, nothing left in `~/.ciel/processing`, no Ciel jobs or reruns) and audee switched to live mode (`shadow: false`). The shadow gate was not met: Ciel had been idle since 2026-10-16 19:03, so no message was compared on the 4.8 classifier; the owner chose to cut over anyway. Rollback drill not yet run.
+- Same day: 8 teammates in `people` with `review`, `kb_query`, `code_mapping`; chat `19:46246f3b…@thread.v2` added (3 allowed chats).
+- Review that posts nothing (departure from Ciel, which told only the owner): with `post_findings: true` the session leaves one short comment on the MR saying why, and the requester gets a chat reply with the reason (hidden if it looks like a secret, links defanged, capped at 300 characters).
 
 ## Dashboard
 `audee serve` also serves an admin web UI and API on `127.0.0.1:<admin.port>` (default 7420); `audee dashboard` prints the
