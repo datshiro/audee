@@ -155,8 +155,22 @@ export function kbQueryReplyHTML(res: KbQueryResult): [string, boolean] {
 }
 
 // The page is opened from OneDrive by colleagues: raw HTML is escaped and links and images stay plain text, so
-// nothing the model wrote can run, load or be clicked.
-const answerMarkdown = new MarkdownIt({ html: false, linkify: false }).disable(['link', 'image', 'autolink']);
+// nothing the model wrote can run, load or be clicked. Entities and backslash escapes stay literal, so the text
+// a reader sees is the text the secret check read.
+const answerMarkdown = new MarkdownIt({ html: false, linkify: false }).disable(['link', 'image', 'autolink', 'entity', 'escape']);
+export const maxKBAnswerFileChars = 50000;
+
+export function kbAnswerHTML(answer: string): string {
+  return answerMarkdown.render(defang(answer));
+}
+
+// What a reader of the rendered answer sees, for the secret check: Markdown can split a "key: value" pair or a token
+// with emphasis or code tags, so tags are dropped both with nothing (one token) and with a space, table cells as pairs.
+export function kbAnswerVisibleTexts(html: string): string[] {
+  const text = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;|&#34;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const cells = html.replace(/<\/t[dh]>\s*<t[dh][^>]*>/g, ': ');
+  return [text(html.replace(/<[^>]*>/g, '')), text(cells.replace(/<[^>]*>/g, ' '))];
+}
 
 const answerPageStyle = `:root{color-scheme:light dark;--bg:#fff;--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--code:#f6f8fa}
 @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--code:#151b23}}
@@ -187,7 +201,7 @@ export function kbAnswerPage(question: string, res: KbQueryResult): string {
 <main>
 <header><h1>Trả lời tự động từ KB</h1><p>Bạn kiểm tra lại trước khi dùng nhé.</p></header>
 <blockquote>${escapeHTML(question)}</blockquote>
-${answerMarkdown.render(defang(res.answer ?? ''))}
+${kbAnswerHTML(res.answer ?? '')}
 ${sourceList}
 </main>
 </body>

@@ -7,8 +7,9 @@ import { parse } from 'yaml';
 import { expandHome } from '../config/load.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions, type KbPaths } from '../fence/profiles.js';
-import { failedText, kbAnswerFileName, kbAnswerPage, kbQueryFailedReply, kbQueryFileReply, kbQueryReplyHTML, kbQueryWithheldReply, type KbQueryResult } from '../render/html.js';
+import { failedText, kbAnswerFileName, kbAnswerHTML, kbAnswerPage, kbAnswerVisibleTexts, kbQueryClipped, kbQueryFailedReply, kbQueryFileReply, kbQueryReplyHTML, kbQueryWithheldReply, type KbQueryResult, maxKBAnswerFileChars } from '../render/html.js';
 import { leaksSecret } from '../render/secrets.js';
+import { runeLength, runeSlice } from '../render/text.js';
 import { sessionEnv } from '../runner/env.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
 import { capabilityConfig, freshDir, keepOutput, keepResult, messageDir, sessionEvent, sessionInput } from './session.js';
@@ -169,8 +170,19 @@ export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: strin
     return { reply: { html: kbQueryWithheldReply }, notifyOwner: `${title} answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind, status: 'withheld', reason: 'answer looks like it holds a credential' } };
   }
   if (opts.asFile === true && res.status === 'done') {
-    const file = { name: kbAnswerFileName(ctx.job.messageId ?? ''), content: kbAnswerPage(ctx.job.input ?? '', res) };
-    return { reply: { html: kbQueryFileReply, file }, event: { ...base, kind, status: res.status }, removeAfterReply: dir };
+    const full = res.answer ?? '';
+    const clipped = runeLength(full) > maxKBAnswerFileChars;
+    const answer = clipped ? runeSlice(full, maxKBAnswerFileChars) + '\n\n' + kbQueryClipped : full;
+    if (leaksSecret(kbAnswerVisibleTexts(kbAnswerHTML(answer)), Object.values(ctx.secrets))) {
+      return { reply: { html: kbQueryWithheldReply }, notifyOwner: `${title} answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind, status: 'withheld', reason: 'answer looks like it holds a credential' } };
+    }
+    const file = { name: kbAnswerFileName(ctx.job.messageId ?? ''), content: kbAnswerPage(ctx.job.input ?? '', { ...res, answer }) };
+    const outcome: CapabilityOutcome = { reply: { html: kbQueryFileReply, file }, event: { ...base, kind, status: res.status } };
+    if (clipped) {
+      keepResult(dir, res); // the full answer stays for the owner
+      return outcome;
+    }
+    return { ...outcome, removeAfterReply: dir };
   }
   const [html, clipped] = kbQueryReplyHTML(res);
   const outcome: CapabilityOutcome = { reply: { html }, event: { ...base, kind, status: res.status } };

@@ -8,7 +8,7 @@ import { kbQuery, kbQueryDir, kbQueryDirs, kbQueryPrompt, setKbRefSync } from '.
 import type { CapabilityContext } from '../../src/capability/types.js';
 import { KB_QUERY_TOOLS } from '../../src/fence/constants.js';
 import type { Job } from '../../src/queue/job.js';
-import { kbQueryFailedReply, kbQueryFileReply, kbQueryWithheldReply, maxReplyChars } from '../../src/render/html.js';
+import { kbQueryFailedReply, kbQueryFileReply, kbQueryWithheldReply, maxKBAnswerFileChars, maxReplyChars } from '../../src/render/html.js';
 import { InterruptedError, type RunInput, type RunResult } from '../../src/runner/run.js';
 import { testConfig } from '../helpers/test-config.js';
 
@@ -165,6 +165,43 @@ describe('kb_query', () => {
     expect(outcome.reply?.file?.content).toContain('y'.repeat(maxReplyChars));
     expect(outcome.reply?.file?.content).not.toContain('cắt bớt');
     expect(outcome.removeAfterReply).toBe(dir);
+  });
+
+  it('TestHandleKBQueryClipsHugeAnswerFile', async () => {
+    const { ctx, dir } = harness(testKB('pusher'), done('y'.repeat(maxKBAnswerFileChars + 10)));
+    const outcome = await kbQuery(ctx);
+    const page = outcome.reply?.file?.content ?? '';
+    expect(page).toContain('cắt bớt');
+    expect(page).not.toContain('y'.repeat(maxKBAnswerFileChars + 1));
+    expect(existsSync(join(dir, 'result.json'))).toBe(true);
+    expect(outcome.removeAfterReply).toBeUndefined();
+  });
+
+  // Markdown can hide a credential from a check on the source: what the reader sees is checked too.
+  it('TestHandleKBQueryWithholdsSecretsHiddenByMarkdown', async () => {
+    const known = 'Zq9-known-SECRET-value';
+    const answers: Record<string, string> = {
+      'bold key': '**password**: hunter2hunter2',
+      'code key': '`password`: hunter2hunter2',
+      'bold key, code value': '- **DB password**: `hunter2hunter2`',
+      'split token': 'AKIA**IOSF**ODNN7EXAMPLE',
+      'table': '| key | value |\n|---|---|\n| password | hunter2hunter2 |',
+      'known, split by code': 'Zq9-`known`-SECRET-value',
+    };
+    for (const [name, answer] of Object.entries(answers)) {
+      const { ctx } = harness(testKB('pusher'), done(answer));
+      ctx.secrets = { DB: known };
+      const outcome = await kbQuery(ctx);
+      expect(outcome.reply?.html, name).toBe(kbQueryWithheldReply);
+      expect(outcome.reply?.file, name).toBeUndefined();
+      expect(outcome.event.status, name).toBe('withheld');
+    }
+    for (const literal of ['&#65;KIAIOSFODNN7EXAMPLE', 'Zq9\\-known-SECRET-value']) {
+      const { ctx } = harness(testKB('pusher'), done(literal));
+      const page = (await kbQuery(ctx)).reply?.file?.content ?? '';
+      expect(page, literal).not.toContain('AKIAIOSFODNN7EXAMPLE');
+      expect(page, literal).not.toContain(known);
+    }
   });
 
   // ciel/kbquery_test.go:438
