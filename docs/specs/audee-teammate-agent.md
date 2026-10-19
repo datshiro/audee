@@ -37,6 +37,9 @@ outbox file flow (`kb-answer-<message id>-<yyyymmdd-hhmmss>.html` in OneDrive `/
 notice and the share link. The page is rendered with markdown-it with raw HTML, links and images off, links in the
 text defanged, and a CSP that allows only inline styles; the secret check reads both the Markdown and the rendered text. `need_input`,
 withheld and failed answers, and mcp_read answers, stay chat replies.
+Verified live 2026-10-19: the page opens from the OneDrive link and displays correctly. The outbox flow ("Send message
+when ask for review code") had been saving only the file name as the file's content, likely since Ciel (the file path
+was used only for oversized code mappings); its "Create file" step now writes `file.content`.
 
 ## Dashboard
 `audee serve` also serves an admin web UI and API on `127.0.0.1:<admin.port>` (default 7420); `audee dashboard` prints the
