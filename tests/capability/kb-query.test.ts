@@ -187,6 +187,8 @@ describe('kb_query', () => {
       'split token': 'AKIA**IOSF**ODNN7EXAMPLE',
       'table': '| key | value |\n|---|---|\n| password | hunter2hunter2 |',
       'known, split by code': 'Zq9-`known`-SECRET-value',
+      'header names the column': '| user | password |\n|---|---|\n| bob | hunter2hunter2 |',
+      'single column': '| password |\n|---|\n| hunter2hunter2 |',
     };
     for (const [name, answer] of Object.entries(answers)) {
       const { ctx } = harness(testKB('pusher'), done(answer));

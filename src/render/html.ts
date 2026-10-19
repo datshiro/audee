@@ -168,8 +168,20 @@ export function kbAnswerHTML(answer: string): string {
 // with emphasis or code tags, so tags are dropped both with nothing (one token) and with a space, table cells as pairs.
 export function kbAnswerVisibleTexts(html: string): string[] {
   const text = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;|&#34;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const strip = (s: string) => text(s.replace(/<[^>]*>/g, ''));
   const cells = html.replace(/<\/t[dh]>\s*<t[dh][^>]*>/g, ': ');
-  return [text(html.replace(/<[^>]*>/g, '')), text(cells.replace(/<[^>]*>/g, ' '))];
+  return [strip(html), text(cells.replace(/<[^>]*>/g, ' ')), ...headedCells(html).map(strip)];
+}
+
+// "<header>: <cell>" for every body cell of every table, so a value is read beside the column that names it.
+function headedCells(html: string): string[] {
+  const out: string[] = [];
+  for (const [, table = ''] of html.matchAll(/<table>([\s\S]*?)<\/table>/g)) {
+    const rows = [...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(([, r = '']) => [...r.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map(([, c = '']) => c));
+    const [head = [], ...body] = rows;
+    for (const row of body) row.forEach((cell, i) => out.push(`${head[i] ?? ''}: ${cell}`));
+  }
+  return out;
 }
 
 const answerPageStyle = `:root{color-scheme:light dark;--bg:#fff;--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--code:#f6f8fa}
