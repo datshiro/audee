@@ -1,3 +1,4 @@
+import MarkdownIt from 'markdown-it';
 import { defang, defangAll } from './defang.js';
 import { leaksSecret } from './secrets.js';
 import { runeLength, runeSlice } from './text.js';
@@ -42,6 +43,7 @@ export const kbQueryEmptyReply = 'Bạn ghi câu hỏi sau <b>kb_query</b> nhé,
 export const kbQueryMissingReply = '<b>Mình cần bạn nói rõ hơn để tra KB:</b>';
 export const kbQueryDoneReply = '🤖 <b>Trả lời tự động từ KB</b>, bạn kiểm tra lại trước khi dùng nhé:';
 export const kbQueryWithheldReply = '❌ <b>Câu trả lời từ KB có thể chứa thông tin bí mật nên mình không gửi.</b> Mình sẽ xem lại.';
+export const kbQueryFileReply = '🤖 <b>Trả lời tự động từ KB</b>, mình gửi trong file, bạn kiểm tra lại trước khi dùng nhé:';
 export const kbQueryPendingReply = 'Bạn đang có một câu hỏi <b>kb_query</b> chưa xong, đợi có câu trả lời rồi hỏi tiếp nhé.';
 export const kbQueryClipped = '… (câu trả lời dài hơn, đã cắt bớt; hỏi hẹp lại để xem chi tiết)';
 export const maxKBQuerySources = maxNotes;
@@ -157,6 +159,79 @@ export function kbQueryReplyHTML(res: KbQueryResult): [string, boolean] {
   const budget = Math.min(maxKBQueryAnswer, maxReplyChars - runeLength(kbQueryDoneReply + '<pre></pre>' + sources));
   const [answer, wasClipped] = fitAnswer(res.answer ?? '', budget);
   return [kbQueryDoneReply + '<pre>' + answer + '</pre>' + sources, wasClipped];
+}
+
+// The page is opened from OneDrive by colleagues: raw HTML is escaped and links and images stay plain text, so
+// nothing the model wrote can run, load or be clicked. Entities and backslash escapes stay literal, so the text
+// a reader sees is the text the secret check read.
+const answerMarkdown = new MarkdownIt({ html: false, linkify: false }).disable(['link', 'image', 'autolink', 'entity', 'escape']);
+export const maxKBAnswerFileChars = 50000;
+
+export function kbAnswerHTML(answer: string): string {
+  return answerMarkdown.render(defang(answer));
+}
+
+// What a reader of the rendered answer sees, for the secret check: Markdown can split a "key: value" pair or a token
+// with emphasis or code tags, so tags are dropped both with nothing (one token) and with a space, table cells as pairs.
+export function kbAnswerVisibleTexts(html: string): string[] {
+  const text = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;|&#34;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const strip = (s: string) => text(s.replace(/<[^>]*>/g, ''));
+  const cells = html.replace(/<\/t[dh]>\s*<t[dh][^>]*>/g, ': ');
+  return [strip(html), text(cells.replace(/<[^>]*>/g, ' ')), ...headedCells(html).map(strip)];
+}
+
+// "<header>: <cell>" for every body cell of every table, so a value is read beside the column that names it.
+function headedCells(html: string): string[] {
+  const out: string[] = [];
+  for (const [, table = ''] of html.matchAll(/<table>([\s\S]*?)<\/table>/g)) {
+    const rows = [...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(([, r = '']) => [...r.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map(([, c = '']) => c));
+    const [head = [], ...body] = rows;
+    for (const row of body) row.forEach((cell, i) => out.push(`${head[i] ?? ''}: ${cell}`));
+  }
+  return out;
+}
+
+const answerPageStyle = `:root{color-scheme:light dark;--bg:#fff;--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--code:#f6f8fa}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--code:#151b23}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px}
+header p{color:var(--muted);margin:0 0 12px}
+blockquote{margin:0 0 24px;padding:8px 16px;border-left:4px solid var(--line);color:var(--muted);white-space:pre-wrap}
+pre{background:var(--code);padding:12px;border-radius:6px;overflow-x:auto}
+code{background:var(--code);padding:0 4px;border-radius:4px;font-size:90%}
+pre code{padding:0;background:none}
+table{border-collapse:collapse;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:6px 12px}
+footer{margin-top:32px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}`;
+
+export function kbAnswerPage(question: string, res: KbQueryResult): string {
+  const sources = clipSources(res.sources ?? []);
+  const sourceList = sources.length > 0 ? '<footer><b>Nguồn:</b><ul>' + sources.map((s) => `<li>${escapeHTML(s)}</li>`).join('') + '</ul></footer>' : '';
+  return `<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<title>Trả lời từ KB</title>
+<style>${answerPageStyle}</style>
+</head>
+<body>
+<main>
+<header><h1>Trả lời tự động từ KB</h1><p>Bạn kiểm tra lại trước khi dùng nhé.</p></header>
+<blockquote>${escapeHTML(question)}</blockquote>
+${kbAnswerHTML(res.answer ?? '')}
+${sourceList}
+</main>
+</body>
+</html>
+`;
+}
+
+// Same stamp as the code mapping file: UTC yyyymmdd-hhmmss.
+export function kbAnswerFileName(messageId: string, now = new Date()): string {
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  return `kb-answer-${messageId}-${stamp}.html`;
 }
 
 // ciel/kbquery.go:376-388

@@ -8,7 +8,7 @@ import { kbQuery, kbQueryDir, kbQueryDirs, kbQueryPrompt, setKbRefSync } from '.
 import type { CapabilityContext } from '../../src/capability/types.js';
 import { KB_QUERY_TOOLS } from '../../src/fence/constants.js';
 import type { Job } from '../../src/queue/job.js';
-import { kbQueryDoneReply, kbQueryFailedReply, kbQueryWithheldReply, maxReplyChars } from '../../src/render/html.js';
+import { kbQueryFailedReply, kbQueryFileReply, kbQueryWithheldReply, maxKBAnswerFileChars, maxReplyChars } from '../../src/render/html.js';
 import { InterruptedError, type RunInput, type RunResult } from '../../src/runner/run.js';
 import { testConfig } from '../helpers/test-config.js';
 
@@ -84,13 +84,15 @@ describe('kb_query', () => {
     }
   });
 
-  // ciel/kbquery_test.go:256
-  it('TestHandleKBQueryRepliesWithEscapedAnswer', async () => {
-    const { ctx, inputs, dir } = harness(testKB('pusher'), done('Past segment <script>x</script> & co, see https://evil.example/x', ['pusher/main.go:10']));
+  it('TestHandleKBQuerySendsAnswerAsHtmlFile', async () => {
+    const { ctx, inputs, dir } = harness(testKB('pusher'), done('## Past segment\n\n<script>x</script> & co, see https://evil.example/x', ['pusher/main.go:10']));
     const outcome = await kbQuery(ctx);
-    const html = outcome.reply?.html ?? '';
-    expect(html.startsWith(kbQueryDoneReply)).toBe(true);
-    for (const want of ['Past segment &lt;script&gt;x&lt;/script&gt; &amp; co', 'hxxps://evil.example/x', '<li>pusher/main.go:10</li>']) expect(html).toContain(want);
+    expect(outcome.reply?.html).toBe(kbQueryFileReply);
+    const file = outcome.reply?.file;
+    expect(file?.name).toMatch(/^kb-answer-1791513774214-\d{8}-\d{6}\.html$/);
+    const page = file?.content ?? '';
+    for (const want of ['<h2>Past segment</h2>', '&lt;script&gt;x&lt;/script&gt; &amp; co', 'hxxps://evil.example/x', '<li>pusher/main.go:10</li>', 'past segment hoạt động thế nào?']) expect(page).toContain(want);
+    expect(page).not.toContain('<script');
     expect(synced).toBe(1);
     const input = inputs[0];
     expect(input?.options.extraArgs).toEqual({ restricted: null });
@@ -109,6 +111,7 @@ describe('kb_query', () => {
     const { ctx, dir } = harness(testKB('pusher'), result);
     const outcome = await kbQuery(ctx);
     expect(outcome.reply?.html).toContain('<li>Which &lt;service&gt;? see hxxpS://evil.example</li>');
+    expect(outcome.reply?.file).toBeUndefined();
     expect(outcome.removeAfterReply).toBeUndefined();
     expect(readFileSync(join(dir, 'question.txt'), 'utf8')).toBe(ctx.job.input);
     expect(readFileSync(join(dir, 'INTERSERVICE.md'), 'utf8')).toBe('# services');
@@ -149,26 +152,65 @@ describe('kb_query', () => {
       const { ctx, dir } = harness(testKB('pusher'), done(answer));
       const outcome = await kbQuery(ctx);
       expect(outcome.reply?.html, name).toBe(kbQueryWithheldReply);
+      expect(outcome.reply?.file, name).toBeUndefined();
       expect(outcome.event.status, name).toBe('withheld');
       expect(outcome.notifyOwner, name).toContain('withheld');
       expect(existsSync(join(dir, 'output.json')), name).toBe(true);
     }
   });
 
-  // ciel/kbquery_test.go:428
-  it('TestHandleKBQueryKeepsClippedAnswer', async () => {
+  it('TestHandleKBQuerySendsLongAnswerWhole', async () => {
     const { ctx, dir } = harness(testKB('pusher'), done('y'.repeat(maxReplyChars)));
     const outcome = await kbQuery(ctx);
-    expect(outcome.reply?.html).toContain('cắt bớt');
+    expect(outcome.reply?.file?.content).toContain('y'.repeat(maxReplyChars));
+    expect(outcome.reply?.file?.content).not.toContain('cắt bớt');
+    expect(outcome.removeAfterReply).toBe(dir);
+  });
+
+  it('TestHandleKBQueryClipsHugeAnswerFile', async () => {
+    const { ctx, dir } = harness(testKB('pusher'), done('y'.repeat(maxKBAnswerFileChars + 10)));
+    const outcome = await kbQuery(ctx);
+    const page = outcome.reply?.file?.content ?? '';
+    expect(page).toContain('cắt bớt');
+    expect(page).not.toContain('y'.repeat(maxKBAnswerFileChars + 1));
     expect(existsSync(join(dir, 'result.json'))).toBe(true);
     expect(outcome.removeAfterReply).toBeUndefined();
+  });
+
+  // Markdown can hide a credential from a check on the source: what the reader sees is checked too.
+  it('TestHandleKBQueryWithholdsSecretsHiddenByMarkdown', async () => {
+    const known = 'Zq9-known-SECRET-value';
+    const answers: Record<string, string> = {
+      'bold key': '**password**: hunter2hunter2',
+      'code key': '`password`: hunter2hunter2',
+      'bold key, code value': '- **DB password**: `hunter2hunter2`',
+      'split token': 'AKIA**IOSF**ODNN7EXAMPLE',
+      'table': '| key | value |\n|---|---|\n| password | hunter2hunter2 |',
+      'known, split by code': 'Zq9-`known`-SECRET-value',
+      'header names the column': '| user | password |\n|---|---|\n| bob | hunter2hunter2 |',
+      'single column': '| password |\n|---|\n| hunter2hunter2 |',
+    };
+    for (const [name, answer] of Object.entries(answers)) {
+      const { ctx } = harness(testKB('pusher'), done(answer));
+      ctx.secrets = { DB: known };
+      const outcome = await kbQuery(ctx);
+      expect(outcome.reply?.html, name).toBe(kbQueryWithheldReply);
+      expect(outcome.reply?.file, name).toBeUndefined();
+      expect(outcome.event.status, name).toBe('withheld');
+    }
+    for (const literal of ['&#65;KIAIOSFODNN7EXAMPLE', 'Zq9\\-known-SECRET-value']) {
+      const { ctx } = harness(testKB('pusher'), done(literal));
+      const page = (await kbQuery(ctx)).reply?.file?.content ?? '';
+      expect(page, literal).not.toContain('AKIAIOSFODNN7EXAMPLE');
+      expect(page, literal).not.toContain(known);
+    }
   });
 
   // ciel/kbquery_test.go:438
   it('TestKBQueryPromptOverridesSkill', () => {
     const paths = { wiki: '/kb/kb-mcp/wiki', querySkill: '/kb/.agents/skills/kb-query', scoutSkill: '/kb/.agents/skills/kb-scout', repos: ['/kb/.kb-ref-worktrees/pusher'] };
     const p = kbQueryPrompt('/kb', paths, true);
-    for (const want of ['/kb/.agents/skills/kb-query', '/kb/.agents/skills/kb-scout/SKILL.md', '/kb/kb-mcp/wiki', '/kb/.kb-ref-worktrees/pusher', './question.txt', 'Never ask a question', 'run no script', 'never call kb-enrich', 'Never quote credentials', 'INTERSERVICE.md is ./INTERSERVICE.md']) {
+    for (const want of ['/kb/.agents/skills/kb-query', '/kb/.agents/skills/kb-scout/SKILL.md', '/kb/kb-mcp/wiki', '/kb/.kb-ref-worktrees/pusher', './question.txt', 'Never ask a question', 'run no script', 'never call kb-enrich', 'Never quote credentials', 'INTERSERVICE.md is ./INTERSERVICE.md', 'Markdown', 'no raw HTML']) {
       expect(p).toContain(want);
     }
     expect(kbQueryPrompt('/kb', paths, false)).not.toContain('INTERSERVICE.md');

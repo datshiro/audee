@@ -31,6 +31,13 @@ Started 2026-10-17 under launchd (`com.audee.agent`, shadow mode, owner only, on
 - Replacement (live since 2026-10-19 21:27): the flow "Ciel Teams Inbox Poller" polls instead of subscribing, so the limit does not apply. Every minute it loops over the 3 allowed chats, calls the Teams action "Send a Microsoft Graph HTTP request" with `GET https://graph.microsoft.com/v1.0/me/chats/<chat>/messages?$top=50&$orderby=createdDateTime desc` (this connector accepts only paths starting with `teams`, `me` or `users`, so `/chats/...` is rejected), keeps the messages created from 2 minutes to 1 minute before the run's scheduled time, and writes each one to `/Ciel/inbox/<message id>-<sender id>.json` as `{version: 1, chatId, meId, message}`. Messages reach audee 1 to 2 minutes after they are posted. A message delivered twice is harmless (audee skips seen message ids). Adding an allowed chat now means adding its id to the flow's chat list as well as to `channels.teams.chats`. The old flows "Ciel Listen On BE Quick Chat" and "Inbox" stay off.
 - Review that posts nothing (departure from Ciel, which told only the owner): with `post_findings: true` the session leaves one short comment on the MR saying why, and the requester gets a chat reply with the reason (hidden if it looks like a secret, links defanged, capped at 300 characters).
 
+## kb_query answers
+Departure from Ciel: the model writes the answer in Markdown and a `done` answer is sent as an HTML page through the
+outbox file flow (`kb-answer-<message id>-<yyyymmdd-hhmmss>.html` in OneDrive `/Ciel/files`); the chat gets a one-line
+notice and the share link. The page is rendered with markdown-it with raw HTML, links and images off, links in the
+text defanged, and a CSP that allows only inline styles; the secret check reads both the Markdown and the rendered text. `need_input`,
+withheld and failed answers, and mcp_read answers, stay chat replies.
+
 ## Dashboard
 `audee serve` also serves an admin web UI and API on `127.0.0.1:<admin.port>` (default 7420); `audee dashboard` prints the
 sign-in link (the token, kept in `<data_dir>/admin-token`, rides in the URL fragment). Build the UI with `pnpm build:web`
