@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import { defang, defangAll } from './defang.js';
+import { leaksSecret } from './secrets.js';
 import { runeLength, runeSlice } from './text.js';
 
 // ciel/detect.go:49 escapeHTML (Go html.EscapeString)
@@ -16,6 +17,12 @@ export function preEscape(s: string): string {
 export const reviewedReply = '<b>Đã review xong MR này.</b> Bạn xem các comment trên MR để tự kiểm tra nhé.';
 export const queuedReply = '👀 <b>Mình đang review.</b> Có gì mình sẽ báo nhé.';
 export const failedReply = '❌ <b>Review MR này bị lỗi.</b> Mình sẽ xem lại.';
+// The reason is model text going to the chat: hidden if it looks like a secret, links defanged, length capped.
+export function reviewNothingReply(reason: string, knownSecrets: string[]): string {
+  const head = '<b>Đã review MR này nhưng không post comment nào.</b>';
+  if (leaksSecret([reason], knownSecrets)) return head;
+  return `${head} Lý do: ${escapeHTML(runeSlice(defang(reason), maxNoteChars))}`;
+}
 export const recentReply = '🔁 <b>Đã được nhờ review trong 30 phút qua</b>, nên mình không review lại.';
 export const mappingQueuedReply = '👀 <b>Đang làm code mapping.</b> Xong mình sẽ gửi nhé.';
 export const mappingFailedReply = '❌ <b>Code mapping bị lỗi.</b> Mình sẽ xem lại.';
