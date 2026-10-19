@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { clip, deniedText, escapeHTML, fitAnswer, kbQueryReplyHTML, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewedReply } from '../../src/render/html.js';
+import { clip, deniedText, escapeHTML, fitAnswer, kbAnswerFileName, kbAnswerPage, kbQueryReplyHTML, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewedReply } from '../../src/render/html.js';
 import { runeLength } from '../../src/render/text.js';
 
 const count = (s: string, needle: string): number => s.split(needle).length - 1;
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
 
 describe('reply html', () => {
+  it('kb answer page renders Markdown, stays inert and escapes the question', () => {
+    const answer = '## Flow\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```\nA --> B\n```\n\n<script>alert(1)</script> <img src=x onerror=alert(1)> see https://evil.example and [x](javascript:alert(1))';
+    const sources = Array.from({ length: 11 }, (_, i) => `svc/file${i}.go`);
+    const page = kbAnswerPage('why <b>this</b>?', { status: 'done', answer, sources });
+    for (const want of ['<!doctype html>', '<meta charset="utf-8">', "default-src 'none'; style-src 'unsafe-inline'", '<h2>Flow</h2>', '<li>one</li>', '<table>', '<pre><code>A --&gt; B', 'why &lt;b&gt;this&lt;/b&gt;?', '&lt;script&gt;alert(1)&lt;/script&gt;', '&lt;img src=x onerror=alert(1)&gt;', 'hxxps://evil.example']) {
+      expect(page).toContain(want);
+    }
+    for (const unwanted of ['<script', '<img', 'href=', 'src="http', 'https://', 'svc/file10.go']) expect(page).not.toContain(unwanted);
+    expect(count(page, 'svc/file')).toBe(maxNotes);
+  });
+
+  it('kb answer file name carries the message id and a UTC stamp', () => {
+    expect(kbAnswerFileName('1792420164339', new Date('2026-10-19T14:31:05.123Z'))).toBe('kb-answer-1792420164339-20261019-143105.html');
+  });
+
   // ciel/ciel_test.go:134
   it('TestReviewedHTML', () => {
     const got = replyHTML(reviewedReply, 'https://gitlab.example.com/g/p/-/merge_requests/5?a=1&b="2"');

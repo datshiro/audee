@@ -24,6 +24,13 @@ Started 2026-10-17 under launchd (`com.audee.agent`, shadow mode, owner only, on
 - 2026-10-18: classifier moved to `claude-opus-4-8` on the LiteLLM gateway (`classifier.auth: api_key`, `auth.base_url`); capability work stays on the owner's login, and teammates will use it too (`auth.teammates: subscription`, reversing plan decision 5). Comparisons from here on measure the 4.8 classifier.
 - Day 2 (2026-10-18, 09:09): compared 21, agreement 21/21 (100.0%), would be denied 21. All 21 were classified before the gateway switch (Opus 5.5 on the owner's login); no message has been classified on the gateway yet.
 
+## kb_query answers
+Departure from Ciel: the model writes the answer in Markdown and a `done` answer is sent as an HTML page through the
+outbox file flow (`kb-answer-<message id>-<yyyymmdd-hhmmss>.html` in OneDrive `/Ciel/files`); the chat gets a one-line
+notice and the share link. The page is rendered with markdown-it with raw HTML, links and images off, links in the
+text defanged, and a CSP that allows only inline styles; the secret check runs before rendering. `need_input`,
+withheld and failed answers, and mcp_read answers, stay chat replies.
+
 ## Dashboard
 `audee serve` also serves an admin web UI and API on `127.0.0.1:<admin.port>` (default 7420); `audee dashboard` prints the
 sign-in link (the token, kept in `<data_dir>/admin-token`, rides in the URL fragment). Build the UI with `pnpm build:web`

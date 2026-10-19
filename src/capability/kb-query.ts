@@ -7,7 +7,7 @@ import { parse } from 'yaml';
 import { expandHome } from '../config/load.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions, type KbPaths } from '../fence/profiles.js';
-import { failedText, kbQueryFailedReply, kbQueryReplyHTML, kbQueryWithheldReply, type KbQueryResult } from '../render/html.js';
+import { failedText, kbAnswerFileName, kbAnswerPage, kbQueryFailedReply, kbQueryFileReply, kbQueryReplyHTML, kbQueryWithheldReply, type KbQueryResult } from '../render/html.js';
 import { leaksSecret } from '../render/secrets.js';
 import { sessionEnv } from '../runner/env.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
@@ -99,8 +99,8 @@ Answer it with the kb-query skill in {querySkill} (SKILL.md and references/). Wh
   docs, answer status "need_input" and put the questions the requester should answer in "missing". With 2 to 5
   matches, use the best one or two and say which in "notes".
 - Never quote credentials, tokens, passwords, keys or connection strings, even if a file shows one.
-Answer status "done" with "answer" in the language of the question: plain text, no Markdown markers (no **,
-backticks or #), ASCII diagrams allowed, at most 12000 characters. Put repo-relative paths you cited in
+Answer status "done" with "answer" in the language of the question: Markdown (headings, lists, tables, fenced code
+blocks; no raw HTML, no links or images; put ASCII diagrams in a fenced code block), at most 12000 characters. Put repo-relative paths you cited in
 "sources" (at most 10). When something you cannot fix stops you (a tool is denied, the KB is unreadable),
 answer status "failed" and say why in "notes". At most 5 notes, each under 250 characters.`;
 
@@ -152,7 +152,8 @@ export function parseKBQueryOutput(result: RunResult, kind = 'kb_query'): KbQuer
 export const kbQueryDir = (dataDir: string, messageId: string | undefined): string => messageDir(dataDir, 'kbquery', messageId);
 
 // Shared by kb_query and mcp_read: parse, filter, render. Returns the outcome for a result the session produced.
-export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: string, result: RunResult, started: number, title: string): CapabilityOutcome {
+// asFile sends a done answer as an HTML page through the outbox file flow instead of in the chat.
+export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: string, result: RunResult, started: number, title: string, opts: { asFile?: boolean } = {}): CapabilityOutcome {
   const base = sessionEvent(result, Date.now() - started);
   let res: KbQueryResult;
   try {
@@ -166,6 +167,10 @@ export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: strin
   const texts = [res.answer ?? '', ...(res.sources ?? []), ...(res.notes ?? []), ...(res.missing ?? [])];
   if (leaksSecret(texts, Object.values(ctx.secrets))) {
     return { reply: { html: kbQueryWithheldReply }, notifyOwner: `${title} answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind, status: 'withheld', reason: 'answer looks like it holds a credential' } };
+  }
+  if (opts.asFile === true && res.status === 'done') {
+    const file = { name: kbAnswerFileName(ctx.job.messageId ?? ''), content: kbAnswerPage(ctx.job.input ?? '', res) };
+    return { reply: { html: kbQueryFileReply, file }, event: { ...base, kind, status: res.status }, removeAfterReply: dir };
   }
   const [html, clipped] = kbQueryReplyHTML(res);
   const outcome: CapabilityOutcome = { reply: { html }, event: { ...base, kind, status: res.status } };
@@ -212,5 +217,5 @@ export const kbQuery: Capability = async (ctx) => {
     keepOutput(dir, undefined, (e as Error).message);
     return fail((e as Error).message);
   }
-  return readOnlyOutcome(ctx, 'kb_query', dir, result, started, 'kb_query');
+  return readOnlyOutcome(ctx, 'kb_query', dir, result, started, 'kb_query', { asFile: true });
 };
