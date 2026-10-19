@@ -61,7 +61,8 @@ describe('review', () => {
     expect(posted.event).toMatchObject({ kind: 'review', status: 'posted', mrUrl: MR, sessionId: 's', costUsd: 0.5, numTurns: 4 });
 
     const nothing = await review(harness(text('REVIEW_POSTED: no: MR changes no Go files')).ctx);
-    expect(nothing.reply).toBeUndefined();
+    expect(nothing.reply?.html).toContain('không post comment nào.</b> Lý do: MR changes no Go files');
+    expect(nothing.reply?.html).toContain(`<a href="${MR}">${MR}</a>`);
     expect(nothing.notifyOwner).toContain('MR changes no Go files');
     expect(nothing.forgetReview).toBeUndefined();
     expect(nothing.event).toMatchObject({ status: 'nothing', reason: 'MR changes no Go files' });
@@ -93,6 +94,7 @@ describe('review', () => {
       expect(posts, `post=${post}`).toBe(post);
       expect(reportOnly, `post=${post}`).toBe(!post);
       expect(inline, `post=${post}`).toBe(post);
+      expect(got.includes('still post one short comment'), `post=${post}`).toBe(post);
     }
   });
 
