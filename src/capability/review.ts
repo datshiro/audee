@@ -4,10 +4,11 @@ import type { Capability as CapabilityConfig } from '../config/schema.js';
 import { REVIEW_MCP_SERVERS } from '../fence/constants.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions } from '../fence/profiles.js';
-import { failedReply, firstLine, replyHTML, reviewedReply, reviewNothingReply } from '../render/html.js';
+import { failedReply, firstLine, replyHTML, reviewApprovedReply, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../render/html.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
+import { type ApprovalDecision, approvalDecision, connectGitLabMr, type GitLabMr, mrRef } from './gitlab-mr.js';
 import { capabilityConfig, sessionEvent, sessionInput } from './session.js';
-import type { Capability, CapabilityOutcome } from './types.js';
+import type { Capability, CapabilityContext, CapabilityOutcome } from './types.js';
 
 // actions.go:20-26
 export const unattendedIntro = `
@@ -41,13 +42,39 @@ In the acknowledgement or summary, replace the ticket line with "_Ticket <key> n
 
 // actions.go:43-46
 export const unattendedOutro = `If any other step would ask the user something, take the option that posts nothing extra.
-Never approve or merge the MR.
-Finish your answer with exactly one final line: "REVIEW_POSTED: yes" if you posted anything on the MR
-(inline comments, a summary or an acknowledgement), otherwise "REVIEW_POSTED: no: <short reason>".`;
+Never approve or merge the MR yourself; only report its status.
+Finish your answer with exactly two final lines.
+First: "REVIEW_STATUS: ready: <reason>" only when the review skill judged the MR clean (its clean: true, acknowledgement posted),
+"REVIEW_STATUS: blocked: <reason>" when there are findings, lint blocks, ticket gaps or an audit objection,
+otherwise "REVIEW_STATUS: unreviewable: <reason>". The reason is at most 15 words, in Vietnamese, naming the main blocker
+categories with counts (for example "2 lỗi blocker, ticket thiếu tiêu chí AC-3"), with no links.
+Last: "REVIEW_POSTED: yes" if you posted anything on the MR (inline comments, a summary or an acknowledgement),
+or if the review skipped the acknowledgement because one for the same head commit already exists,
+otherwise "REVIEW_POSTED: no: <short reason>".`;
 
 export const reviewPostedMarker = 'REVIEW_POSTED:';
+export const maxStatusReasonWords = 15;
 
-export type ReviewResult = { posted: boolean; reason: string };
+export type ReviewStatus = 'ready' | 'blocked' | 'unreviewable';
+export type ReviewResult = { posted: boolean; reason: string; status: ReviewStatus; statusReason: string };
+
+const clipWords = (s: string, n: number): string => s.trim().split(/\s+/).filter((w) => w !== '').slice(0, n).join(' ');
+
+const statusLine = /^REVIEW_STATUS:\s*(ready|blocked|unreviewable)\s*(?::\s*(.*))?$/i;
+
+// Only the session's own closing lines count: the status must be the line right before the final REVIEW_POSTED
+// line, so a status quoted from MR text earlier in the output cannot pass. Anything else is unreviewable, and
+// ready without anything posted cannot be trusted as clean.
+function reviewStatus(text: string, posted: boolean, reason: string): { status: ReviewStatus; statusReason: string } {
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+  const m = statusLine.exec(lines.at(-2) ?? '');
+  if (!(lines.at(-1) ?? '').startsWith(reviewPostedMarker) || m === null) {
+    return { status: 'unreviewable', statusReason: posted ? 'the review did not report a status' : reason };
+  }
+  const status = (m[1] ?? '').toLowerCase() as ReviewStatus;
+  if (status === 'ready' && !posted) return { status: 'unreviewable', statusReason: reason };
+  return { status, statusReason: clipWords(m[2] ?? '', maxStatusReasonWords) };
+}
 
 // actions.go:319-325
 export function reviewPrompt(template: string, mrUrl: string, postFindings: boolean): string {
@@ -66,13 +93,27 @@ export function parseReviewOutput(result: RunResult): ReviewResult {
   if (result.isError) throw new Error(`review reported an error: ${firstLine(result.text)}`);
   const text = result.text;
   const i = text.lastIndexOf(reviewPostedMarker);
-  if (i < 0) return { posted: false, reason: 'the review did not say whether it posted anything' };
+  if (i < 0) return { posted: false, reason: 'the review did not say whether it posted anything', ...reviewStatus(text, false, 'the review did not say whether it posted anything') };
   const answer = firstLine(text.slice(i + reviewPostedMarker.length)).trim();
-  if (answer.toLowerCase().startsWith('yes')) return { posted: true, reason: '' };
+  if (answer.toLowerCase().startsWith('yes')) return { posted: true, reason: '', ...reviewStatus(text, true, '') };
   let reason = answer;
   if (reason.toLowerCase().startsWith('no')) reason = reason.slice(2).trim().replace(/^:/, '').trim();
   if (reason === '') reason = 'no reason given';
-  return { posted: false, reason };
+  return { posted: false, reason, ...reviewStatus(text, false, reason) };
+}
+
+// Opens glab-mcp for one step and always closes it. Any failure yields undefined, which never approves.
+async function withGitLab<T>(ctx: CapabilityContext, fn: (gl: GitLabMr) => Promise<T>): Promise<T | undefined> {
+  let gl: GitLabMr | undefined;
+  try {
+    gl = await (ctx.gitlab ?? (() => connectGitLabMr(ctx.secrets, ctx.userConfigPath, ctx.signal)))();
+    return await fn(gl);
+  } catch (e) {
+    console.error(`review: GitLab step failed: ${(e as Error).name}`); // never the message: it may carry tool text
+    return undefined;
+  } finally {
+    if (gl !== undefined) await gl.close().catch(() => {});
+  }
 }
 
 export const review: Capability = async (ctx) => {
@@ -96,6 +137,8 @@ export const review: Capability = async (ctx) => {
     return fail((e as Error).message);
   }
   const prompt = reviewPrompt(reviewPromptTemplate(cap, mrUrl), mrUrl, cap.post_findings);
+  // The head the review starts from; the approval must be for this same head. Not held open during the session.
+  const before = cap.auto_approve ? await withGitLab(ctx, (gl) => gl.getMr(mrRef(mrUrl))) : undefined;
   let result: RunResult;
   try {
     result = await ctx.run(sessionInput(ctx, cap, options, prompt));
@@ -110,12 +153,43 @@ export const review: Capability = async (ctx) => {
     return fail((e as Error).message, result);
   }
   const base = { ...sessionEvent(result, Date.now() - started), kind: 'review', mrUrl };
-  if (!res.posted) {
+  const secrets = Object.values(ctx.secrets);
+  if (res.status === 'ready' && cap.auto_approve) {
+    const ownerGitlab = ctx.cfg.people.find((p) => p.owner)?.gitlab;
+    const decided = await withGitLab(ctx, async (gl): Promise<ApprovalDecision> => {
+      const ref = mrRef(mrUrl);
+      const after = await gl.getMr(ref);
+      const ackFound = ownerGitlab !== undefined && await gl.hasPassAck(ref, after.sha, ownerGitlab);
+      const d = approvalDecision({ autoApprove: true, status: res.status, before, after, ackFound, requesterGitlab: ctx.person.gitlab, ownerGitlab, statusReason: res.statusReason });
+      if (!d.approve) return d;
+      try {
+        await gl.approve(ref, d.sha);
+      } catch (e) {
+        console.error(`review: approve_mr failed: ${(e as Error).name}`);
+        return { approve: false, why: 'không chắc đã approve được, Đạt kiểm tra lại' };
+      }
+      return d;
+    });
+    const d: ApprovalDecision = decided ?? { approve: false, why: 'không gọi được GitLab' };
+    if (d.approve) {
+      return {
+        reply: { html: replyHTML(reviewApprovedReply(res.statusReason, secrets), mrUrl) },
+        notifyOwner: `review approved as owner: ${mrUrl}`,
+        event: { ...base, status: 'approved', reason: res.statusReason },
+      };
+    }
     return {
-      reply: { html: replyHTML(reviewNothingReply(res.reason, Object.values(ctx.secrets)), mrUrl) },
-      notifyOwner: `review posted nothing: ${res.reason}`,
-      event: { ...base, status: 'nothing', reason: res.reason },
+      reply: { html: replyHTML(reviewReadyWaitReply(d.why, secrets), mrUrl) },
+      notifyOwner: `review ready, not approved (${d.why}): ${mrUrl}`,
+      event: { ...base, status: 'ready', reason: d.why },
     };
   }
-  return { reply: { html: replyHTML(reviewedReply, mrUrl) }, notifyOwner: `review done: ${mrUrl}`, event: { ...base, status: 'posted' } };
+  const html = res.status === 'ready' ? reviewReadyWaitReply(res.statusReason, secrets)
+    : res.status === 'blocked' ? reviewBlockedReply(res.statusReason, secrets, res.posted)
+    : reviewUnreviewableReply(res.statusReason, secrets);
+  return {
+    reply: { html: replyHTML(html, mrUrl) },
+    notifyOwner: `review ${res.status}: ${mrUrl}`,
+    event: { ...base, status: res.status, reason: res.statusReason },
+  };
 };

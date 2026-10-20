@@ -2,6 +2,7 @@ import type { Person } from '../authz/people.js';
 import type { Config } from '../config/schema.js';
 import type { Event } from '../events.js';
 import type { Job } from '../queue/job.js';
+import type { GitLabMr } from './gitlab-mr.js';
 import type { runAgent } from '../runner/run.js';
 
 export type Reply = { html: string; file?: { name: string; content: string } };
@@ -15,6 +16,7 @@ export type CapabilityContext = {
   signal: AbortSignal; // shutdown; passed to runAgent
   secrets: Record<string, string>; // keychain_env values, for loadMcpServers only
   userConfigPath?: string; // tests only: a fake ~/.claude.json
+  gitlab?: () => Promise<GitLabMr>; // tests inject a fake; production starts the gitlab MCP server
 };
 
 export type CapabilityOutcome = {

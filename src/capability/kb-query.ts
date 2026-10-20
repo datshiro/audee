@@ -7,7 +7,7 @@ import { parse } from 'yaml';
 import { expandHome } from '../config/load.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions, type KbPaths } from '../fence/profiles.js';
-import { failedText, kbAnswerFileName, kbAnswerHTML, kbAnswerPage, kbAnswerVisibleTexts, kbQueryClipped, kbQueryFailedReply, kbQueryFileReply, kbQueryReplyHTML, kbQueryWithheldReply, type KbQueryResult, maxKBAnswerFileChars } from '../render/html.js';
+import { failedText, kbAnswerFileName, kbAnswerHTML, kbAnswerPage, kbAnswerVisibleTexts, kbQueryClipped, kbQueryFailedReply, kbQueryFileReply, kbQueryReplyHTML, kbTopicLine, kbQueryWithheldReply, type KbQueryResult, maxKBAnswerFileChars } from '../render/html.js';
 import { leaksSecret } from '../render/secrets.js';
 import { runeLength, runeSlice } from '../render/text.js';
 import { sessionEnv } from '../runner/env.js';
@@ -103,7 +103,8 @@ Answer it with the kb-query skill in {querySkill} (SKILL.md and references/). Wh
 Answer status "done" with "answer" in the language of the question: Markdown (headings, lists, tables, fenced code
 blocks; no raw HTML, no links or images; put ASCII diagrams in a fenced code block), at most 12000 characters. Put repo-relative paths you cited in
 "sources" (at most 10). When something you cannot fix stops you (a tool is denied, the KB is unreadable),
-answer status "failed" and say why in "notes". At most 5 notes, each under 250 characters.`;
+answer status "failed" and say why in "notes". At most 5 notes, each under 250 characters.
+Always set "topic": what the question asks, at most 20 words, in the language of the question, no links.`;
 
 // kbquery.go:226-230
 export function kbQueryPrompt(kbDir: string, paths: KbPaths, interservice: boolean): string {
@@ -118,12 +119,13 @@ export const kbQuerySchema: Record<string, unknown> = {
   type: 'object',
   properties: {
     status: { type: 'string', enum: ['done', 'need_input', 'failed'] },
+    topic: { type: 'string' },
     answer: { type: 'string' },
     sources: { type: 'array', items: { type: 'string' } },
     notes: { type: 'array', items: { type: 'string' } },
     missing: { type: 'array', items: { type: 'string' } },
   },
-  required: ['status', 'answer', 'sources', 'notes', 'missing'],
+  required: ['status', 'topic', 'answer', 'sources', 'notes', 'missing'],
   additionalProperties: false,
 };
 
@@ -142,6 +144,7 @@ export function parseKBQueryOutput(result: RunResult, kind = 'kb_query'): KbQuer
     sources: stringList(s['sources']),
     notes: stringList(s['notes']),
     missing: stringList(s['missing']),
+    topic: typeof s['topic'] === 'string' ? s['topic'] : '',
   };
   if (q.status === 'done' && (q.answer ?? '').trim() === '') throw new Error(`${kind} is done but has no answer`);
   if (q.status === 'failed') throw new Error(`${kind} session could not finish (see its notes in output.json)`);
@@ -165,7 +168,7 @@ export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: strin
     return { reply: { html: failedText(kind) }, notifyOwner: `${title} failed: ${reason}`, event: { ...base, kind, status: 'failed', reason } };
   }
   keepOutput(dir, result);
-  const texts = [res.answer ?? '', ...(res.sources ?? []), ...(res.notes ?? []), ...(res.missing ?? [])];
+  const texts = [res.answer ?? '', res.topic ?? '', ...(res.sources ?? []), ...(res.notes ?? []), ...(res.missing ?? [])];
   if (leaksSecret(texts, Object.values(ctx.secrets))) {
     return { reply: { html: kbQueryWithheldReply }, notifyOwner: `${title} answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind, status: 'withheld', reason: 'answer looks like it holds a credential' } };
   }
@@ -177,7 +180,7 @@ export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: strin
       return { reply: { html: kbQueryWithheldReply }, notifyOwner: `${title} answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind, status: 'withheld', reason: 'answer looks like it holds a credential' } };
     }
     const file = { name: kbAnswerFileName(ctx.job.messageId ?? ''), content: kbAnswerPage(ctx.job.input ?? '', { ...res, answer }) };
-    const outcome: CapabilityOutcome = { reply: { html: kbQueryFileReply, file }, event: { ...base, kind, status: res.status } };
+    const outcome: CapabilityOutcome = { reply: { html: kbQueryFileReply + kbTopicLine(res.topic, ctx.job.input ?? ''), file }, event: { ...base, kind, status: res.status } };
     if (clipped) {
       keepResult(dir, res); // the full answer stays for the owner
       return outcome;

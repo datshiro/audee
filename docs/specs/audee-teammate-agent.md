@@ -40,6 +40,35 @@ withheld and failed answers, and mcp_read answers, stay chat replies.
 Verified live 2026-10-19: the page opens from the OneDrive link and displays correctly. The outbox flow ("Send message
 when ask for review code") had been saving only the file name as the file's content, likely since Ciel (the file path
 was used only for oversized code mappings); its "Create file" step now writes `file.content`.
+The chat notice also carries `Về: <topic>`, a summary of the question of at most 20 words that the session returns in
+its `topic` field. When the topic is missing or too long, the notice falls back to the question clipped to 20 words.
+The topic passes the same secret check as the answer.
+
+## Review status and auto-approve
+The review session ends with `REVIEW_STATUS: ready|blocked|unreviewable: <reason>` on the line right before the final
+`REVIEW_POSTED` line. A status anywhere else, an unknown status, or `ready` with nothing posted counts as
+`unreviewable`. `ready` means the apo-review-mr skill judged the MR clean (`clean: true`). The chat reply uses one of
+four templates: `✅ MR sẵn sàng merge, mình đã approve`, `✅ MR sẵn sàng merge, chờ Đạt approve: <why>`,
+`⛔ MR chưa merge được: <reason>`, and `⚠️ Chưa đánh giá được MR: <reason>`. The session never approves:
+`mcp__gitlab__approve_mr` stays in the review fence.
+With `review.auto_approve: true` (default false), audee itself approves a ready MR under the owner's GitLab account,
+calling `get_mr`, `list_mr_discussions` and `approve_mr` through glab-mcp 1.6.0 or later over MCP stdio, so the token
+stays in that process. It approves only when all of these hold:
+- the head did not move between the fetches before and after the session, and the MR is still open;
+- the owner's PASS acknowledgement for that head is on the MR;
+- the requester has `people[].gitlab` and is not the author;
+- the owner has `people[].gitlab` and is not the author;
+- GitLab says the owner can approve and has not approved yet.
+The approve call carries the reviewed head SHA, so GitLab refuses it if the MR moved. Any GitLab error means no
+approval. This is an exception to the No-Self-Approval invariant, accepted by the owner: a review session judges the
+MR and audee approves under the owner's name. A review already running keeps the config it started with, so turning
+the flag off does not stop it.
+Accepted residual risk: the review session reads MR content the author controls and posts notes as the owner, so a
+prompt injection that makes the session print `ready` and post a PASS acknowledgement would pass every check above.
+The checks stop self-approval by the requester, approval of a moved head and approval of the owner's own MR; they do
+not prove the review is sound. GitLab's required-approvals rules stay the backstop, and every approval notifies the
+owner.
+Validation: unit tests only; live check pending.
 
 ## Dashboard
 `audee serve` also serves an admin web UI and API on `127.0.0.1:<admin.port>` (default 7420); `audee dashboard` prints the
@@ -68,6 +97,8 @@ Teams chats ──(Power Automate "Ciel Teams Inbox Poller", every minute)──
   from the owner (audee posts as the owner, so it never reacts to the owner's own messages).
 - Unknown senders are never classified; one that @mentions the owner gets a refusal. People without the grant get
   `deniedText`.
+- After a review, audee itself (not the session) may approve a `ready` MR as the owner when `review.auto_approve` is
+  on; see Review status and auto-approve.
 - State (`~/.audee/state.json`): seen ids, the message trail, queued and running jobs (resumed from the start after a
   restart), review cooldown. Events: `~/.audee/events.jsonl`. Admin UI: see Dashboard.
 

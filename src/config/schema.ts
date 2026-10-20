@@ -33,6 +33,7 @@ const Capability = z.strictObject({
   workdir: z.string().optional(),
   prompt: z.string().optional(),
   post_findings: z.boolean().default(false),
+  auto_approve: z.boolean().default(false), // review only: approve a clean MR as the owner through glab-mcp
   routes: z.array(Route).default([]),
   seatbelt: z.boolean().default(false),
   skill_source: z.string().optional(),
@@ -84,6 +85,7 @@ export const ConfigSchema = z.strictObject({
     owner: z.boolean().default(false),
     ids: z.array(z.string()).min(1),
     can: z.array(z.string()).default([]),
+    gitlab: z.string().min(1).optional(),
     max_inflight: z.number().int().positive().default(2),
   })).min(1),
   channels: z.strictObject({
