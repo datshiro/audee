@@ -4,7 +4,7 @@ import type { Capability as CapabilityConfig } from '../config/schema.js';
 import { REVIEW_MCP_SERVERS } from '../fence/constants.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions } from '../fence/profiles.js';
-import { failedReply, firstLine, replyHTML, reviewedReply, reviewNothingReply } from '../render/html.js';
+import { failedReply, firstLine, replyHTML, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../render/html.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
 import { capabilityConfig, sessionEvent, sessionInput } from './session.js';
 import type { Capability, CapabilityOutcome } from './types.js';
@@ -41,13 +41,35 @@ In the acknowledgement or summary, replace the ticket line with "_Ticket <key> n
 
 // actions.go:43-46
 export const unattendedOutro = `If any other step would ask the user something, take the option that posts nothing extra.
-Never approve or merge the MR.
-Finish your answer with exactly one final line: "REVIEW_POSTED: yes" if you posted anything on the MR
-(inline comments, a summary or an acknowledgement), otherwise "REVIEW_POSTED: no: <short reason>".`;
+Never approve or merge the MR yourself; only report its status.
+Finish your answer with exactly two final lines.
+First: "REVIEW_STATUS: ready: <reason>" only when the review skill judged the MR clean (its clean: true, acknowledgement posted),
+"REVIEW_STATUS: blocked: <reason>" when there are findings, lint blocks, ticket gaps or an audit objection,
+otherwise "REVIEW_STATUS: unreviewable: <reason>". The reason is at most 15 words, in Vietnamese, naming the main blocker
+categories with counts (for example "2 lỗi blocker, ticket thiếu tiêu chí AC-3"), with no links.
+Last: "REVIEW_POSTED: yes" if you posted anything on the MR (inline comments, a summary or an acknowledgement),
+or if the review skipped the acknowledgement because one for the same head commit already exists,
+otherwise "REVIEW_POSTED: no: <short reason>".`;
 
 export const reviewPostedMarker = 'REVIEW_POSTED:';
+export const reviewStatusMarker = 'REVIEW_STATUS:';
+export const maxStatusReasonWords = 15;
 
-export type ReviewResult = { posted: boolean; reason: string };
+export type ReviewStatus = 'ready' | 'blocked' | 'unreviewable';
+export type ReviewResult = { posted: boolean; reason: string; status: ReviewStatus; statusReason: string };
+
+const clipWords = (s: string, n: number): string => s.trim().split(/\s+/).filter((w) => w !== '').slice(0, n).join(' ');
+
+// A missing or unknown status is unreviewable; ready without anything posted cannot be trusted as clean.
+function reviewStatus(text: string, posted: boolean, reason: string): { status: ReviewStatus; statusReason: string } {
+  const i = text.lastIndexOf(reviewStatusMarker);
+  if (i < 0) return { status: 'unreviewable', statusReason: 'the review did not report a status' };
+  const m = /^(ready|blocked|unreviewable)\b\s*:?\s*(.*)$/i.exec(firstLine(text.slice(i + reviewStatusMarker.length)).trim());
+  if (m === null) return { status: 'unreviewable', statusReason: 'the review did not report a status' };
+  const status = (m[1] ?? '').toLowerCase() as ReviewStatus;
+  if (status === 'ready' && !posted) return { status: 'unreviewable', statusReason: reason };
+  return { status, statusReason: clipWords(m[2] ?? '', maxStatusReasonWords) };
+}
 
 // actions.go:319-325
 export function reviewPrompt(template: string, mrUrl: string, postFindings: boolean): string {
@@ -66,13 +88,13 @@ export function parseReviewOutput(result: RunResult): ReviewResult {
   if (result.isError) throw new Error(`review reported an error: ${firstLine(result.text)}`);
   const text = result.text;
   const i = text.lastIndexOf(reviewPostedMarker);
-  if (i < 0) return { posted: false, reason: 'the review did not say whether it posted anything' };
+  if (i < 0) return { posted: false, reason: 'the review did not say whether it posted anything', ...reviewStatus(text, false, 'the review did not say whether it posted anything') };
   const answer = firstLine(text.slice(i + reviewPostedMarker.length)).trim();
-  if (answer.toLowerCase().startsWith('yes')) return { posted: true, reason: '' };
+  if (answer.toLowerCase().startsWith('yes')) return { posted: true, reason: '', ...reviewStatus(text, true, '') };
   let reason = answer;
   if (reason.toLowerCase().startsWith('no')) reason = reason.slice(2).trim().replace(/^:/, '').trim();
   if (reason === '') reason = 'no reason given';
-  return { posted: false, reason };
+  return { posted: false, reason, ...reviewStatus(text, false, reason) };
 }
 
 export const review: Capability = async (ctx) => {
@@ -110,12 +132,13 @@ export const review: Capability = async (ctx) => {
     return fail((e as Error).message, result);
   }
   const base = { ...sessionEvent(result, Date.now() - started), kind: 'review', mrUrl };
-  if (!res.posted) {
-    return {
-      reply: { html: replyHTML(reviewNothingReply(res.reason, Object.values(ctx.secrets)), mrUrl) },
-      notifyOwner: `review posted nothing: ${res.reason}`,
-      event: { ...base, status: 'nothing', reason: res.reason },
-    };
-  }
-  return { reply: { html: replyHTML(reviewedReply, mrUrl) }, notifyOwner: `review done: ${mrUrl}`, event: { ...base, status: 'posted' } };
+  const secrets = Object.values(ctx.secrets);
+  const html = res.status === 'ready' ? reviewReadyWaitReply(res.statusReason, secrets)
+    : res.status === 'blocked' ? reviewBlockedReply(res.statusReason, secrets, res.posted)
+    : reviewUnreviewableReply(res.statusReason, secrets);
+  return {
+    reply: { html: replyHTML(html, mrUrl) },
+    notifyOwner: `review ${res.status}: ${mrUrl}`,
+    event: { ...base, status: res.status, reason: res.statusReason },
+  };
 };

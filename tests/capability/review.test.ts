@@ -36,36 +36,53 @@ function harness(result: RunResult | Error, opts: Parameters<typeof testConfig>[
 describe('review', () => {
   // ciel/ciel_test.go:111
   it('TestParseReviewOutput', () => {
-    const cases: Array<[string, RunResult, boolean, string, boolean]> = [
-      ['posted', text('Verdict: NEEDS WORK, 2 inline comments.\nREVIEW_POSTED: yes'), true, '', false],
-      ['nothing posted', text('No Go files changed.\nREVIEW_POSTED: no: MR changes no Go files'), false, 'MR changes no Go files', false],
-      ['no without reason', text('REVIEW_POSTED: No'), false, 'no reason given', false],
-      ['marker missing', text('done'), false, 'the review did not say whether it posted anything', false],
-      ['json error', text('boom', true), false, '', true],
+    const none = 'the review did not report a status';
+    const cases: Array<[string, RunResult, boolean, string, string, string, boolean]> = [
+      ['posted', text('Verdict: NEEDS WORK, 2 inline comments.\nREVIEW_POSTED: yes'), true, '', 'unreviewable', none, false],
+      ['nothing posted', text('No Go files changed.\nREVIEW_POSTED: no: MR changes no Go files'), false, 'MR changes no Go files', 'unreviewable', none, false],
+      ['no without reason', text('REVIEW_POSTED: No'), false, 'no reason given', 'unreviewable', none, false],
+      ['marker missing', text('done'), false, 'the review did not say whether it posted anything', 'unreviewable', none, false],
+      ['json error', text('boom', true), false, '', '', '', true],
     ];
-    for (const [name, result, posted, reason, wantErr] of cases) {
+    for (const [name, result, posted, reason, status, statusReason, wantErr] of cases) {
       if (wantErr) {
         expect(() => parseReviewOutput(result), name).toThrow('review reported an error: boom');
         continue;
       }
-      expect(parseReviewOutput(result), name).toEqual({ posted, reason });
+      expect(parseReviewOutput(result), name).toEqual({ posted, reason, status, statusReason });
+    }
+  });
+
+  it('parses the REVIEW_STATUS line', () => {
+    const none = 'the review did not report a status';
+    const cases: Array<[string, RunResult, boolean, string, string, string]> = [
+      ['ready', text('REVIEW_STATUS: ready: review sạch\nREVIEW_POSTED: yes'), true, '', 'ready', 'review sạch'],
+      ['blocked', text('REVIEW_STATUS: blocked: 2 lỗi blocker\nREVIEW_POSTED: yes'), true, '', 'blocked', '2 lỗi blocker'],
+      ['ready but nothing posted', text('REVIEW_STATUS: ready: x\nREVIEW_POSTED: no: skipped'), false, 'skipped', 'unreviewable', 'skipped'],
+      ['unknown status', text('REVIEW_STATUS: great\nREVIEW_POSTED: yes'), true, '', 'unreviewable', none],
+      ['last status wins', text('REVIEW_STATUS: ready: a\nREVIEW_STATUS: blocked: b\nREVIEW_POSTED: yes'), true, '', 'blocked', 'b'],
+      ['long reason clipped', text(`REVIEW_STATUS: blocked: ${Array.from({ length: 20 }, (_, i) => `w${i + 1}`).join(' ')}\nREVIEW_POSTED: yes`), true, '', 'blocked', Array.from({ length: 15 }, (_, i) => `w${i + 1}`).join(' ')],
+    ];
+    for (const [name, result, posted, reason, status, statusReason] of cases) {
+      expect(parseReviewOutput(result), name).toEqual({ posted, reason, status, statusReason });
     }
   });
 
   // ciel/ciel_test.go:142
   it('TestReviewRepliesOnlyWhenSomethingWasPosted', async () => {
-    const posted = await review(harness(text('Verdict: NEEDS WORK.\nREVIEW_POSTED: yes')).ctx);
-    expect(posted.reply?.html).toContain('Đã review xong MR này');
-    expect(posted.reply?.html).toContain(`<a href="${MR}">${MR}</a>`);
-    expect(posted.forgetReview).toBeUndefined();
-    expect(posted.event).toMatchObject({ kind: 'review', status: 'posted', mrUrl: MR, sessionId: 's', costUsd: 0.5, numTurns: 4 });
+    const blocked = await review(harness(text('Verdict: NEEDS WORK.\nREVIEW_STATUS: blocked: 2 lỗi blocker\nREVIEW_POSTED: yes')).ctx);
+    expect(blocked.reply?.html).toContain('⛔ <b>MR chưa merge được</b>: 2 lỗi blocker. Xem comment trên MR.');
+    expect(blocked.reply?.html).toContain(`<a href="${MR}">${MR}</a>`);
+    expect(blocked.forgetReview).toBeUndefined();
+    expect(blocked.notifyOwner).toBe(`review blocked: ${MR}`);
+    expect(blocked.event).toMatchObject({ kind: 'review', status: 'blocked', reason: '2 lỗi blocker', mrUrl: MR, sessionId: 's', costUsd: 0.5, numTurns: 4 });
 
     const nothing = await review(harness(text('REVIEW_POSTED: no: MR changes no Go files')).ctx);
-    expect(nothing.reply?.html).toContain('không post comment nào.</b> Lý do: MR changes no Go files');
+    expect(nothing.reply?.html).toContain('⚠️ <b>Chưa đánh giá được MR</b>: the review did not report a status');
     expect(nothing.reply?.html).toContain(`<a href="${MR}">${MR}</a>`);
-    expect(nothing.notifyOwner).toContain('MR changes no Go files');
+    expect(nothing.notifyOwner).toBe(`review unreviewable: ${MR}`);
     expect(nothing.forgetReview).toBeUndefined();
-    expect(nothing.event).toMatchObject({ status: 'nothing', reason: 'MR changes no Go files' });
+    expect(nothing.event).toMatchObject({ status: 'unreviewable' });
 
     const failed = await review(harness(new Error('session failed: Claude Code process exited with code 1')).ctx);
     expect(failed.reply?.html).toContain(failedReply);
@@ -81,11 +98,18 @@ describe('review', () => {
     await expect(review(harness(interrupted).ctx)).rejects.toBe(interrupted);
   });
 
+  it('replies ready with the waiting-for-owner template', async () => {
+    const ready = await review(harness(text('REVIEW_STATUS: ready: review sạch, lint ok\nREVIEW_POSTED: yes')).ctx);
+    expect(ready.reply?.html).toContain('✅ <b>MR sẵn sàng merge</b>, chờ Đạt approve: review sạch, lint ok');
+    expect(ready.event).toMatchObject({ status: 'ready', reason: 'review sạch, lint ok' });
+
+  });
+
   // ciel/ciel_test.go:761
   it('TestReviewPrompt', () => {
     for (const post of [true, false]) {
       const got = reviewPrompt('/apo-review-mr {url}', MR, post);
-      for (const want of ['/apo-review-mr ' + MR + '\n', 'ToolSearch\nwith "select:mcp__gitlab__list_mrs"', 'Never approve or merge', '_Ticket <key> not checked (<reason>)._', 'REVIEW_POSTED: yes', 'REVIEW_POSTED: no: <short reason>']) {
+      for (const want of ['/apo-review-mr ' + MR + '\n', 'ToolSearch\nwith "select:mcp__gitlab__list_mrs"', 'Never approve or merge the MR yourself', 'REVIEW_STATUS: ready: <reason>', 'same head commit already exists', '_Ticket <key> not checked (<reason>)._', 'REVIEW_POSTED: yes', 'REVIEW_POSTED: no: <short reason>']) {
         expect(got, `post=${post}`).toContain(want);
       }
       const posts = got.includes('the answer is "Post review comments on the MR"');
