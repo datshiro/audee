@@ -175,6 +175,12 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     check('classifier api key', has, has ? `Keychain item ${cfg.auth.api_key_keychain_item} exists` : `Keychain item ${cfg.auth.api_key_keychain_item} is missing (security add-generic-password -a "$USER" -s ${cfg.auth.api_key_keychain_item} -w)`);
   }
   if (cfg.auth.base_url !== undefined) check('api gateway', true, `${cfg.auth.base_url} for API-key sessions`);
+  if (cfg.capabilities['review']?.auto_approve === true) {
+    const owner = cfg.people.find((p) => p.owner);
+    const unmapped = cfg.people.filter((p) => !p.owner && p.gitlab === undefined && (p.can.includes('*') || p.can.includes('review'))).map((p) => p.name);
+    if (owner?.gitlab === undefined) check('review auto-approve', false, 'the owner has no people[].gitlab, so no MR is ever approved');
+    else check('review auto-approve', true, unmapped.length === 0 ? 'every review requester has people[].gitlab' : `warning: no people[].gitlab for ${unmapped.join(', ')}; their clean MRs wait for the owner`);
+  }
 
   // 7, 17. folders
   if (teams.shadow) {

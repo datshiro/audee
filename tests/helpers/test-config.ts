@@ -16,7 +16,8 @@ export type TestConfigOptions = {
   grants?: Record<string, string[]>; // overrides `can` for a person named by id
   kbDir?: string;
   mcpRead?: { name: string; trigger: string; mcp: string[]; tools: string[] };
-  review?: { prompt?: string; postFindings?: boolean; workdir?: string; routes?: Array<{ match: string; prompt: string }>; seatbelt?: boolean };
+  review?: { prompt?: string; postFindings?: boolean; workdir?: string; routes?: Array<{ match: string; prompt: string }>; seatbelt?: boolean; autoApprove?: boolean };
+  gitlab?: Record<string, string>; // person id (owner, p1, ...) -> GitLab username
   keychainEnv?: Record<string, string>;
   onedriveDir?: string;
   mapping?: { skillDir?: string; skillSource?: string; prompt?: string };
@@ -30,9 +31,10 @@ const q = (s: string): string => JSON.stringify(s);
 export function testConfig(o: TestConfigOptions = {}): Config {
   const dir = mkdtempSync(join(tmpdir(), 'audee-cfg-'));
   const can = (id: string): string => `[${(o.grants?.[id] ?? ['*']).map(q).join(', ')}]`;
+  const gitlab = (id: string): string => (o.gitlab?.[id] !== undefined ? `, gitlab: ${q(o.gitlab[id])}` : '');
   const people = [
-    ...Array.from({ length: o.people ?? 5 }, (_, i) => `  - { name: p${i + 1}, ids: ["teams:p${i + 1}"], can: ${can(`p${i + 1}`)}, max_inflight: ${o.maxInflight ?? 2} }`),
-    ...(o.peopleIds ?? []).map((id) => `  - { name: ${q(id)}, ids: [${q('teams:' + id)}], can: ${can(id)}, max_inflight: ${o.maxInflight ?? 2} }`),
+    ...Array.from({ length: o.people ?? 5 }, (_, i) => `  - { name: p${i + 1}, ids: ["teams:p${i + 1}"], can: ${can(`p${i + 1}`)}${gitlab(`p${i + 1}`)}, max_inflight: ${o.maxInflight ?? 2} }`),
+    ...(o.peopleIds ?? []).map((id) => `  - { name: ${q(id)}, ids: [${q('teams:' + id)}], can: ${can(id)}${gitlab(id)}, max_inflight: ${o.maxInflight ?? 2} }`),
   ].join('\n');
   const mcpRead = o.mcpRead === undefined ? '' : `  ${o.mcpRead.name}: { profile: mcp_read, lane: kb, budget_usd: 2, timeout: 10m, trigger: ${o.mcpRead.trigger}, mcp: [${o.mcpRead.mcp.join(', ')}], tools: [${o.mcpRead.tools.join(', ')}] }\n`;
   const review = [
@@ -41,6 +43,7 @@ export function testConfig(o: TestConfigOptions = {}): Config {
     o.review?.postFindings !== undefined ? `post_findings: ${o.review.postFindings}` : '',
     o.review?.workdir !== undefined ? `workdir: ${q(o.review.workdir)}` : '',
     o.review?.seatbelt !== undefined ? `seatbelt: ${o.review.seatbelt}` : '',
+    o.review?.autoApprove !== undefined ? `auto_approve: ${o.review.autoApprove}` : '',
     o.review?.routes !== undefined ? `routes: [${o.review.routes.map((r) => `{ match: ${q(r.match)}, prompt: ${q(r.prompt)} }`).join(', ')}]` : '',
   ].filter((s) => s !== '').join(', ');
   const mapping = [
@@ -67,7 +70,7 @@ concurrency:
     heavy: { concurrency: ${o.heavy ?? 1}, buffer: ${o.buffer ?? 32} }
     kb: { concurrency: ${o.kb ?? 2}, buffer: ${o.buffer ?? 32} }
 people:
-  - { name: dat, owner: true, ids: ["teams:owner"], can: ["*"], max_inflight: ${o.maxInflight ?? 2} }
+  - { name: dat, owner: true, ids: ["teams:owner"], can: ["*"]${gitlab('owner')}, max_inflight: ${o.maxInflight ?? 2} }
 ${people}
 channels:
   teams: { ${teams} }

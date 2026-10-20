@@ -16,7 +16,7 @@ concurrency:
 
 people:                        # max_inflight: queued + running jobs of any kind (default 2)
   - { name: dat, owner: true, ids: ["teams:<your-sender-id>"], can: ["*"], max_inflight: 4 }
-  # - { name: minh, ids: ["teams:<sender-id>"], can: [kb_query, review], max_inflight: 2 }
+  # - { name: minh, ids: ["teams:<sender-id>"], can: [kb_query, review], gitlab: <gitlab-username>, max_inflight: 2 }
 
 channels:
   teams:
@@ -41,6 +41,7 @@ capabilities:
     workdir: ~/.claude/kb
     prompt: "/apo-review-mr {url}"
     post_findings: true
+    auto_approve: false        # approve a clean MR as the owner through glab-mcp >= 1.6.0; needs people[].gitlab (owner and requester)
     routes: []                 # [{match: <regex>, prompt: <template>}], first match wins
     seatbelt: false
   code_mapping:

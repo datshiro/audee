@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { resolvePerson } from '../../src/authz/people.js';
+import type { GitLabMr, MrInfo } from '../../src/capability/gitlab-mr.js';
 import { parseReviewOutput, review, reviewPrompt, reviewPromptTemplate } from '../../src/capability/review.js';
 import type { CapabilityContext } from '../../src/capability/types.js';
 import { loadConfig } from '../../src/config/load.js';
@@ -18,8 +19,8 @@ const MR = 'https://gitlab.example.com/g/p/-/merge_requests/5';
 
 const text = (result: string, isError = false): RunResult => ({ isError, text: result, sessionId: 's', costUsd: 0.5, turns: 4, denials: [], toolUses: ['mcp__gitlab__list_mrs'], durationMs: 1 });
 
-function harness(result: RunResult | Error, opts: Parameters<typeof testConfig>[0] = {}) {
-  const cfg = testConfig({ review: { prompt: '/apo-review-mr {url}', postFindings: true, workdir: mkdtempSync(join(tmpdir(), 'audee-wd-')) }, ...opts });
+function harness(result: RunResult | Error, opts: Parameters<typeof testConfig>[0] = {}, gitlab?: () => Promise<GitLabMr>) {
+  const cfg = testConfig({ ...opts, review: { prompt: '/apo-review-mr {url}', postFindings: true, workdir: mkdtempSync(join(tmpdir(), 'audee-wd-')), ...opts.review } });
   const person = resolvePerson(cfg, 'teams:kha') ?? resolvePerson(cfg, 'teams:p1');
   if (person === undefined) throw new Error('no person');
   const inputs: RunInput[] = [];
@@ -29,9 +30,25 @@ function harness(result: RunResult | Error, opts: Parameters<typeof testConfig>[
     return result;
   };
   const job: Job = { kind: 'review', channel: 'teams', chatId: '19:a@thread.v2', principal: person.ids[0] ?? '', requesterName: 'kha', mrUrl: MR, requestedAt: new Date().toISOString() };
-  const ctx: CapabilityContext = { cfg, job, person, run, dataDir: cfg.data_dir, signal: new AbortController().signal, secrets: {}, userConfigPath: USER_CONFIG };
+  const ctx: CapabilityContext = { cfg, job, person, run, dataDir: cfg.data_dir, signal: new AbortController().signal, secrets: {}, userConfigPath: USER_CONFIG, ...(gitlab !== undefined ? { gitlab } : {}) };
   return { ctx, inputs };
 }
+
+// Records every call, so tests can check that approve runs on the second client before it closes.
+function fakeGitlab(info: Partial<MrInfo> = {}, opts: { approveThrows?: boolean; ack?: boolean; getThrows?: boolean } = {}) {
+  const calls: string[] = [];
+  const mr: MrInfo = { iid: 5, state: 'opened', sha: 'h1', author_username: 'author', web_url: MR, user_has_approved: false, user_can_approve: true, ...info };
+  const gl: GitLabMr = {
+    getMr: async () => { calls.push('get'); if (opts.getThrows === true) throw new Error('x'); return mr; },
+    hasPassAck: async () => { calls.push('ack'); return opts.ack ?? true; },
+    approve: async (_r, sha) => { calls.push('approve:' + sha); if (opts.approveThrows === true) throw new Error('x'); },
+    close: async () => { calls.push('close'); },
+  };
+  return { calls, factory: async () => gl };
+}
+
+const READY = text('REVIEW_STATUS: ready: review sạch\nREVIEW_POSTED: yes');
+const AUTO = { review: { autoApprove: true }, gitlab: { owner: 'dat', p1: 'kha' } };
 
 describe('review', () => {
   // ciel/ciel_test.go:111
@@ -110,6 +127,44 @@ describe('review', () => {
     expect(ready.reply?.html).toContain('✅ <b>MR sẵn sàng merge</b>, chờ Đạt approve: review sạch, lint ok');
     expect(ready.event).toMatchObject({ status: 'ready', reason: 'review sạch, lint ok' });
 
+  });
+
+  it('approves a clean MR as the owner on the reviewed head', async () => {
+    const gl = fakeGitlab();
+    const out = await review(harness(READY, AUTO, gl.factory).ctx);
+    expect(gl.calls).toEqual(['get', 'close', 'get', 'ack', 'approve:h1', 'close']);
+    expect(out.reply?.html).toContain('✅ <b>MR sẵn sàng merge</b>, mình đã approve: review sạch');
+    expect(out.reply?.html).toContain(`<a href="${MR}">${MR}</a>`);
+    expect(out.notifyOwner).toBe(`review approved as owner: ${MR}`);
+    expect(out.event).toMatchObject({ status: 'approved' });
+  });
+
+  it('does not approve when a guard fails', async () => {
+    const cases: Array<[string, ReturnType<typeof fakeGitlab>, Parameters<typeof testConfig>[0], string]> = [
+      ['requester is the author', fakeGitlab({ author_username: 'kha' }), AUTO, 'chờ Đạt approve: bạn là tác giả MR'],
+      ['requester unmapped', fakeGitlab(), { review: { autoApprove: true }, gitlab: { owner: 'dat' } }, 'chờ Đạt approve: chưa map tài khoản GitLab của bạn'],
+      ['no acknowledgement', fakeGitlab({}, { ack: false }), AUTO, 'chờ Đạt approve: chưa thấy xác nhận PASS trên MR'],
+      ['approve fails', fakeGitlab({}, { approveThrows: true }), AUTO, 'chờ Đạt approve: không gọi được GitLab'],
+      ['GitLab unreachable', fakeGitlab({}, { getThrows: true }), AUTO, 'chờ Đạt approve: không gọi được GitLab'],
+    ];
+    for (const [name, gl, opts, want] of cases) {
+      const out = await review(harness(READY, opts, gl.factory).ctx);
+      expect(out.reply?.html, name).toContain(want);
+      expect(out.event, name).toMatchObject({ status: 'ready' });
+      expect(gl.calls.some((c) => c.startsWith('approve:')) && name !== 'approve fails', name).toBe(false);
+      expect(gl.calls.filter((c) => c === 'close').length, name).toBe(2);
+    }
+  });
+
+  it('makes no GitLab call after a blocked review, and none at all with the flag off', async () => {
+    const blocked = fakeGitlab();
+    await review(harness(text('REVIEW_STATUS: blocked: 2 lỗi blocker\nREVIEW_POSTED: yes'), AUTO, blocked.factory).ctx);
+    expect(blocked.calls).toEqual(['get', 'close']);
+
+    const off = fakeGitlab();
+    const out = await review(harness(READY, { gitlab: { owner: 'dat', p1: 'kha' } }, off.factory).ctx);
+    expect(off.calls).toEqual([]);
+    expect(out.reply?.html).toContain('chờ Đạt approve: review sạch');
   });
 
   // ciel/ciel_test.go:761
