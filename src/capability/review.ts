@@ -108,7 +108,8 @@ async function withGitLab<T>(ctx: CapabilityContext, fn: (gl: GitLabMr) => Promi
   try {
     gl = await (ctx.gitlab ?? (() => connectGitLabMr(ctx.secrets, ctx.userConfigPath, ctx.signal)))();
     return await fn(gl);
-  } catch {
+  } catch (e) {
+    console.error(`review: GitLab step failed: ${(e as Error).name}`); // never the message: it may carry tool text
     return undefined;
   } finally {
     if (gl !== undefined) await gl.close().catch(() => {});
@@ -160,7 +161,13 @@ export const review: Capability = async (ctx) => {
       const after = await gl.getMr(ref);
       const ackFound = ownerGitlab !== undefined && await gl.hasPassAck(ref, after.sha, ownerGitlab);
       const d = approvalDecision({ autoApprove: true, status: res.status, before, after, ackFound, requesterGitlab: ctx.person.gitlab, ownerGitlab, statusReason: res.statusReason });
-      if (d.approve) await gl.approve(ref, d.sha);
+      if (!d.approve) return d;
+      try {
+        await gl.approve(ref, d.sha);
+      } catch (e) {
+        console.error(`review: approve_mr failed: ${(e as Error).name}`);
+        return { approve: false, why: 'không chắc đã approve được, Đạt kiểm tra lại' };
+      }
       return d;
     });
     const d: ApprovalDecision = decided ?? { approve: false, why: 'không gọi được GitLab' };

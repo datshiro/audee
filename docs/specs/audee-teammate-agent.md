@@ -63,6 +63,11 @@ The approve call carries the reviewed head SHA, so GitLab refuses it if the MR m
 approval. This is an exception to the No-Self-Approval invariant, accepted by the owner: a review session judges the
 MR and audee approves under the owner's name. A review already running keeps the config it started with, so turning
 the flag off does not stop it.
+Accepted residual risk: the review session reads MR content the author controls and posts notes as the owner, so a
+prompt injection that makes the session print `ready` and post a PASS acknowledgement would pass every check above.
+The checks stop self-approval by the requester, approval of a moved head and approval of the owner's own MR; they do
+not prove the review is sound. GitLab's required-approvals rules stay the backstop, and every approval notifies the
+owner.
 Validation: unit tests only; live check pending.
 
 ## Dashboard

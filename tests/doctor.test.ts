@@ -148,12 +148,15 @@ describe('doctor', () => {
     const noOwner = setup({ people: 1, review: { workdir: tmp(), autoApprove: true } });
     expect((await runDoctor(noOwner.cfg, noOwner.deps)).find((c) => c.name === 'review auto-approve')).toMatchObject({ ok: false });
 
-    const partial = setup({ people: 2, gitlab: { owner: 'dat', p1: 'kha' }, review: { workdir: tmp(), autoApprove: true } });
+    const noPost = setup({ people: 1, gitlab: { owner: 'dat', p1: 'kha' }, review: { workdir: tmp(), autoApprove: true } });
+    expect((await runDoctor(noPost.cfg, noPost.deps)).find((c) => c.name === 'review auto-approve')?.detail).toContain('post_findings is off');
+
+    const partial = setup({ people: 2, gitlab: { owner: 'dat', p1: 'kha' }, review: { workdir: tmp(), autoApprove: true, postFindings: true } });
     const warn = (await runDoctor(partial.cfg, partial.deps)).find((c) => c.name === 'review auto-approve');
     expect(warn).toMatchObject({ ok: true });
     expect(warn?.detail).toBe('warning: no people[].gitlab for p2; their clean MRs wait for the owner');
 
-    const all = setup({ people: 1, gitlab: { owner: 'dat', p1: 'kha' }, review: { workdir: tmp(), autoApprove: true } });
+    const all = setup({ people: 1, gitlab: { owner: 'dat', p1: 'kha' }, review: { workdir: tmp(), autoApprove: true, postFindings: true } });
     expect((await runDoctor(all.cfg, all.deps)).find((c) => c.name === 'review auto-approve')?.detail).toBe('every review requester has people[].gitlab');
   });
 

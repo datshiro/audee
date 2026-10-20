@@ -35,12 +35,13 @@ function harness(result: RunResult | Error, opts: Parameters<typeof testConfig>[
 }
 
 // Records every call, so tests can check that approve runs on the second client before it closes.
-function fakeGitlab(info: Partial<MrInfo> = {}, opts: { approveThrows?: boolean; ack?: boolean; getThrows?: boolean } = {}) {
+function fakeGitlab(info: Partial<MrInfo> = {}, opts: { approveThrows?: boolean; ack?: boolean; getThrows?: boolean; afterSha?: string } = {}) {
   const calls: string[] = [];
   const mr: MrInfo = { iid: 5, state: 'opened', sha: 'h1', author_username: 'author', web_url: MR, user_has_approved: false, user_can_approve: true, ...info };
+  let gets = 0;
   const gl: GitLabMr = {
-    getMr: async () => { calls.push('get'); if (opts.getThrows === true) throw new Error('x'); return mr; },
-    hasPassAck: async () => { calls.push('ack'); return opts.ack ?? true; },
+    getMr: async () => { calls.push('get'); gets++; if (opts.getThrows === true) throw new Error('x'); return gets > 1 && opts.afterSha !== undefined ? { ...mr, sha: opts.afterSha } : mr; },
+    hasPassAck: async (_r, sha, owner) => { calls.push(`ack:${sha}:${owner}`); return opts.ack ?? true; },
     approve: async (_r, sha) => { calls.push('approve:' + sha); if (opts.approveThrows === true) throw new Error('x'); },
     close: async () => { calls.push('close'); },
   };
@@ -132,7 +133,7 @@ describe('review', () => {
   it('approves a clean MR as the owner on the reviewed head', async () => {
     const gl = fakeGitlab();
     const out = await review(harness(READY, AUTO, gl.factory).ctx);
-    expect(gl.calls).toEqual(['get', 'close', 'get', 'ack', 'approve:h1', 'close']);
+    expect(gl.calls).toEqual(['get', 'close', 'get', 'ack:h1:dat', 'approve:h1', 'close']);
     expect(out.reply?.html).toContain('✅ <b>MR sẵn sàng merge</b>, mình đã approve: review sạch');
     expect(out.reply?.html).toContain(`<a href="${MR}">${MR}</a>`);
     expect(out.notifyOwner).toBe(`review approved as owner: ${MR}`);
@@ -144,16 +145,21 @@ describe('review', () => {
       ['requester is the author', fakeGitlab({ author_username: 'kha' }), AUTO, 'chờ Đạt approve: bạn là tác giả MR'],
       ['requester unmapped', fakeGitlab(), { review: { autoApprove: true }, gitlab: { owner: 'dat' } }, 'chờ Đạt approve: chưa map tài khoản GitLab của bạn'],
       ['no acknowledgement', fakeGitlab({}, { ack: false }), AUTO, 'chờ Đạt approve: chưa thấy xác nhận PASS trên MR'],
-      ['approve fails', fakeGitlab({}, { approveThrows: true }), AUTO, 'chờ Đạt approve: không gọi được GitLab'],
       ['GitLab unreachable', fakeGitlab({}, { getThrows: true }), AUTO, 'chờ Đạt approve: không gọi được GitLab'],
+      ['head moved during the review', fakeGitlab({}, { afterSha: 'h2' }), AUTO, 'chờ Đạt approve: MR có commit mới sau khi review'],
     ];
     for (const [name, gl, opts, want] of cases) {
       const out = await review(harness(READY, opts, gl.factory).ctx);
       expect(out.reply?.html, name).toContain(want);
       expect(out.event, name).toMatchObject({ status: 'ready' });
-      expect(gl.calls.some((c) => c.startsWith('approve:')) && name !== 'approve fails', name).toBe(false);
+      expect(gl.calls.filter((c) => c.startsWith('approve:')), name).toEqual([]);
       expect(gl.calls.filter((c) => c === 'close').length, name).toBe(2);
     }
+
+    const failing = fakeGitlab({}, { approveThrows: true });
+    const out = await review(harness(READY, AUTO, failing.factory).ctx);
+    expect(failing.calls).toEqual(['get', 'close', 'get', 'ack:h1:dat', 'approve:h1', 'close']);
+    expect(out.reply?.html).toContain('chờ Đạt approve: không chắc đã approve được, Đạt kiểm tra lại');
   });
 
   it('makes no GitLab call after a blocked review, and none at all with the flag off', async () => {

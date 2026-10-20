@@ -59,7 +59,7 @@ const maxDiscussionPages = 10;
 function asMrInfo(v: unknown): MrInfo {
   if (!isPlainObject(v)) throw new Error('get_mr returned an unexpected shape');
   const { iid, state, sha, author_username, web_url, user_has_approved, user_can_approve } = v;
-  if (typeof iid !== 'number' || typeof state !== 'string' || typeof sha !== 'string' || sha === '' || typeof author_username !== 'string'
+  if (typeof iid !== 'number' || typeof state !== 'string' || typeof sha !== 'string' || sha === '' || typeof author_username !== 'string' || author_username === ''
     || typeof web_url !== 'string' || typeof user_has_approved !== 'boolean' || typeof user_can_approve !== 'boolean') {
     throw new Error('get_mr returned an unexpected shape');
   }
