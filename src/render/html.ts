@@ -44,6 +44,17 @@ export const kbQueryMissingReply = '<b>Mình cần bạn nói rõ hơn để tra
 export const kbQueryDoneReply = '🤖 <b>Trả lời tự động từ KB</b>, bạn kiểm tra lại trước khi dùng nhé:';
 export const kbQueryWithheldReply = '❌ <b>Câu trả lời từ KB có thể chứa thông tin bí mật nên mình không gửi.</b> Mình sẽ xem lại.';
 export const kbQueryFileReply = '🤖 <b>Trả lời tự động từ KB</b>, mình gửi trong file, bạn kiểm tra lại trước khi dùng nhé:';
+export const maxKBTopicWords = 20;
+// The topic is model text going to the chat: defanged, escaped, at most maxKBTopicWords words.
+export function kbTopicLine(topic: string | undefined, question: string): string {
+  const words = (s: string): string[] => s.trim().split(/\s+/).filter((w) => w !== '');
+  const t = words(topic ?? '');
+  const chosen = t.length > 0 && t.length <= maxKBTopicWords ? t.join(' ') : clipWords(words(question));
+  return chosen === '' ? '' : `<br><i>Về: ${escapeHTML(runeSlice(defang(chosen), maxNoteChars))}</i>`;
+}
+function clipWords(w: string[]): string {
+  return w.length <= maxKBTopicWords ? w.join(' ') : w.slice(0, maxKBTopicWords).join(' ') + '…';
+}
 export const kbQueryPendingReply = 'Bạn đang có một câu hỏi <b>kb_query</b> chưa xong, đợi có câu trả lời rồi hỏi tiếp nhé.';
 export const kbQueryClipped = '… (câu trả lời dài hơn, đã cắt bớt; hỏi hẹp lại để xem chi tiết)';
 export const maxKBQuerySources = maxNotes;
@@ -148,6 +159,7 @@ export type KbQueryResult = {
   sources?: string[];
   notes?: string[];
   missing?: string[];
+  topic?: string;
 };
 
 // ciel/kbquery.go:361-373 kbQueryReplyHTML: [html, clipped]
