@@ -8,7 +8,7 @@ import { kbQuery, kbQueryDir, kbQueryDirs, kbQueryPrompt, setKbRefSync } from '.
 import type { CapabilityContext } from '../../src/capability/types.js';
 import { KB_QUERY_TOOLS } from '../../src/fence/constants.js';
 import type { Job } from '../../src/queue/job.js';
-import { kbQueryFailedReply, kbQueryFileReply, kbQueryWithheldReply, maxKBAnswerFileChars, maxReplyChars } from '../../src/render/html.js';
+import { kbQueryFailedReply, kbQueryFileReply, kbQueryWithheldReply, kbTopicLine, maxKBAnswerFileChars, maxReplyChars } from '../../src/render/html.js';
 import { InterruptedError, type RunInput, type RunResult } from '../../src/runner/run.js';
 import { testConfig } from '../helpers/test-config.js';
 
@@ -87,7 +87,7 @@ describe('kb_query', () => {
   it('TestHandleKBQuerySendsAnswerAsHtmlFile', async () => {
     const { ctx, inputs, dir } = harness(testKB('pusher'), done('## Past segment\n\n<script>x</script> & co, see https://evil.example/x', ['pusher/main.go:10']));
     const outcome = await kbQuery(ctx);
-    expect(outcome.reply?.html).toBe(kbQueryFileReply);
+    expect(outcome.reply?.html).toBe(kbQueryFileReply + kbTopicLine('', ctx.job.input ?? ''));
     const file = outcome.reply?.file;
     expect(file?.name).toMatch(/^kb-answer-1791513774214-\d{8}-\d{6}\.html$/);
     const page = file?.content ?? '';
@@ -157,6 +157,22 @@ describe('kb_query', () => {
       expect(outcome.notifyOwner, name).toContain('withheld');
       expect(existsSync(join(dir, 'output.json')), name).toBe(true);
     }
+  });
+
+  it('kb_query file reply carries the session topic', async () => {
+    const result: RunResult = { ...done('## Past segment'), structured: { status: 'done', topic: 'past segment tính audience', answer: '## Past segment', sources: [], notes: [], missing: [] } };
+    const { ctx } = harness(testKB('pusher'), result);
+    const outcome = await kbQuery(ctx);
+    expect(outcome.reply?.html).toBe(kbQueryFileReply + '<br><i>Về: past segment tính audience</i>');
+    expect(outcome.reply?.file).toBeDefined();
+  });
+
+  it('kb_query withholds an answer whose topic looks like a credential', async () => {
+    const result: RunResult = { ...done('safe answer'), structured: { status: 'done', topic: 'use glpat-abcdefghijklmnopqrst', answer: 'safe answer', sources: [], notes: [], missing: [] } };
+    const { ctx } = harness(testKB('pusher'), result);
+    const outcome = await kbQuery(ctx);
+    expect(outcome.reply?.html).toBe(kbQueryWithheldReply);
+    expect(outcome.reply?.file).toBeUndefined();
   });
 
   it('TestHandleKBQuerySendsLongAnswerWhole', async () => {

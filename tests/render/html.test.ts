@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clip, deniedText, escapeHTML, fitAnswer, kbAnswerFileName, kbAnswerPage, kbQueryReplyHTML, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewedReply, reviewNothingReply } from '../../src/render/html.js';
+import { clip, deniedText, escapeHTML, fitAnswer, kbAnswerFileName, kbAnswerPage, kbQueryReplyHTML, kbTopicLine, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewedReply, reviewNothingReply } from '../../src/render/html.js';
 import { runeLength } from '../../src/render/text.js';
 
 const count = (s: string, needle: string): number => s.split(needle).length - 1;
@@ -90,5 +90,29 @@ describe('reply html', () => {
     expect(wasClipped).toBe(true);
     expect(LONE_SURROGATE.test(fitted)).toBe(false);
     expect(runeLength(fitted)).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('kbTopicLine', () => {
+  const words = (n: number): string => Array.from({ length: n }, (_, i) => `w${i + 1}`).join(' ');
+  it('renders the topic in italics', () => {
+    expect(kbTopicLine('past segment tính audience', 'x')).toBe('<br><i>Về: past segment tính audience</i>');
+  });
+  it('falls back to the question clipped to 20 words', () => {
+    const line = kbTopicLine('', words(25));
+    expect(line).toContain('Về: w1 ');
+    expect(line.endsWith('w20…</i>')).toBe(true);
+  });
+  it('falls back when the topic is longer than 20 words', () => {
+    expect(kbTopicLine(words(21), 'short question')).toBe('<br><i>Về: short question</i>');
+  });
+  it('escapes and defangs model text', () => {
+    const line = kbTopicLine('<b>x</b> https://evil.example', 'q');
+    expect(line).toContain('&lt;b&gt;');
+    expect(line).not.toContain('<b>');
+    expect(line).not.toContain('https://');
+  });
+  it('is empty when there is neither topic nor question', () => {
+    expect(kbTopicLine('', '')).toBe('');
   });
 });
