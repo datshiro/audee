@@ -50,7 +50,7 @@ export function kbTopicLine(topic: string | undefined, question: string): string
   const words = (s: string): string[] => s.trim().split(/\s+/).filter((w) => w !== '');
   const t = words(topic ?? '');
   const chosen = t.length > 0 && t.length <= maxKBTopicWords ? t.join(' ') : clipWords(words(question));
-  return chosen === '' ? '' : `<br><i>Về: ${escapeHTML(defang(chosen))}</i>`;
+  return chosen === '' ? '' : `<br><i>Về: ${escapeHTML(runeSlice(defang(chosen), maxNoteChars))}</i>`;
 }
 function clipWords(w: string[]): string {
   return w.length <= maxKBTopicWords ? w.join(' ') : w.slice(0, maxKBTopicWords).join(' ') + '…';

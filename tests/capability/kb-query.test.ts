@@ -8,7 +8,7 @@ import { kbQuery, kbQueryDir, kbQueryDirs, kbQueryPrompt, setKbRefSync } from '.
 import type { CapabilityContext } from '../../src/capability/types.js';
 import { KB_QUERY_TOOLS } from '../../src/fence/constants.js';
 import type { Job } from '../../src/queue/job.js';
-import { kbQueryFailedReply, kbQueryFileReply, kbQueryWithheldReply, kbTopicLine, maxKBAnswerFileChars, maxReplyChars } from '../../src/render/html.js';
+import { kbQueryFailedReply, kbQueryFileReply, kbQueryWithheldReply, maxKBAnswerFileChars, maxReplyChars } from '../../src/render/html.js';
 import { InterruptedError, type RunInput, type RunResult } from '../../src/runner/run.js';
 import { testConfig } from '../helpers/test-config.js';
 
@@ -87,7 +87,7 @@ describe('kb_query', () => {
   it('TestHandleKBQuerySendsAnswerAsHtmlFile', async () => {
     const { ctx, inputs, dir } = harness(testKB('pusher'), done('## Past segment\n\n<script>x</script> & co, see https://evil.example/x', ['pusher/main.go:10']));
     const outcome = await kbQuery(ctx);
-    expect(outcome.reply?.html).toBe(kbQueryFileReply + kbTopicLine('', ctx.job.input ?? ''));
+    expect(outcome.reply?.html).toBe(kbQueryFileReply + '<br><i>Về: past segment hoạt động thế nào?</i>');
     const file = outcome.reply?.file;
     expect(file?.name).toMatch(/^kb-answer-1791513774214-\d{8}-\d{6}\.html$/);
     const page = file?.content ?? '';
@@ -173,6 +173,12 @@ describe('kb_query', () => {
     const outcome = await kbQuery(ctx);
     expect(outcome.reply?.html).toBe(kbQueryWithheldReply);
     expect(outcome.reply?.file).toBeUndefined();
+
+    const known: RunResult = { ...done('safe answer'), structured: { status: 'done', topic: 'about s3cr3t-value-123', answer: 'safe answer', sources: [], notes: [], missing: [] } };
+    const second = harness(testKB('pusher'), known);
+    second.ctx.secrets = { GL_TOKEN: 's3cr3t-value-123' };
+    const withheld = await kbQuery(second.ctx);
+    expect(withheld.reply?.html).toBe(kbQueryWithheldReply);
   });
 
   it('TestHandleKBQuerySendsLongAnswerWhole', async () => {

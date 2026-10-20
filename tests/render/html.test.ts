@@ -112,6 +112,9 @@ describe('kbTopicLine', () => {
     expect(line).not.toContain('<b>');
     expect(line).not.toContain('https://');
   });
+  it('caps a single very long word', () => {
+    expect(kbTopicLine('x'.repeat(10_000), 'q').length).toBeLessThan(400);
+  });
   it('is empty when there is neither topic nor question', () => {
     expect(kbTopicLine('', '')).toBe('');
   });
