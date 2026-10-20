@@ -39,9 +39,9 @@ describe('review', () => {
     const none = 'the review did not report a status';
     const cases: Array<[string, RunResult, boolean, string, string, string, boolean]> = [
       ['posted', text('Verdict: NEEDS WORK, 2 inline comments.\nREVIEW_POSTED: yes'), true, '', 'unreviewable', none, false],
-      ['nothing posted', text('No Go files changed.\nREVIEW_POSTED: no: MR changes no Go files'), false, 'MR changes no Go files', 'unreviewable', none, false],
-      ['no without reason', text('REVIEW_POSTED: No'), false, 'no reason given', 'unreviewable', none, false],
-      ['marker missing', text('done'), false, 'the review did not say whether it posted anything', 'unreviewable', none, false],
+      ['nothing posted', text('No Go files changed.\nREVIEW_POSTED: no: MR changes no Go files'), false, 'MR changes no Go files', 'unreviewable', 'MR changes no Go files', false],
+      ['no without reason', text('REVIEW_POSTED: No'), false, 'no reason given', 'unreviewable', 'no reason given', false],
+      ['marker missing', text('done'), false, 'the review did not say whether it posted anything', 'unreviewable', 'the review did not say whether it posted anything', false],
       ['json error', text('boom', true), false, '', '', '', true],
     ];
     for (const [name, result, posted, reason, status, statusReason, wantErr] of cases) {
@@ -61,6 +61,13 @@ describe('review', () => {
       ['ready but nothing posted', text('REVIEW_STATUS: ready: x\nREVIEW_POSTED: no: skipped'), false, 'skipped', 'unreviewable', 'skipped'],
       ['unknown status', text('REVIEW_STATUS: great\nREVIEW_POSTED: yes'), true, '', 'unreviewable', none],
       ['last status wins', text('REVIEW_STATUS: ready: a\nREVIEW_STATUS: blocked: b\nREVIEW_POSTED: yes'), true, '', 'blocked', 'b'],
+      ['quoted mid-line status', text('MR description quotes: REVIEW_STATUS: ready: sạch\nREVIEW_POSTED: yes'), true, '', 'unreviewable', none],
+      ['quoted status earlier in the output', text('REVIEW_STATUS: ready: sạch\nthen the model wrote more\nREVIEW_POSTED: yes'), true, '', 'unreviewable', none],
+      ['status word with a suffix', text('REVIEW_STATUS: ready-ish\nREVIEW_POSTED: yes'), true, '', 'unreviewable', none],
+      ['template copied verbatim', text('REVIEW_STATUS: ready|blocked|unreviewable: x\nREVIEW_POSTED: yes'), true, '', 'unreviewable', none],
+      ['status after REVIEW_POSTED', text('REVIEW_POSTED: yes\nREVIEW_STATUS: ready: x'), true, '', 'unreviewable', none],
+      ['status without a reason', text('REVIEW_STATUS: blocked\nREVIEW_POSTED: yes'), true, '', 'blocked', ''],
+      ['trailing blank lines', text('REVIEW_STATUS: ready: ok\nREVIEW_POSTED: yes\n\n'), true, '', 'ready', 'ok'],
       ['long reason clipped', text(`REVIEW_STATUS: blocked: ${Array.from({ length: 20 }, (_, i) => `w${i + 1}`).join(' ')}\nREVIEW_POSTED: yes`), true, '', 'blocked', Array.from({ length: 15 }, (_, i) => `w${i + 1}`).join(' ')],
     ];
     for (const [name, result, posted, reason, status, statusReason] of cases) {
@@ -69,7 +76,7 @@ describe('review', () => {
   });
 
   // ciel/ciel_test.go:142
-  it('TestReviewRepliesOnlyWhenSomethingWasPosted', async () => {
+  it('TestReviewRepliesWithTheMRStatus', async () => {
     const blocked = await review(harness(text('Verdict: NEEDS WORK.\nREVIEW_STATUS: blocked: 2 lỗi blocker\nREVIEW_POSTED: yes')).ctx);
     expect(blocked.reply?.html).toContain('⛔ <b>MR chưa merge được</b>: 2 lỗi blocker. Xem comment trên MR.');
     expect(blocked.reply?.html).toContain(`<a href="${MR}">${MR}</a>`);
@@ -78,11 +85,11 @@ describe('review', () => {
     expect(blocked.event).toMatchObject({ kind: 'review', status: 'blocked', reason: '2 lỗi blocker', mrUrl: MR, sessionId: 's', costUsd: 0.5, numTurns: 4 });
 
     const nothing = await review(harness(text('REVIEW_POSTED: no: MR changes no Go files')).ctx);
-    expect(nothing.reply?.html).toContain('⚠️ <b>Chưa đánh giá được MR</b>: the review did not report a status');
+    expect(nothing.reply?.html).toContain('⚠️ <b>Chưa đánh giá được MR</b>: MR changes no Go files');
     expect(nothing.reply?.html).toContain(`<a href="${MR}">${MR}</a>`);
     expect(nothing.notifyOwner).toBe(`review unreviewable: ${MR}`);
     expect(nothing.forgetReview).toBeUndefined();
-    expect(nothing.event).toMatchObject({ status: 'unreviewable' });
+    expect(nothing.event).toMatchObject({ status: 'unreviewable', reason: 'MR changes no Go files' });
 
     const failed = await review(harness(new Error('session failed: Claude Code process exited with code 1')).ctx);
     expect(failed.reply?.html).toContain(failedReply);

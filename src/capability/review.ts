@@ -52,7 +52,6 @@ or if the review skipped the acknowledgement because one for the same head commi
 otherwise "REVIEW_POSTED: no: <short reason>".`;
 
 export const reviewPostedMarker = 'REVIEW_POSTED:';
-export const reviewStatusMarker = 'REVIEW_STATUS:';
 export const maxStatusReasonWords = 15;
 
 export type ReviewStatus = 'ready' | 'blocked' | 'unreviewable';
@@ -60,12 +59,17 @@ export type ReviewResult = { posted: boolean; reason: string; status: ReviewStat
 
 const clipWords = (s: string, n: number): string => s.trim().split(/\s+/).filter((w) => w !== '').slice(0, n).join(' ');
 
-// A missing or unknown status is unreviewable; ready without anything posted cannot be trusted as clean.
+const statusLine = /^REVIEW_STATUS:\s*(ready|blocked|unreviewable)\s*(?::\s*(.*))?$/i;
+
+// Only the session's own closing lines count: the status must be the line right before the final REVIEW_POSTED
+// line, so a status quoted from MR text earlier in the output cannot pass. Anything else is unreviewable, and
+// ready without anything posted cannot be trusted as clean.
 function reviewStatus(text: string, posted: boolean, reason: string): { status: ReviewStatus; statusReason: string } {
-  const i = text.lastIndexOf(reviewStatusMarker);
-  if (i < 0) return { status: 'unreviewable', statusReason: 'the review did not report a status' };
-  const m = /^(ready|blocked|unreviewable)\b\s*:?\s*(.*)$/i.exec(firstLine(text.slice(i + reviewStatusMarker.length)).trim());
-  if (m === null) return { status: 'unreviewable', statusReason: 'the review did not report a status' };
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+  const m = statusLine.exec(lines.at(-2) ?? '');
+  if (!(lines.at(-1) ?? '').startsWith(reviewPostedMarker) || m === null) {
+    return { status: 'unreviewable', statusReason: posted ? 'the review did not report a status' : reason };
+  }
   const status = (m[1] ?? '').toLowerCase() as ReviewStatus;
   if (status === 'ready' && !posted) return { status: 'unreviewable', statusReason: reason };
   return { status, statusReason: clipWords(m[2] ?? '', maxStatusReasonWords) };

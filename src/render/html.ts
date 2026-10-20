@@ -21,17 +21,21 @@ function safeReason(reason: string, knownSecrets: string[]): string {
   if (reason.trim() === '' || leaksSecret([reason], knownSecrets)) return '';
   return escapeHTML(runeSlice(defang(reason), maxNoteChars));
 }
+function withReason(head: string, reason: string, knownSecrets: string[]): string {
+  const safe = safeReason(reason, knownSecrets);
+  return safe === '' ? head : `${head}: ${safe}`;
+}
 export function reviewApprovedReply(reason: string, knownSecrets: string[]): string {
-  return `✅ <b>MR sẵn sàng merge</b>, mình đã approve: ${safeReason(reason, knownSecrets)}`;
+  return withReason('✅ <b>MR sẵn sàng merge</b>, mình đã approve', reason, knownSecrets);
 }
 export function reviewReadyWaitReply(why: string, knownSecrets: string[]): string {
-  return `✅ <b>MR sẵn sàng merge</b>, chờ Đạt approve: ${safeReason(why, knownSecrets)}`;
+  return withReason('✅ <b>MR sẵn sàng merge</b>, chờ Đạt approve', why, knownSecrets);
 }
 export function reviewBlockedReply(reason: string, knownSecrets: string[], posted: boolean): string {
-  return `⛔ <b>MR chưa merge được</b>: ${safeReason(reason, knownSecrets)}.${posted ? ' Xem comment trên MR.' : ''}`;
+  return withReason('⛔ <b>MR chưa merge được</b>', reason, knownSecrets) + (posted ? '. Xem comment trên MR.' : '.');
 }
 export function reviewUnreviewableReply(reason: string, knownSecrets: string[]): string {
-  return `⚠️ <b>Chưa đánh giá được MR</b>: ${safeReason(reason, knownSecrets)}`;
+  return withReason('⚠️ <b>Chưa đánh giá được MR</b>', reason, knownSecrets);
 }
 export const recentReply = '🔁 <b>Đã được nhờ review trong 30 phút qua</b>, nên mình không review lại.';
 export const mappingQueuedReply = '👀 <b>Đang làm code mapping.</b> Xong mình sẽ gửi nhé.';

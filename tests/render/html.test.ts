@@ -24,7 +24,8 @@ describe('reply html', () => {
   it('review status replies escape, defang, cap and hide secrets', () => {
     expect(reviewUnreviewableReply('targets <main> see https://evil.example', [])).toBe('⚠️ <b>Chưa đánh giá được MR</b>: targets &lt;main&gt; see hxxps://evil.example');
     expect(runeLength(reviewUnreviewableReply('x'.repeat(1000), []))).toBeLessThan(400);
-    expect(reviewUnreviewableReply('token=abcdefgh12345678', [])).toBe('⚠️ <b>Chưa đánh giá được MR</b>: ');
+    expect(reviewUnreviewableReply('token=abcdefgh12345678', [])).toBe('⚠️ <b>Chưa đánh giá được MR</b>');
+    expect(reviewBlockedReply('', [], true)).toBe('⛔ <b>MR chưa merge được</b>. Xem comment trên MR.');
     expect(reviewReadyWaitReply('uses s3cr3t-value-123', ['s3cr3t-value-123'])).not.toContain('s3cr3t');
     expect(reviewBlockedReply('<script>', [], true)).toBe('⛔ <b>MR chưa merge được</b>: &lt;script&gt;. Xem comment trên MR.');
     expect(reviewBlockedReply('x', [], false)).not.toContain('Xem comment');
