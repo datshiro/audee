@@ -106,7 +106,8 @@ Answer status "done" with "answer" in the language of the question: Markdown (he
 blocks; no raw HTML, no links or images; put ASCII diagrams in a fenced code block), at most 30000 characters. Put repo-relative paths you cited in
 "sources" (at most 10). When something you cannot fix stops you (a tool is denied, the KB is unreadable),
 answer status "failed" and say why in "notes". At most 5 notes, each under 250 characters.
-Always set "topic": what the question asks, at most 20 words, in the language of the question, no links.`;
+Always set "topic": what the question asks, at most 12 words, in the same language as the question (a Vietnamese
+question gets a Vietnamese topic), no links and no names of people. Example: "Luồng set up lucky wheel và nhận quà trên webshop".`;
 
 // kbquery.go:226-230
 export function kbQueryPrompt(kbDir: string, paths: KbPaths, interservice: boolean): string {

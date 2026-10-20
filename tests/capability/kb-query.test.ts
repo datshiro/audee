@@ -232,7 +232,7 @@ describe('kb_query', () => {
   it('TestKBQueryPromptOverridesSkill', () => {
     const paths = { wiki: '/kb/kb-mcp/wiki', querySkill: '/kb/.agents/skills/kb-query', scoutSkill: '/kb/.agents/skills/kb-scout', repos: ['/kb/.kb-ref-worktrees/pusher'] };
     const p = kbQueryPrompt('/kb', paths, true);
-    for (const want of ['/kb/.agents/skills/kb-query', '/kb/.agents/skills/kb-scout/SKILL.md', '/kb/kb-mcp/wiki', '/kb/.kb-ref-worktrees/pusher', './question.txt', 'Never ask a question', 'never ask the requester to clarify', 'answer every one', 'its own "## " section', 'overview of what the KB covers', 'Leave "missing" empty', 'run no script', 'never call kb-enrich', 'Never quote credentials', 'INTERSERVICE.md is ./INTERSERVICE.md', 'Markdown', 'no raw HTML']) {
+    for (const want of ['/kb/.agents/skills/kb-query', '/kb/.agents/skills/kb-scout/SKILL.md', '/kb/kb-mcp/wiki', '/kb/.kb-ref-worktrees/pusher', './question.txt', 'Never ask a question', 'never ask the requester to clarify', 'answer every one', 'its own "## " section', 'overview of what the KB covers', 'Leave "missing" empty', 'at most 12 words', 'a Vietnamese\nquestion gets a Vietnamese topic', 'Luồng set up lucky wheel', 'run no script', 'never call kb-enrich', 'Never quote credentials', 'INTERSERVICE.md is ./INTERSERVICE.md', 'Markdown', 'no raw HTML']) {
       expect(p).toContain(want);
     }
     expect(kbQueryPrompt('/kb', paths, false)).not.toContain('INTERSERVICE.md');
