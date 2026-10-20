@@ -165,7 +165,7 @@ describe('doctor', () => {
     const atlassian = { type: 'http', url: 'https://mcp.atlassian.com/v1/mcp', headers: { Authorization: 'Basic ${ATL}' } };
     expect((await find({}))?.detail).toContain('warning: no mcp_servers.atlassian');
     expect(await find({ mcpServers: { atlassian } })).toMatchObject({ ok: false });
-    expect(await find({ mcpServers: { atlassian }, keychainEnv: { GL_TOKEN: 'audee-gitlab', ATL: 'audee-atlassian' } })).toMatchObject({ ok: true, detail: 'mcp_servers.atlassian reaches review sessions read-only' });
+    expect(await find({ mcpServers: { atlassian }, keychainEnv: { GL_TOKEN: 'audee-gitlab', ATL: 'audee-atlassian' } })).toMatchObject({ ok: true, detail: 'mcp_servers.atlassian is configured and its keychain_env variables are defined; review sessions may only read with it' });
   });
 
   it('TestDoctorClassifierKeyChecked', async () => {

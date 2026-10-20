@@ -105,9 +105,10 @@ export function parseReviewOutput(result: RunResult): ReviewResult {
 
 // gitlab and kb from ~/.claude.json, plus Jira when audee's mcp_servers defines it, under the connector's name.
 function reviewMcpServers(ctx: CapabilityContext): Record<string, McpServerConfig> {
-  const servers = loadMcpServers(REVIEW_MCP_SERVERS, ctx.secrets, ctx.userConfigPath, ctx.cfg.mcp_servers);
-  if (ctx.cfg.mcp_servers[REVIEW_JIRA_SERVER] === undefined) return servers;
-  const jira = loadMcpServers([REVIEW_JIRA_SERVER], ctx.secrets, ctx.userConfigPath, ctx.cfg.mcp_servers)[REVIEW_JIRA_SERVER];
+  const servers = loadMcpServers(REVIEW_MCP_SERVERS, ctx.secrets, ctx.userConfigPath);
+  const own = ctx.cfg.mcp_servers[REVIEW_JIRA_SERVER];
+  if (own === undefined) return servers;
+  const jira = loadMcpServers([REVIEW_JIRA_SERVER], ctx.secrets, ctx.userConfigPath, { [REVIEW_JIRA_SERVER]: own })[REVIEW_JIRA_SERVER];
   return jira === undefined ? servers : { ...servers, [REVIEW_JIRA_ALIAS]: jira };
 }
 

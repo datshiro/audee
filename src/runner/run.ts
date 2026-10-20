@@ -46,7 +46,14 @@ function mcpSecrets(options: Options): string[] {
   for (const server of Object.values(options.mcpServers ?? {})) {
     const s = server as { env?: unknown; headers?: unknown; args?: unknown; url?: unknown };
     for (const group of [s.env, s.headers]) {
-      if (typeof group === 'object' && group !== null) for (const v of Object.values(group)) if (typeof v === 'string') values.push(v);
+      if (typeof group === 'object' && group !== null) {
+        for (const v of Object.values(group)) {
+          if (typeof v !== 'string') continue;
+          values.push(v);
+          const credential = /^(?:Basic|Bearer)\s+(\S+)$/i.exec(v)?.[1]; // the token alone can appear in an error too
+          if (credential !== undefined) values.push(credential);
+        }
+      }
     }
     if (Array.isArray(s.args)) for (const a of s.args) if (typeof a === 'string') values.push(a);
     if (typeof s.url === 'string') values.push(s.url);

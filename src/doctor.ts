@@ -154,7 +154,7 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     } else {
       const text = JSON.stringify(jira);
       const missing = [...text.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1] ?? '').filter((v) => cfg.keychain_env[v] === undefined);
-      check('review jira', missing.length === 0, missing.length === 0 ? `mcp_servers.${REVIEW_JIRA_SERVER} reaches review sessions read-only` : `mcp_servers.${REVIEW_JIRA_SERVER} uses ${missing.join(', ')}, which keychain_env does not define`);
+      check('review jira', missing.length === 0, missing.length === 0 ? `mcp_servers.${REVIEW_JIRA_SERVER} is configured and its keychain_env variables are defined; review sessions may only read with it` : `mcp_servers.${REVIEW_JIRA_SERVER} uses ${missing.join(', ')}, which keychain_env does not define`);
     }
   }
 

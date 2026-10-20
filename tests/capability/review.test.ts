@@ -221,6 +221,13 @@ capabilities:
     const options = inputs[0]?.options;
     expect(Object.keys(options?.mcpServers ?? {}).sort()).toEqual(['claude_ai_Atlassian', 'gitlab', 'kb']);
     expect((options?.mcpServers?.['claude_ai_Atlassian'] as { headers?: Record<string, string> }).headers?.['Authorization']).toBe('Basic abc');
+    const hook = options?.hooks?.PreToolUse?.[0]?.hooks[0];
+    if (hook === undefined) throw new Error('no PreToolUse gate');
+    const decide = async (tool: string) => JSON.stringify(await hook({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, tool_use_id: 't', session_id: 's', transcript_path: '', cwd: '' } as never, 't', { signal: new AbortController().signal }));
+    expect(await decide('mcp__claude_ai_Atlassian__getJiraIssue')).not.toContain('deny');
+    for (const unlisted of ['mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql', 'mcp__claude_ai_Atlassian__someFutureWriteTool']) {
+      expect(await decide(unlisted), unlisted).toContain('"permissionDecision":"deny"');
+    }
     for (const write of ['mcp__claude_ai_Atlassian__editJiraIssue', 'mcp__claude_ai_Atlassian__addOrEditJiraIssueComment', 'mcp__claude_ai_Atlassian__createConfluencePage']) {
       expect(options?.disallowedTools, write).toContain(write);
     }
