@@ -4,10 +4,11 @@ import type { Capability as CapabilityConfig } from '../config/schema.js';
 import { REVIEW_MCP_SERVERS } from '../fence/constants.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions } from '../fence/profiles.js';
-import { failedReply, firstLine, replyHTML, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../render/html.js';
+import { failedReply, firstLine, replyHTML, reviewApprovedReply, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../render/html.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
+import { type ApprovalDecision, approvalDecision, connectGitLabMr, type GitLabMr, mrRef } from './gitlab-mr.js';
 import { capabilityConfig, sessionEvent, sessionInput } from './session.js';
-import type { Capability, CapabilityOutcome } from './types.js';
+import type { Capability, CapabilityContext, CapabilityOutcome } from './types.js';
 
 // actions.go:20-26
 export const unattendedIntro = `
@@ -101,6 +102,20 @@ export function parseReviewOutput(result: RunResult): ReviewResult {
   return { posted: false, reason, ...reviewStatus(text, false, reason) };
 }
 
+// Opens glab-mcp for one step and always closes it. Any failure yields undefined, which never approves.
+async function withGitLab<T>(ctx: CapabilityContext, fn: (gl: GitLabMr) => Promise<T>): Promise<T | undefined> {
+  let gl: GitLabMr | undefined;
+  try {
+    gl = await (ctx.gitlab ?? (() => connectGitLabMr(ctx.secrets, ctx.userConfigPath, ctx.signal)))();
+    return await fn(gl);
+  } catch (e) {
+    console.error(`review: GitLab step failed: ${(e as Error).name}`); // never the message: it may carry tool text
+    return undefined;
+  } finally {
+    if (gl !== undefined) await gl.close().catch(() => {});
+  }
+}
+
 export const review: Capability = async (ctx) => {
   const cap = capabilityConfig(ctx);
   const mrUrl = ctx.job.mrUrl ?? '';
@@ -122,6 +137,8 @@ export const review: Capability = async (ctx) => {
     return fail((e as Error).message);
   }
   const prompt = reviewPrompt(reviewPromptTemplate(cap, mrUrl), mrUrl, cap.post_findings);
+  // The head the review starts from; the approval must be for this same head. Not held open during the session.
+  const before = cap.auto_approve ? await withGitLab(ctx, (gl) => gl.getMr(mrRef(mrUrl))) : undefined;
   let result: RunResult;
   try {
     result = await ctx.run(sessionInput(ctx, cap, options, prompt));
@@ -137,6 +154,36 @@ export const review: Capability = async (ctx) => {
   }
   const base = { ...sessionEvent(result, Date.now() - started), kind: 'review', mrUrl };
   const secrets = Object.values(ctx.secrets);
+  if (res.status === 'ready' && cap.auto_approve) {
+    const ownerGitlab = ctx.cfg.people.find((p) => p.owner)?.gitlab;
+    const decided = await withGitLab(ctx, async (gl): Promise<ApprovalDecision> => {
+      const ref = mrRef(mrUrl);
+      const after = await gl.getMr(ref);
+      const ackFound = ownerGitlab !== undefined && await gl.hasPassAck(ref, after.sha, ownerGitlab);
+      const d = approvalDecision({ autoApprove: true, status: res.status, before, after, ackFound, requesterGitlab: ctx.person.gitlab, ownerGitlab, statusReason: res.statusReason });
+      if (!d.approve) return d;
+      try {
+        await gl.approve(ref, d.sha);
+      } catch (e) {
+        console.error(`review: approve_mr failed: ${(e as Error).name}`);
+        return { approve: false, why: 'không chắc đã approve được, Đạt kiểm tra lại' };
+      }
+      return d;
+    });
+    const d: ApprovalDecision = decided ?? { approve: false, why: 'không gọi được GitLab' };
+    if (d.approve) {
+      return {
+        reply: { html: replyHTML(reviewApprovedReply(res.statusReason, secrets), mrUrl) },
+        notifyOwner: `review approved as owner: ${mrUrl}`,
+        event: { ...base, status: 'approved', reason: res.statusReason },
+      };
+    }
+    return {
+      reply: { html: replyHTML(reviewReadyWaitReply(d.why, secrets), mrUrl) },
+      notifyOwner: `review ready, not approved (${d.why}): ${mrUrl}`,
+      event: { ...base, status: 'ready', reason: d.why },
+    };
+  }
   const html = res.status === 'ready' ? reviewReadyWaitReply(res.statusReason, secrets)
     : res.status === 'blocked' ? reviewBlockedReply(res.statusReason, secrets, res.posted)
     : reviewUnreviewableReply(res.statusReason, secrets);

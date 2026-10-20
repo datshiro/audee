@@ -1,6 +1,6 @@
 import type { Config } from '../config/schema.js';
 
-export type Person = { name: string; owner: boolean; ids: string[]; can: string[]; max_inflight: number };
+export type Person = { name: string; owner: boolean; ids: string[]; can: string[]; gitlab?: string; max_inflight: number };
 
 export function resolvePerson(cfg: Config, principal: string): Person | undefined {
   return cfg.people.find((p) => p.ids.includes(principal));
