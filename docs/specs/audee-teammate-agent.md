@@ -1,6 +1,6 @@
 ---
 title: audee teammate agent
-status: in-progress
+status: completed
 last_verified: 2026-10-20
 claude_code_version: 2.1.302
 ---
@@ -80,4 +80,68 @@ sign-in link (the token, kept in `<data_dir>/admin-token`, rides in the URL frag
 - Verified 2026-10-18 against a sandbox copy of the data dir (port 7421): overview, retry/remove with a paused queue, capability toggle saved and reloaded, phone width, dark theme. Independent review: no critical findings and the security boundary held. The four medium findings were fixed (cancelling a queued job, the checks a reload runs, the restart-cost wording, protecting saved jobs). Still open: a shutdown that races an in-flight reload resets the connection; a cancelled job's Teams reply says "failed"; config backups are never pruned; nothing detects two tabs editing at once.
 
 ## Architecture
-(written in phase 14)
+One daemon, `audee serve`, under launchd (`com.audee.agent`), running `dist/cli.js` from `~/personal/audee`.
+
+```
+Teams chats ──(Power Automate "Ciel Teams Inbox Poller", every minute)──▶ OneDrive /Ciel/inbox/<msg id>-<sender>.json
+  ▶ inbox (src/teams/inbox.ts)      claim into ~/.audee/processing, keep in raw/ 3 days, reject bad files to failed/
+  ▶ watcher (src/teams/watcher.ts)  chat allowlist → seen-id dedupe → candidate filter → classifier session → person grants
+  ▶ queue (src/queue)               lanes heavy (review, code_mapping) and kb (kb_query, mcp_read); per-person max_inflight
+  ▶ capability (src/capability)     builds the profile's SDK options (src/fence/profiles.ts) and runs one Agent SDK session
+  ▶ render (src/render)             escape, defang, secret check, HTML reply or HTML/JSON file
+  ▶ outbox (src/teams/outbox.ts)    OneDrive /Ciel/outbox/<random>.json ──(flow "Send message when ask for review code")──▶
+                                    Teams reply as the owner, @mentioning the requester; a file goes to /Ciel/files with a share link
+```
+
+- A message is a candidate only if it @mentions the owner, names an alias (`Dat`, `Đạt`) or carries an MR URL, and is not
+  from the owner (audee posts as the owner, so it never reacts to the owner's own messages).
+- Unknown senders are never classified; one that @mentions the owner gets a refusal. People without the grant get
+  `deniedText`.
+- After a review, audee itself (not the session) may approve a `ready` MR as the owner when `review.auto_approve` is
+  on; see Review status and auto-approve.
+- State (`~/.audee/state.json`): seen ids, the message trail, queued and running jobs (resumed from the start after a
+  restart), review cooldown. Events: `~/.audee/events.jsonl`. Admin UI: see Dashboard.
+
+## Fences
+Every session runs with `persistSession: false`, `permissionPrompts: 'none'` and a PreToolUse gate that re-checks the
+allow and deny lists (`src/fence/gate.ts`). Lists are in `src/fence/constants.ts`.
+
+| Profile | Used by | Tools | MCP | Notable denials |
+|---|---|---|---|---|
+| `classifier` | message triage | none needed | none | Bash, Edit, Write, Web, Agent, Workflow, gitlab |
+| `review` | review | Claude Code defaults, `permissionMode: auto`, user/project settings | gitlab, kb | approve/merge/ship/update/create MR, play/retry jobs, `git push`, env/ps/security, KB writes, `~/.claude.json`, `~/.ssh`, `~/.audee`, `sh -c`-style shells, `pgrep` |
+| `mapping` | code_mapping | Read, Glob, Grep, Edit, Write, Bash; `--restricted` | none loaded; the GDS data-contract tool is allowed | reads outside the folder; Bash only the exact probe commands; edits to the pinned skill |
+| `kb_read` | kb_query | Read, Glob, Grep, Agent; `--restricted` | kb (read-only tools) | KB writes, `kb_search`, Skill, secret-shaped files, wiki inbox/people, repo config/secret globs |
+| `mcp_read` | opt-in (Grafana) | none built in | configured server, listed read tools only | every write tool of that server |
+
+Fences verified live on Claude Code 2.1.302 / Agent SDK 0.3.302 (see Fence baseline). `doctor` fails when the SDK or the bundled Claude Code is a
+different version than the fences were verified on (`src/fence/verified.ts`); re-verify before upgrading.
+
+## Auth and the API key guard
+- Capability sessions for the owner and for teammates run on the owner's Team-seat login (`auth.owner` and
+  `auth.teammates: subscription`, owner decision 2026-10-18, reversing the plan's API-key-for-teammates decision).
+- The API key guard (phase 13) was never run: there was no `audee-anthropic` Keychain item then, so
+  `FENCE_VERIFIED_ON.apiKeyGuard` is `null`. With teammates on the owner's login the guard does not gate them; `doctor`
+  instead warns that Bash-capable grants (review, code_mapping) run as the owner and could reach the login token.
+  Accepted risk: teammates are trusted colleagues, review and mapping run behind the fences above.
+- The classifier runs on an API key (`classifier.auth: api_key`, Keychain item `audee-anthropic`) through the LiteLLM
+  gateway (`auth.base_url`), model `claude-opus-4-8`. To move it back to the owner's login: `classifier: { model:
+  claude-opus-5-5, auth: subscription }` (opus-5-5 is not on the gateway).
+
+## Runbook
+- Status: `launchctl print gui/$(id -u)/com.audee.agent | head`, `tail ~/.audee/audee.log`, `tail ~/.audee/events.jsonl`,
+  or the dashboard (`node dist/cli.js dashboard` prints the sign-in link).
+- Health: `node dist/cli.js doctor` (add `--probe` to run one owner session in the daemon environment).
+- Deploy: merge to `main`, then in `~/personal/audee`, only while `state.json` `jobs` is empty: `git pull --ff-only &&
+  pnpm install && pnpm build && launchctl kickstart -k gui/$(id -u)/com.audee.agent`. Restarting interrupts running
+  sessions; they resume from the start (a review could post twice). Never switch branches or delete `dist/` in that
+  checkout while the daemon runs; use a worktree for development.
+- Config: edit `~/.audee/config.yaml` (back it up first) or use the dashboard, then kickstart. Adding a chat means adding
+  it to `channels.teams.chats` and to the poller flow's chat list.
+- Rerun: `node dist/cli.js rerun <MR URL | Teams message id>` queues the request again (ignores the review cooldown).
+- Cancel: dashboard, or `POST /api/jobs/cancel {kind, key}` with the admin token; the requester gets the failure reply.
+- No messages arriving: check the poller flow's run history (Graph request, file creation), then `~/.audee/failed`.
+  Never go back to a Teams-trigger flow on these chats (5 subscriptions per user per chat).
+- Rollback to Ciel: not drilled (task 14.5 descoped 2026-10-20 by owner decision; audee is refined in place). If ever
+  needed: boot out `com.audee.agent`, move `~/.audee/processing/*` back to OneDrive `/Ciel/inbox`, bootstrap
+  `~/Library/LaunchAgents/com.ciel.agent.plist`. Ciel reads the same inbox file format, so the poller flow should serve it.
