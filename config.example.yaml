@@ -73,5 +73,10 @@ capabilities:
   #   per_person_limit: 1
 
 keychain_env: {}               # ENV_VAR: keychain-item, for MCP servers that read ${VAR}
+# Audee-only MCP servers, looked up before ~/.claude.json. "atlassian" lets reviews read the Jira ticket
+# (read-only: only getAccessibleAtlassianResources and getJiraIssue may run). Needs API-token auth enabled by an
+# Atlassian org admin, and a Keychain item holding base64("<email>:<api token>"), e.g. keychain_env: { ATLASSIAN_BASIC: audee-atlassian }.
+mcp_servers: {}
+#   atlassian: { type: http, url: "https://mcp.atlassian.com/v1/mcp", headers: { Authorization: "Basic ${ATLASSIAN_BASIC}" } }
 
 admin: { port: 7420 }            # dashboard on 127.0.0.1; `audee dashboard` prints the sign-in link

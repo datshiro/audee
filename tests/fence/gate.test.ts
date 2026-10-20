@@ -53,4 +53,12 @@ describe('gate', () => {
     expect(gateDecision(spec, 'Bash', bash('git status')).deny).toBe(false);
     expect(gateDecision(spec, 'mcp__gitlab__get_mr', {}).deny).toBe(false);
   });
+  it('lets a server run only its listed tools', () => {
+    const spec = { denyTools: [], serverAllow: { mcp__claude_ai_Atlassian: ['mcp__claude_ai_Atlassian__getJiraIssue'] } };
+    expect(gateDecision(spec, 'mcp__claude_ai_Atlassian__getJiraIssue', {}).deny).toBe(false);
+    expect(gateDecision(spec, 'mcp__claude_ai_Atlassian__editJiraIssue', {}).deny).toBe(true);
+    expect(gateDecision(spec, 'mcp__claude_ai_Atlassian__someNewTool', {}).deny).toBe(true);
+    expect(gateDecision(spec, 'mcp__claude_ai_AtlassianX__getJiraIssue', {}).deny).toBe(false);
+    expect(gateDecision(spec, 'mcp__gitlab__get_mr', {}).deny).toBe(false);
+  });
 });

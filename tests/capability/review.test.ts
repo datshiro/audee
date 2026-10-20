@@ -213,6 +213,19 @@ capabilities:
     expect(() => loadConfig(bad)).toThrow('routes[0].match');
   });
 
+  it('gives the review session Jira under the connector name, read-only', async () => {
+    const atlassian = { type: 'http', url: 'https://mcp.atlassian.com/v1/mcp', headers: { Authorization: 'Basic ${ATL}' } };
+    const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'), { mcpServers: { atlassian }, keychainEnv: { ATL: 'audee-atlassian' } });
+    ctx.secrets = { ATL: 'abc' };
+    await review(ctx);
+    const options = inputs[0]?.options;
+    expect(Object.keys(options?.mcpServers ?? {}).sort()).toEqual(['claude_ai_Atlassian', 'gitlab', 'kb']);
+    expect((options?.mcpServers?.['claude_ai_Atlassian'] as { headers?: Record<string, string> }).headers?.['Authorization']).toBe('Basic abc');
+    for (const write of ['mcp__claude_ai_Atlassian__editJiraIssue', 'mcp__claude_ai_Atlassian__addCommentToJiraIssue', 'mcp__claude_ai_Atlassian__createConfluencePage']) {
+      expect(options?.disallowedTools, write).toContain(write);
+    }
+  });
+
   it('TestReviewUsesReviewProfile', async () => {
     const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'));
     await review(ctx);

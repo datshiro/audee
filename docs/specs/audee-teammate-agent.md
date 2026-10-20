@@ -70,6 +70,14 @@ not prove the review is sound. GitLab's required-approvals rules stay the backst
 owner.
 Validation: unit tests only; live check pending.
 
+Ticket check: review sessions get no claude.ai connectors, so the Jira ticket was never read ("ticket not checked"
+on every review). When `mcp_servers.atlassian` is defined in audee's config (Atlassian's remote MCP server
+`https://mcp.atlassian.com/v1/mcp` with a personal API token, sent as `Authorization: Basic ${ATLASSIAN_BASIC}` from
+keychain_env), audee hands it to review sessions under the connector's name `claude_ai_Atlassian`, so the
+wf-apo-mr-review workflow's tool names match without changing the shared skill. The fence lets only
+`getAccessibleAtlassianResources` and `getJiraIssue` run on that server; every other tool, including any added later,
+is denied by the gate, and the known write tools are also disallowed. The token acts with its owner's Jira rights.
+
 ## Dashboard
 `audee serve` also serves an admin web UI and API on `127.0.0.1:<admin.port>` (default 7420); `audee dashboard` prints the
 sign-in link (the token, kept in `<data_dir>/admin-token`, rides in the URL fragment). Build the UI with `pnpm build:web`

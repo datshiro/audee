@@ -9,7 +9,7 @@ import { authSettings } from './authz/people.js';
 import { kbQueryDirs } from './capability/kb-query.js';
 import { expandHome } from './config/load.js';
 import type { Config, ProfileName } from './config/schema.js';
-import { REVIEW_MCP_SERVERS } from './fence/constants.js';
+import { REVIEW_JIRA_SERVER, REVIEW_MCP_SERVERS } from './fence/constants.js';
 import { loadMcpServers } from './fence/mcp-servers.js';
 import { buildOptions, type KbPaths } from './fence/profiles.js';
 import { FENCE_VERIFIED_ON } from './fence/verified.js';
@@ -146,6 +146,16 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     }
   } catch (e) {
     check('mcp servers', false, `${(e as Error).message} (read ${userConfigPath})`);
+  }
+  if (Object.values(cfg.capabilities).some((c) => c.profile === 'review')) {
+    const jira = cfg.mcp_servers[REVIEW_JIRA_SERVER];
+    if (jira === undefined) {
+      check('review jira', true, `warning: no mcp_servers.${REVIEW_JIRA_SERVER}, so reviews cannot read the Jira ticket`);
+    } else {
+      const text = JSON.stringify(jira);
+      const missing = [...text.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1] ?? '').filter((v) => cfg.keychain_env[v] === undefined);
+      check('review jira', missing.length === 0, missing.length === 0 ? `mcp_servers.${REVIEW_JIRA_SERVER} reaches review sessions read-only` : `mcp_servers.${REVIEW_JIRA_SERVER} uses ${missing.join(', ')}, which keychain_env does not define`);
+    }
   }
 
   // 6. teammates: on the API key, the Keychain item and the API key guard for Bash-capable grants; on the owner's

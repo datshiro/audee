@@ -113,6 +113,7 @@ export const ConfigSchema = z.strictObject({
   }).prefault({}),
   capabilities: Capabilities,
   keychain_env: z.record(z.string(), z.string()).default({}),
+  mcp_servers: z.record(z.string(), z.record(z.string(), z.unknown())).default({}), // audee-only MCP servers, before ~/.claude.json
   // The dashboard, served by `audee serve` on 127.0.0.1 only.
   admin: z.strictObject({ port: z.number().int().min(1024).max(65535).default(7420) }).prefault({}),
 });

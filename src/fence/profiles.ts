@@ -2,7 +2,7 @@ import type { McpServerConfig, Options, Settings } from '@anthropic-ai/claude-ag
 import type { ProfileName } from '../config/schema.js';
 import {
   CLASSIFY_DENIED_TOOLS, CLASSIFY_SYSTEM, GDS_CONTRACT_TOOL, KB_QUERY_DENIED, KB_QUERY_REPO_DENIED, KB_QUERY_TOOLS,
-  KB_QUERY_WIKI_DENIED, MCP_WRITE_DENIED, REVIEW_DENIED_TOOLS, REVIEW_EXTRA_DENIED, REVIEW_MCP_SERVERS, probeCommands,
+  KB_QUERY_WIKI_DENIED, MCP_WRITE_DENIED, REVIEW_DENIED_TOOLS, REVIEW_EXTRA_DENIED, REVIEW_JIRA_ALIAS, REVIEW_JIRA_READ_TOOLS, REVIEW_JIRA_WRITE_TOOLS, REVIEW_MCP_SERVERS, probeCommands,
 } from './constants.js';
 import { makeGate, type GateSpec } from './gate.js';
 
@@ -62,14 +62,15 @@ export function buildOptions(input: ProfileInput): Options {
 
   switch (input.profile) {
     case 'review': {
-      const denied = [...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED];
+      const jira = input.mcpServers[REVIEW_JIRA_ALIAS] !== undefined;
+      const denied = [...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED, ...(jira ? REVIEW_JIRA_WRITE_TOOLS : [])];
       Object.assign(options, {
         permissionMode: 'auto',
         settingSources: ['user', 'project', 'local'],
         strictMcpConfig: true,
-        mcpServers: pickServers('review', input.mcpServers, REVIEW_MCP_SERVERS),
+        mcpServers: pickServers('review', input.mcpServers, [...REVIEW_MCP_SERVERS, ...(jira ? [REVIEW_JIRA_ALIAS] : [])]),
         disallowedTools: denied,
-        hooks: gate({ denyTools: denied }),
+        hooks: gate({ denyTools: denied, serverAllow: { [`mcp__${REVIEW_JIRA_ALIAS}`]: REVIEW_JIRA_READ_TOOLS } }),
       } satisfies Options);
       break;
     }
