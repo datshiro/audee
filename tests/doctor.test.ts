@@ -160,6 +160,14 @@ describe('doctor', () => {
     expect((await runDoctor(all.cfg, all.deps)).find((c) => c.name === 'review auto-approve')?.detail).toBe('every review requester has people[].gitlab');
   });
 
+  it('reports whether reviews can read Jira', async () => {
+    const find = async (o: TestConfigOptions) => { const { cfg, deps } = setup(o); return (await runDoctor(cfg, deps)).find((c) => c.name === 'review jira'); };
+    const atlassian = { type: 'http', url: 'https://mcp.atlassian.com/v1/mcp', headers: { Authorization: 'Basic ${ATL}' } };
+    expect((await find({}))?.detail).toContain('warning: no mcp_servers.atlassian');
+    expect(await find({ mcpServers: { atlassian } })).toMatchObject({ ok: false });
+    expect(await find({ mcpServers: { atlassian }, keychainEnv: { GL_TOKEN: 'audee-gitlab', ATL: 'audee-atlassian' } })).toMatchObject({ ok: true, detail: 'mcp_servers.atlassian is configured and its keychain_env variables are defined; review sessions may only read with it' });
+  });
+
   it('TestDoctorClassifierKeyChecked', async () => {
     const { cfg, deps } = setup();
     cfg.classifier.auth = 'api_key';

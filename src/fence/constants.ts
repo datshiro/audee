@@ -3,6 +3,17 @@
 // actions.go:51 reviewMCPServers
 export const REVIEW_MCP_SERVERS = ['gitlab', 'kb'];
 
+// audee additions: Jira for the review's ticket check. The server defined as "atlassian" in audee's mcp_servers
+// is handed to review sessions under the claude.ai connector's name, so its tools carry the names the
+// wf-apo-mr-review workflow calls (mcp__claude_ai_Atlassian__getJiraIssue). Sessions may only read with it.
+export const REVIEW_JIRA_SERVER = 'atlassian' as const;
+export const REVIEW_JIRA_ALIAS = 'claude_ai_Atlassian';
+export const REVIEW_JIRA_READ_TOOLS = ['getAccessibleAtlassianResources', 'getJiraIssue'].map((t) => `mcp__${REVIEW_JIRA_ALIAS}__${t}`);
+export const REVIEW_JIRA_WRITE_TOOLS = [
+  'createJiraIssue', 'editJiraIssue', 'transitionJiraIssue', 'addCommentToJiraIssue', 'addOrEditJiraIssueComment', 'addWorklogToJiraIssue', 'createIssueLink',
+  'createConfluencePage', 'updateConfluencePage', 'createConfluenceFooterComment', 'createConfluenceInlineComment',
+].map((t) => `mcp__${REVIEW_JIRA_ALIAS}__${t}`);
+
 // actions.go:60-64 reviewDeniedTools
 export const REVIEW_DENIED_TOOLS = (
   'mcp__gitlab__approve_mr,mcp__gitlab__merge_mr,mcp__gitlab__ship_mr,' +

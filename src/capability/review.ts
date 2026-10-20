@@ -1,7 +1,8 @@
 // Port of Ciel's MR review (ciel/actions.go) onto the review profile.
+import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import { expandHome } from '../config/load.js';
 import type { Capability as CapabilityConfig } from '../config/schema.js';
-import { REVIEW_MCP_SERVERS } from '../fence/constants.js';
+import { REVIEW_JIRA_ALIAS, REVIEW_JIRA_SERVER, REVIEW_MCP_SERVERS } from '../fence/constants.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions } from '../fence/profiles.js';
 import { failedReply, firstLine, replyHTML, reviewApprovedReply, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../render/html.js';
@@ -102,6 +103,15 @@ export function parseReviewOutput(result: RunResult): ReviewResult {
   return { posted: false, reason, ...reviewStatus(text, false, reason) };
 }
 
+// gitlab and kb from ~/.claude.json, plus Jira when audee's mcp_servers defines it, under the connector's name.
+function reviewMcpServers(ctx: CapabilityContext): Record<string, McpServerConfig> {
+  const servers = loadMcpServers(REVIEW_MCP_SERVERS, ctx.secrets, ctx.userConfigPath);
+  const own = ctx.cfg.mcp_servers[REVIEW_JIRA_SERVER];
+  if (own === undefined) return servers;
+  const jira = loadMcpServers([REVIEW_JIRA_SERVER], ctx.secrets, ctx.userConfigPath, { [REVIEW_JIRA_SERVER]: own })[REVIEW_JIRA_SERVER];
+  return jira === undefined ? servers : { ...servers, [REVIEW_JIRA_ALIAS]: jira };
+}
+
 // Opens glab-mcp for one step and always closes it. Any failure yields undefined, which never approves.
 async function withGitLab<T>(ctx: CapabilityContext, fn: (gl: GitLabMr) => Promise<T>): Promise<T | undefined> {
   let gl: GitLabMr | undefined;
@@ -130,7 +140,7 @@ export const review: Capability = async (ctx) => {
   try {
     options = buildOptions({
       profile: 'review', cwd: expandHome(cap.workdir ?? '~/.claude/kb'),
-      mcpServers: loadMcpServers(REVIEW_MCP_SERVERS, ctx.secrets, ctx.userConfigPath),
+      mcpServers: reviewMcpServers(ctx),
       model: cap.model, ...(cap.budget_usd !== undefined ? { budgetUsd: cap.budget_usd } : {}), seatbelt: cap.seatbelt,
     });
   } catch (e) {

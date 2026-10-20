@@ -213,6 +213,26 @@ capabilities:
     expect(() => loadConfig(bad)).toThrow('routes[0].match');
   });
 
+  it('gives the review session Jira under the connector name, read-only', async () => {
+    const atlassian = { type: 'http', url: 'https://mcp.atlassian.com/v1/mcp/preview', headers: { Authorization: 'Basic ${ATL}' } };
+    const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'), { mcpServers: { atlassian }, keychainEnv: { ATL: 'audee-atlassian' } });
+    ctx.secrets = { ATL: 'abc' };
+    await review(ctx);
+    const options = inputs[0]?.options;
+    expect(Object.keys(options?.mcpServers ?? {}).sort()).toEqual(['claude_ai_Atlassian', 'gitlab', 'kb']);
+    expect((options?.mcpServers?.['claude_ai_Atlassian'] as { headers?: Record<string, string> }).headers?.['Authorization']).toBe('Basic abc');
+    const hook = options?.hooks?.PreToolUse?.[0]?.hooks[0];
+    if (hook === undefined) throw new Error('no PreToolUse gate');
+    const decide = async (tool: string) => JSON.stringify(await hook({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, tool_use_id: 't', session_id: 's', transcript_path: '', cwd: '' } as never, 't', { signal: new AbortController().signal }));
+    expect(await decide('mcp__claude_ai_Atlassian__getJiraIssue')).not.toContain('deny');
+    for (const unlisted of ['mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql', 'mcp__claude_ai_Atlassian__someFutureWriteTool']) {
+      expect(await decide(unlisted), unlisted).toContain('"permissionDecision":"deny"');
+    }
+    for (const write of ['mcp__claude_ai_Atlassian__editJiraIssue', 'mcp__claude_ai_Atlassian__addOrEditJiraIssueComment', 'mcp__claude_ai_Atlassian__createConfluencePage']) {
+      expect(options?.disallowedTools, write).toContain(write);
+    }
+  });
+
   it('TestReviewUsesReviewProfile', async () => {
     const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'));
     await review(ctx);

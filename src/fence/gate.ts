@@ -1,7 +1,8 @@
 import type { HookCallback, HookCallbackMatcher } from '@anthropic-ai/claude-agent-sdk';
 import { STRUCTURED_OUTPUT_TOOL } from './constants.js';
 
-export type GateSpec = { allowTools?: string[]; denyTools: string[]; exactBash?: string[] };
+// serverAllow: for a server entry (mcp__name), the only tools of that server that may run.
+export type GateSpec = { allowTools?: string[]; denyTools: string[]; exactBash?: string[]; serverAllow?: Record<string, string[]> };
 export type GateDecision = { deny: boolean; reason?: string };
 
 const SEGMENT_SPLIT = /&&|\|\||;|\||\n|\$\(|`|\(|\)|\{|\}/;
@@ -35,6 +36,9 @@ export function gateDecision(spec: GateSpec, toolName: string, toolInput: unknow
   for (const entry of spec.denyTools) {
     if (entry === toolName) return { deny: true, reason: `tool ${toolName} is denied` };
     if (isServerEntry(entry) && toolName.startsWith(entry + '__')) return { deny: true, reason: `server ${entry} is denied` };
+  }
+  for (const [server, allowed] of Object.entries(spec.serverAllow ?? {})) {
+    if (toolName.startsWith(server + '__') && !allowed.includes(toolName)) return { deny: true, reason: `tool ${toolName} is not a read tool of ${server}` };
   }
   if (toolName === 'Bash') {
     const input = toolInput as { command?: unknown } | null;

@@ -14,12 +14,15 @@ function injectSecrets(def: Record<string, unknown>, secrets: Record<string, str
     out['env'] = Object.fromEntries(Object.entries(out['env']).map(([k, v]) => [k, typeof v === 'string' ? substitute(v, secrets) : v]));
   }
   if (Array.isArray(out['args'])) out['args'] = out['args'].map((a: unknown) => (typeof a === 'string' ? substitute(a, secrets) : a));
+  if (isPlainObject(out['headers'])) {
+    out['headers'] = Object.fromEntries(Object.entries(out['headers']).map(([k, v]) => [k, typeof v === 'string' ? substitute(v, secrets) : v]));
+  }
   return out;
 }
 
-// Picks the named servers from the user's Claude Code config and fills ${VAR} in their env and args from
-// secrets. Never log the file, a server definition or secrets: they hold tokens.
-export function loadMcpServers(names: string[], secrets: Record<string, string>, userConfigPath = expandHome('~/.claude.json')): Record<string, McpServerConfig> {
+// Picks the named servers from audee's own mcp_servers, else the user's Claude Code config, and fills ${VAR} in
+// their env, args and headers from secrets. Never log the file, a server definition or secrets: they hold tokens.
+export function loadMcpServers(names: string[], secrets: Record<string, string>, userConfigPath = expandHome('~/.claude.json'), own: Record<string, Record<string, unknown>> = {}): Record<string, McpServerConfig> {
   let user: unknown;
   try {
     user = JSON.parse(readFileSync(userConfigPath, 'utf8'));
@@ -30,7 +33,7 @@ export function loadMcpServers(names: string[], secrets: Record<string, string>,
   const defined = isPlainObject(user) && isPlainObject(user['mcpServers']) ? user['mcpServers'] : {};
   const servers: Record<string, McpServerConfig> = {};
   for (const name of names) {
-    const def = defined[name];
+    const def = own[name] ?? defined[name];
     if (!isPlainObject(def)) throw new Error(`MCP server "${name}" is not defined at user scope`);
     servers[name] = injectSecrets(def, secrets) as McpServerConfig;
   }
