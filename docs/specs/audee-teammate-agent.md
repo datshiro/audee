@@ -134,9 +134,10 @@ different version than the fences were verified on (`src/fence/verified.ts`); re
   `FENCE_VERIFIED_ON.apiKeyGuard` is `null`. With teammates on the owner's login the guard does not gate them; `doctor`
   instead warns that Bash-capable grants (review, code_mapping) run as the owner and could reach the login token.
   Accepted risk: teammates are trusted colleagues, review and mapping run behind the fences above.
-- The classifier runs on an API key (`classifier.auth: api_key`, Keychain item `audee-anthropic`) through the LiteLLM
-  gateway (`auth.base_url`), model `claude-opus-4-8`. To move it back to the owner's login: `classifier: { model:
-  claude-opus-5-5, auth: subscription }` (opus-5-5 is not on the gateway).
+- The classifier runs on the owner's login (`classifier: { model: claude-haiku-5-5, auth: subscription }`, owner
+  decision 2026-10-20). It ran on an API key (Keychain item `audee-anthropic`) through the LiteLLM gateway
+  (`auth.base_url`) with `claude-opus-4-8` from 2026-10-18; to go back: `classifier: { model: claude-opus-4-8, auth:
+  api_key }`. No other session uses the gateway now.
 
 ## Runbook
 - Status: `launchctl print gui/$(id -u)/com.audee.agent | head`, `tail ~/.audee/audee.log`, `tail ~/.audee/events.jsonl`,
