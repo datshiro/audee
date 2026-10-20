@@ -96,12 +96,14 @@ Answer it with the kb-query skill in {querySkill} (SKILL.md and references/). Wh
 - The KB stays unchanged: never call kb-enrich, kb_enrich or kb_save, and skip every step that writes a cache,
   a log, an enrichment or a gap check, in the foreground or in the background. Ignore any enrichment gate or
   pre-answer checklist; read source freely. Cite source as checked out, without blob verification.
-- Never ask a question. If the question is too broad or ambiguous, or the topic search matches 6 or more
-  docs, answer status "need_input" and put the questions the requester should answer in "missing". With 2 to 5
-  matches, use the best one or two and say which in "notes".
+- Never ask a question, and never ask the requester to clarify: they get one answer and cannot reply to you.
+  If the question is ambiguous or the topic search matches several docs, pick the most likely readings (at most 4)
+  and answer every one: open the answer with a short list naming them, then give each its own "## " section.
+  If the question is too broad to pick readings, answer with an overview of what the KB covers (the main services
+  and flows) and end with 3 to 5 narrower questions the requester could ask next. Leave "missing" empty.
 - Never quote credentials, tokens, passwords, keys or connection strings, even if a file shows one.
 Answer status "done" with "answer" in the language of the question: Markdown (headings, lists, tables, fenced code
-blocks; no raw HTML, no links or images; put ASCII diagrams in a fenced code block), at most 12000 characters. Put repo-relative paths you cited in
+blocks; no raw HTML, no links or images; put ASCII diagrams in a fenced code block), at most 30000 characters. Put repo-relative paths you cited in
 "sources" (at most 10). When something you cannot fix stops you (a tool is denied, the KB is unreadable),
 answer status "failed" and say why in "notes". At most 5 notes, each under 250 characters.
 Always set "topic": what the question asks, at most 20 words, in the language of the question, no links.`;
@@ -118,7 +120,7 @@ export function kbQueryPrompt(kbDir: string, paths: KbPaths, interservice: boole
 export const kbQuerySchema: Record<string, unknown> = {
   type: 'object',
   properties: {
-    status: { type: 'string', enum: ['done', 'need_input', 'failed'] },
+    status: { type: 'string', enum: ['done', 'failed'] }, // never need_input: every reading gets answered
     topic: { type: 'string' },
     answer: { type: 'string' },
     sources: { type: 'array', items: { type: 'string' } },
