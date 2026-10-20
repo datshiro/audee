@@ -71,12 +71,14 @@ owner.
 Validation: unit tests only; live check pending.
 
 Ticket check: review sessions get no claude.ai connectors, so the Jira ticket was never read ("ticket not checked"
-on every review). When `mcp_servers.atlassian` is defined in audee's config (Atlassian's remote MCP server
-`https://mcp.atlassian.com/v1/mcp` with a personal API token, sent as `Authorization: Basic ${ATLASSIAN_BASIC}` from
+on every review). When `mcp_servers.atlassian` is defined in audee's config (Atlassian's remote MCP server at the
+preview endpoint `https://mcp.atlassian.com/v1/mcp/preview` with a scoped API token holding `read:jira:agent-interface`;
+the GA endpoint `/v1/mcp` listed no Jira tools for that token on 2026-10-20, sent as `Authorization: Basic ${ATLASSIAN_BASIC}` from
 keychain_env), audee hands it to review sessions under the connector's name `claude_ai_Atlassian`, so the
 wf-apo-mr-review workflow's tool names match without changing the shared skill. The fence lets only
 `getAccessibleAtlassianResources` and `getJiraIssue` run on that server; every other tool, including any added later,
-is denied by the gate, and the known write tools are also disallowed. The token acts with its owner's Jira rights.
+is denied by the gate, and the known write tools are also disallowed. The token acts with its owner's Jira rights, so
+give it read scopes only. Verified 2026-10-20: the preview endpoint read APO-7110 with such a token.
 
 ## Dashboard
 `audee serve` also serves an admin web UI and API on `127.0.0.1:<admin.port>` (default 7420); `audee dashboard` prints the

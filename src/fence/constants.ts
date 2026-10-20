@@ -10,7 +10,7 @@ export const REVIEW_JIRA_SERVER = 'atlassian';
 export const REVIEW_JIRA_ALIAS = 'claude_ai_Atlassian';
 export const REVIEW_JIRA_READ_TOOLS = ['getAccessibleAtlassianResources', 'getJiraIssue'].map((t) => `mcp__${REVIEW_JIRA_ALIAS}__${t}`);
 export const REVIEW_JIRA_WRITE_TOOLS = [
-  'createJiraIssue', 'editJiraIssue', 'transitionJiraIssue', 'addCommentToJiraIssue', 'addWorklogToJiraIssue', 'createIssueLink',
+  'createJiraIssue', 'editJiraIssue', 'transitionJiraIssue', 'addCommentToJiraIssue', 'addOrEditJiraIssueComment', 'addWorklogToJiraIssue', 'createIssueLink',
   'createConfluencePage', 'updateConfluencePage', 'createConfluenceFooterComment', 'createConfluenceInlineComment',
 ].map((t) => `mcp__${REVIEW_JIRA_ALIAS}__${t}`);
 
