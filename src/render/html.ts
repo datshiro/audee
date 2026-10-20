@@ -14,14 +14,28 @@ export function preEscape(s: string): string {
 }
 
 // ciel/actions.go:328-340
-export const reviewedReply = '<b>Đã review xong MR này.</b> Bạn xem các comment trên MR để tự kiểm tra nhé.';
 export const queuedReply = '👀 <b>Mình đang review.</b> Có gì mình sẽ báo nhé.';
 export const failedReply = '❌ <b>Review MR này bị lỗi.</b> Mình sẽ xem lại.';
 // The reason is model text going to the chat: hidden if it looks like a secret, links defanged, length capped.
-export function reviewNothingReply(reason: string, knownSecrets: string[]): string {
-  const head = '<b>Đã review MR này nhưng không post comment nào.</b>';
-  if (leaksSecret([reason], knownSecrets)) return head;
-  return `${head} Lý do: ${escapeHTML(runeSlice(defang(reason), maxNoteChars))}`;
+function safeReason(reason: string, knownSecrets: string[]): string {
+  if (reason.trim() === '' || leaksSecret([reason], knownSecrets)) return '';
+  return escapeHTML(runeSlice(defang(reason), maxNoteChars));
+}
+function withReason(head: string, reason: string, knownSecrets: string[]): string {
+  const safe = safeReason(reason, knownSecrets);
+  return safe === '' ? head : `${head}: ${safe}`;
+}
+export function reviewApprovedReply(reason: string, knownSecrets: string[]): string {
+  return withReason('✅ <b>MR sẵn sàng merge</b>, mình đã approve', reason, knownSecrets);
+}
+export function reviewReadyWaitReply(why: string, knownSecrets: string[]): string {
+  return withReason('✅ <b>MR sẵn sàng merge</b>, chờ Đạt approve', why, knownSecrets);
+}
+export function reviewBlockedReply(reason: string, knownSecrets: string[], posted: boolean): string {
+  return withReason('⛔ <b>MR chưa merge được</b>', reason, knownSecrets) + (posted ? '. Xem comment trên MR.' : '.');
+}
+export function reviewUnreviewableReply(reason: string, knownSecrets: string[]): string {
+  return withReason('⚠️ <b>Chưa đánh giá được MR</b>', reason, knownSecrets);
 }
 export const recentReply = '🔁 <b>Đã được nhờ review trong 30 phút qua</b>, nên mình không review lại.';
 export const mappingQueuedReply = '👀 <b>Đang làm code mapping.</b> Xong mình sẽ gửi nhé.';

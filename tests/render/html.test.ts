@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clip, deniedText, escapeHTML, fitAnswer, kbAnswerFileName, kbAnswerPage, kbQueryReplyHTML, kbTopicLine, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewedReply, reviewNothingReply } from '../../src/render/html.js';
+import { clip, deniedText, escapeHTML, fitAnswer, kbAnswerFileName, kbAnswerPage, kbQueryReplyHTML, kbTopicLine, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../../src/render/html.js';
 import { runeLength } from '../../src/render/text.js';
 
 const count = (s: string, needle: string): number => s.split(needle).length - 1;
@@ -21,18 +21,21 @@ describe('reply html', () => {
     expect(kbAnswerFileName('1792420164339', new Date('2026-10-19T14:31:05.123Z'))).toBe('kb-answer-1792420164339-20261019-143105.html');
   });
 
-  it('review nothing reply escapes, defangs, caps and hides secrets', () => {
-    expect(reviewNothingReply('targets <main> see https://evil.example', [])).toContain('Lý do: targets &lt;main&gt; see hxxps://evil.example');
-    expect(runeLength(reviewNothingReply('x'.repeat(1000), []))).toBeLessThan(400);
-    const hidden = reviewNothingReply('token=abcdefgh12345678', []);
-    expect(hidden).not.toContain('Lý do');
-    expect(reviewNothingReply('uses s3cr3t-value-123', ['s3cr3t-value-123'])).not.toContain('s3cr3t');
+  it('review status replies escape, defang, cap and hide secrets', () => {
+    expect(reviewUnreviewableReply('targets <main> see https://evil.example', [])).toBe('⚠️ <b>Chưa đánh giá được MR</b>: targets &lt;main&gt; see hxxps://evil.example');
+    expect(runeLength(reviewUnreviewableReply('x'.repeat(1000), []))).toBeLessThan(400);
+    expect(reviewUnreviewableReply('token=abcdefgh12345678', [])).toBe('⚠️ <b>Chưa đánh giá được MR</b>');
+    expect(reviewBlockedReply('', [], true)).toBe('⛔ <b>MR chưa merge được</b>. Xem comment trên MR.');
+    expect(reviewReadyWaitReply('uses s3cr3t-value-123', ['s3cr3t-value-123'])).not.toContain('s3cr3t');
+    expect(reviewBlockedReply('<script>', [], true)).toBe('⛔ <b>MR chưa merge được</b>: &lt;script&gt;. Xem comment trên MR.');
+    expect(reviewBlockedReply('x', [], false)).not.toContain('Xem comment');
   });
 
   // ciel/ciel_test.go:134
   it('TestReviewedHTML', () => {
-    const got = replyHTML(reviewedReply, 'https://gitlab.example.com/g/p/-/merge_requests/5?a=1&b="2"');
-    const want = reviewedReply + '<br><a href="https://gitlab.example.com/g/p/-/merge_requests/5?a=1&amp;b=&#34;2&#34;">https://gitlab.example.com/g/p/-/merge_requests/5?a=1&amp;b=&#34;2&#34;</a>';
+    const head = reviewReadyWaitReply('review sạch', []);
+    const got = replyHTML(head, 'https://gitlab.example.com/g/p/-/merge_requests/5?a=1&b="2"');
+    const want = head + '<br><a href="https://gitlab.example.com/g/p/-/merge_requests/5?a=1&amp;b=&#34;2&#34;">https://gitlab.example.com/g/p/-/merge_requests/5?a=1&amp;b=&#34;2&#34;</a>';
     expect(got).toBe(want);
   });
 
