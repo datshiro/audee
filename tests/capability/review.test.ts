@@ -177,7 +177,7 @@ describe('review', () => {
   it('TestReviewPrompt', () => {
     for (const post of [true, false]) {
       const got = reviewPrompt('/apo-review-mr {url}', MR, post);
-      for (const want of ['/apo-review-mr ' + MR + '\n', 'ToolSearch\nwith "select:mcp__gitlab__list_mrs"', 'Never approve or merge the MR yourself', 'REVIEW_STATUS: ready: <reason>', 'same head commit already exists', '_Ticket <key> not checked (<reason>)._', 'REVIEW_POSTED: yes', 'REVIEW_POSTED: no: <short reason>']) {
+      for (const want of ['/apo-review-mr ' + MR + '\n', 'ToolSearch\nwith "select:mcp__gitlab__list_mrs"', 'Never approve or merge the MR yourself', 'REVIEW_STATUS: ready: <reason>', 'same head commit already exists', '_Ticket <key> not checked (<reason>)._', 'REVIEW_POSTED: yes', 'REVIEW_POSTED: no: <short reason>', 'do not schedule a wakeup', 'Read the report at its\nreport_path']) {
         expect(got, `post=${post}`).toContain(want);
       }
       const posts = got.includes('the answer is "Post review comments on the MR"');
