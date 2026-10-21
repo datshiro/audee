@@ -1,7 +1,7 @@
 ---
 title: audee teammate agent
 status: completed
-last_verified: 2026-10-20
+last_verified: 2026-10-21
 claude_code_version: 2.1.302
 ---
 # audee teammate agent
@@ -119,7 +119,7 @@ allow and deny lists (`src/fence/gate.ts`). Lists are in `src/fence/constants.ts
 | Profile | Used by | Tools | MCP | Notable denials |
 |---|---|---|---|---|
 | `classifier` | message triage | none needed | none | Bash, Edit, Write, Web, Agent, Workflow, gitlab |
-| `review` | review | Claude Code defaults, `permissionMode: auto`, user/project settings | gitlab, kb | approve/merge/ship/update/create MR, play/retry jobs, `git push`, env/ps/security, KB writes, `~/.claude.json`, `~/.ssh`, `~/.audee`, `sh -c`-style shells, `pgrep` |
+| `review` | review | Claude Code defaults, `permissionMode: auto`, user/project settings | gitlab, kb | approve/merge/ship/update/create MR, play/retry jobs, `git push`, env/ps/security, KB writes, `~/.claude.json`, `~/.ssh`, `~/.audee`, `sh -c`-style shells, `pgrep`, `ScheduleWakeup` |
 | `mapping` | code_mapping | Read, Glob, Grep, Edit, Write, Bash; `--restricted` | none loaded; the GDS data-contract tool is allowed | reads outside the folder; Bash only the exact probe commands; edits to the pinned skill |
 | `kb_read` | kb_query | Read, Glob, Grep, Agent; `--restricted` | kb (read-only tools) | KB writes, `kb_search`, Skill, secret-shaped files, wiki inbox/people, repo config/secret globs |
 | `mcp_read` | opt-in (Grafana) | none built in | configured server, listed read tools only | every write tool of that server |

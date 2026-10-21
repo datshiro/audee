@@ -83,6 +83,12 @@ describe('fence superset of Ciel', () => {
     expect(flagValues(argv, '--max-budget-usd')[0]).toBe('8');
     expect(flagValues(argv, '--permission-prompts')[0]).toBe('none');
     expect(flagValues(argv, '--disallowedTools')).toContain('Read(~/.claude.json)');
+    expect(flagValues(argv, '--disallowedTools')).toContain('ScheduleWakeup');
+  });
+  it('TestReviewGateDeniesScheduleWakeup', async () => {
+    const hook = buildOptions(INPUTS['review'] as ProfileInput).hooks?.PreToolUse?.[0]?.hooks[0];
+    const out = await hook?.({ hook_event_name: 'PreToolUse', tool_name: 'ScheduleWakeup', tool_input: {} } as never, undefined, { signal: new AbortController().signal });
+    expect(JSON.stringify(out)).toContain('"permissionDecision":"deny"');
   });
   it('TestMcpReadArgs', async () => {
     const tools = ['search_dashboards', 'get_dashboard_by_uid', 'query_prometheus', 'query_loki_logs'];

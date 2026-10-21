@@ -80,6 +80,8 @@ export const REVIEW_EXTRA_DENIED = [
   'Bash(sh -c *)', 'Bash(bash -c *)', 'Bash(zsh -c *)', 'Bash(eval *)', 'Bash(exec *)', 'Bash(export *)', 'Bash(set)', 'Bash(declare *)',
   // MCP tokens are substituted into --mcp-config, so they sit on the claude process's argv.
   'Bash(pgrep *)', 'Bash(/usr/bin/pgrep *)',
+  // A wakeup outlives the background workflow's completion notice and resumes the session too late.
+  'ScheduleWakeup',
 ];
 
 export const STRUCTURED_OUTPUT_TOOL = 'StructuredOutput';

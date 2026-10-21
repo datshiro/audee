@@ -18,6 +18,10 @@ You are running unattended from a chat watcher; nobody can answer questions.
 MCP servers may still be starting when this session begins. Before starting the review, run ToolSearch
 with "select:mcp__gitlab__list_mrs". If it is not found, run \`sleep 5\` and search again, up to 12 times.
 Start the review only once it is found; if it never appears, review anyway and say that GitLab was unavailable.
+If the review runs a background workflow, wait for its completion notice; do not schedule a wakeup or poll for it.
+When it returns, judge the MR from its result. If you need more than the result shows, Read the report at its
+report_path; do not Read files outside your working directory. When its status is done, a refused read does not
+make the MR unreviewable.
 `;
 
 // actions.go:28-32
