@@ -17,7 +17,7 @@ export class CancelledError extends Error {
 }
 export type Runner = (job: Job, signal: AbortSignal) => Promise<RunOutcome>;
 
-export const reviewCooldownMs = 30 * 60 * 1000; // ciel/actions.go:18 reviewCooldown
+export const reviewCooldownMs = 10 * 60 * 1000; // ciel/actions.go:18 reviewCooldown
 const defaultMaxInflight = 2;
 
 type Lane = { name: string; concurrency: number; buffer: number; queued: Job[]; running: number };

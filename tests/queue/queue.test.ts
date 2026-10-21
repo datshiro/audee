@@ -135,7 +135,7 @@ describe('queue', () => {
     expect(q.enqueue(job('review', '1'))).toBe('duplicate');
   });
 
-  it('TestPerMRCooldown30m', async () => {
+  it('TestPerMRCooldown10m', async () => {
     const cfg = testConfig({ maxInflight: 10 });
     const state = loadState(cfg.data_dir);
     let now = new Date('2026-10-17T10:00:00Z');
@@ -147,13 +147,13 @@ describe('queue', () => {
     fake.releaseAll();
     await tick();
     expect(state.pendingJobs()).toEqual([]);
-    now = new Date('2026-10-17T10:29:00Z');
+    now = new Date('2026-10-17T10:09:00Z');
     expect(q.enqueue(job('review', '1'))).toBe('cooldown');
     expect(q.enqueue(job('review', '1'), { ignoreCooldown: true })).toBe('queued');
     await tick();
     fake.releaseAll();
     await tick();
-    now = new Date('2026-10-17T11:00:00Z');
+    now = new Date('2026-10-17T10:19:00Z');
     expect(q.enqueue(job('review', '1'))).toBe('queued');
     await q.stop();
   });
