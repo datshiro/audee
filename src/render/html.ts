@@ -37,7 +37,7 @@ export function reviewBlockedReply(reason: string, knownSecrets: string[], poste
 export function reviewUnreviewableReply(reason: string, knownSecrets: string[]): string {
   return withReason('⚠️ <b>Chưa đánh giá được MR</b>', reason, knownSecrets);
 }
-export const recentReply = '🔁 <b>Đã được nhờ review trong 30 phút qua</b>, nên mình không review lại.';
+export const recentReply = '🔁 <b>Đã được nhờ review trong 10 phút qua</b>, nên mình không review lại.';
 export const mappingQueuedReply = '👀 <b>Đang làm code mapping.</b> Xong mình sẽ gửi nhé.';
 export const mappingFailedReply = '❌ <b>Code mapping bị lỗi.</b> Mình sẽ xem lại.';
 
