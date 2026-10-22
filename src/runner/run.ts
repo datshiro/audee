@@ -1,5 +1,5 @@
 import { query, type Options, type SDKMessage, type SDKResultMessage, type Settings } from '@anthropic-ai/claude-agent-sdk';
-import { apiKeyHelperCommand, sessionEnv } from './env.js';
+import { apiKeyHelperCommand, CLAUDE_HACK, sessionEnv } from './env.js';
 
 export type RunInput = {
   options: Options;
@@ -90,7 +90,8 @@ export async function runAgent(input: RunInput): Promise<RunResult> {
   try {
     const gateway = input.auth === 'api_key' && input.baseUrl !== undefined ? { ANTHROPIC_BASE_URL: input.baseUrl } : {};
     const env = { ...sessionEnv({ tmpdir: input.tmpdir }), ...gateway, ...(input.extraEnv ?? {}) };
-    for await (const message of query({ prompt: input.prompt, options: { ...options, env, abortController: controller } })) {
+    const executable = input.auth === 'subscription' ? { pathToClaudeCodeExecutable: CLAUDE_HACK } : {};
+    for await (const message of query({ prompt: input.prompt, options: { ...executable, ...options, env, abortController: controller } })) {
       collectToolUses(message, toolUses);
       if (message.type === 'result') result = message;
     }

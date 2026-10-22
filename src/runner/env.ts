@@ -14,6 +14,7 @@ export function sessionEnv(opts: { tmpdir?: string }, base: NodeJS.ProcessEnv = 
 }
 
 export const API_KEY_HELPER = fileURLToPath(new URL('../../deploy/api-key-helper.sh', import.meta.url));
+export const CLAUDE_HACK = fileURLToPath(new URL('../../deploy/claude-hack.sh', import.meta.url));
 
 // Claude Code runs the helper through a shell, so the item name must not carry shell syntax.
 export function apiKeyHelperCommand(item: string): string {
