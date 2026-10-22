@@ -44,6 +44,29 @@ The chat notice also carries `Về: <topic>`, a summary of the question of at mo
 its `topic` field. When the topic is missing or too long, the notice falls back to the question clipped to 20 words.
 The topic passes the same secret check as the answer.
 
+### Product answers (`default_mode`)
+`capabilities.kb_query.default_mode` picks the answer style when the question has no flag: `tech` (the default, the
+Markdown page above, byte-for-byte today's schema and prompt) or `product`. audee decides the mode itself: `--tech`,
+`--full` or `--code-flow` (any dash a chat client turns `--` into) always mean tech, and `--tech` is stripped from
+`question.txt`. Rollback for product answers is setting `default_mode: tech`.
+
+A product answer is written for a product manager. The session fills contract kb-answer-v1 (a pinned copy lives in
+`src/capability/kb-answer-schema.ts`; the KB copy is `kb-mcp/internal/answer/schema.json`) and never writes HTML.
+The page has a summary and purpose, the player/operator journey, rules and edge cases, configurable settings, and
+steps or decision diagrams as inline SVG. `<kb_dir>/kb-mcp/kb-mcp render-answer` builds it, run from the job folder
+with only `PATH`, `LANG` and `TMPDIR`. audee keeps its own guarantees whatever that binary does:
+- the result must match the pinned contract and say `mode: product`, with at least one reading;
+- a recorded reason must cite a wiki doc under `product/`, `specs/`, `roadmap/` or `explanatory/` that exists inside
+  the wiki, otherwise the page says the reason is not recorded;
+- every string is checked for secrets before rendering, together with the pairs the page shows apart (a setting and
+  its default, an actor and its step, an edge and its nodes);
+- the page may only use the renderer's elements and attributes, the exact CSP `default-src 'none'; style-src
+  'unsafe-inline'`, and a stylesheet without `url(` or `@import`;
+- the page's visible text, SVG labels included and every entity decoded, gets the secret check again.
+Event and owner reasons are fixed strings (`renderer failed`, `answer mode mismatch`, …); renderer output stays in
+the job folder. `audee doctor` checks `render-answer` and that the KB contract equals the pinned copy, only when
+`default_mode` is `product`.
+
 ## Review status and auto-approve
 The review session ends with `REVIEW_STATUS: ready|blocked|unreviewable: <reason>` on the line right before the final
 `REVIEW_POSTED` line. A status anywhere else, an unknown status, or `ready` with nothing posted counts as

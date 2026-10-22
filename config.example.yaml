@@ -61,7 +61,8 @@ capabilities:
     timeout: 15m
     kb_dir: ~/.claude/kb
     per_person_limit: 1
-  # grafana:                   # opt-in read-only MCP capability, triggered by the word grafana_query
+    default_mode: tech           # product: a designed HTML page for product readers (needs kb-mcp render-answer); --tech always gives the engineer answer
+  # grafana:                  # opt-in read-only MCP capability, triggered by the word grafana_query
   #   profile: mcp_read
   #   lane: kb
   #   model: claude-opus-5-5

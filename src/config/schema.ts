@@ -43,6 +43,7 @@ const Capability = z.strictObject({
   trigger: z.string().optional(),
   mcp: z.array(z.string()).optional(),
   tools: z.array(z.string()).optional(),
+  default_mode: z.enum(['tech', 'product']).optional(), // kb_query: the answer style when the question has no --tech
 });
 
 // Ciel's per-capability defaults (config.go loadConfig), keyed by capability name.

@@ -54,6 +54,7 @@ const RULES: Rule[] = [
       } else if (cap.mcp !== undefined || cap.tools !== undefined) {
         problems.push(`capabilities.${name}: mcp and tools are only allowed on profile mcp_read`);
       }
+      if (cap.default_mode !== undefined && cap.profile !== 'kb_read') problems.push(`capabilities.${name}: default_mode is only allowed on profile kb_read`);
     }
   },
   function lanes(cfg, problems) {

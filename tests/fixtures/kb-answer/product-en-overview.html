@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<title>KB answer</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f7fb;--card:#fff;--fg:#1f2328;--muted:#5b6472;--line:#e3e7ee;--accent:#4f46e5;--accent-soft:#eef2ff;--ok:#047857;--ok-soft:#ecfdf5;--warn:#b45309;--warn-soft:#fffbeb;--info:#0369a1;--info-soft:#f0f9ff;--node:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--fg:#e6edf3;--muted:#9198a1;--line:#30363d;--accent:#818cf8;--accent-soft:#1e1b4b;--ok:#34d399;--ok-soft:#052e1f;--warn:#fbbf24;--warn-soft:#2a1d05;--info:#38bdf8;--info-soft:#082f49;--node:#0d1117}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:900px;margin:0 auto;padding:24px 16px 48px}
+.hero{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-radius:14px;padding:22px 24px;margin-bottom:18px}
+.hero small{opacity:.85;text-transform:uppercase;letter-spacing:.06em;font-size:12px}
+.hero h1{margin:4px 0 10px;font-size:26px;line-height:1.3}
+.hero blockquote{margin:0;background:rgba(255,255,255,.15);border-radius:8px;padding:8px 12px;font-size:14px;white-space:pre-wrap}
+.hero .disclaimer{margin:10px 0 0;font-size:13px;opacity:.85}
+h2.reading{font-size:20px;margin:28px 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin-bottom:16px}
+.card h3{margin:0 0 10px;font-size:19px;display:flex;align-items:center;gap:8px}
+.card h3 .n{background:var(--accent-soft);color:var(--accent);border-radius:50%;width:28px;height:28px;display:inline-grid;place-items:center;font-size:14px;flex:none}
+.callout{border-radius:10px;padding:12px 14px;margin:12px 0 0;border-left:4px solid}
+.callout p{margin:2px 0}
+.callout small{color:var(--muted)}
+.callout.missing{background:var(--warn-soft);border-color:var(--warn)}
+.callout.missing strong{color:var(--warn)}
+.callout.why{background:var(--ok-soft);border-color:var(--ok)}
+.callout.why strong{color:var(--ok)}
+.steps{list-style:none;padding:0;margin:0;counter-reset:s}
+.steps li{position:relative;padding:4px 0 14px 44px;border-left:2px solid var(--line);margin-left:15px}
+.steps li:last-child{border-color:transparent}
+.steps li::before{counter-increment:s;content:counter(s);position:absolute;left:-16px;top:0;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:600;font-size:14px}
+.steps p{margin:2px 0 0}
+.who{font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
+.badge{display:inline-block;border-radius:999px;padding:0 8px;font-size:12px;font-weight:600;vertical-align:middle}
+.badge.kb{background:var(--info-soft);color:var(--info)}
+.badge.unverified{background:var(--warn-soft);color:var(--warn)}
+.rules{list-style:none;padding:0;margin:0}
+.rules li{display:grid;grid-template-columns:28px 1fr;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.rules li:last-child{border:0}
+table{width:100%;border-collapse:collapse;font-size:15px;display:block;overflow-x:auto}
+th{text-align:left;color:var(--muted);font-weight:600;border-bottom:2px solid var(--line);padding:8px}
+td{border-bottom:1px solid var(--line);padding:8px;vertical-align:top}
+.tag{display:inline-block;border-radius:999px;padding:1px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+.tag.portal{background:var(--ok-soft);color:var(--ok)}
+.tag.engineering{background:var(--warn-soft);color:var(--warn)}
+.tag.unknown{background:var(--line);color:var(--muted)}
+.figure{margin:14px 0 4px}
+svg{width:100%;height:auto;display:block}
+svg text{fill:var(--fg);font:13px -apple-system,"Segoe UI",sans-serif;text-anchor:middle}
+svg .box{fill:var(--node);stroke:var(--accent);stroke-width:1.5}
+svg .box.question{fill:var(--accent-soft)}
+svg .edge{stroke:var(--muted);stroke-width:1.5;fill:none}
+svg .head{fill:var(--muted)}
+svg .edge-label{fill:var(--muted);font-size:12px}
+.caption{color:var(--muted);font-size:14px;margin:6px 0 0;text-align:center}
+.follow{margin:0;padding-left:20px}
+footer{color:var(--muted);font-size:13px;margin-top:20px;text-align:center}
+footer p{margin:4px 0}
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+<small>KB answer · Product view</small>
+<h1>Campaigns at a glance</h1>
+<blockquote>What can campaigns do?</blockquote>
+<p class="disclaimer">Automatic answer; check it before relying on it.</p>
+</header>
+
+<h2 class="reading">1. Email campaigns</h2>
+<section class="card">
+<h3><span class="n">1</span>Summary &amp; purpose</h3>
+<p>Operators send scheduled emails to a segment.</p>
+<div class="callout missing"><strong>Why it works this way</strong><p>The reason isn&#39;t recorded in the KB.</p></div>
+</section>
+
+<section class="card">
+<h3><span class="n">3</span>Rules, limits &amp; edge cases</h3>
+<ul class="rules">
+<li><span class="icon" aria-hidden="true">🔢</span><div>One send per player per campaign. <span class="badge kb">Per the KB</span></div></li>
+</ul>
+</section>
+
+
+<h2 class="reading">2. Push campaigns</h2>
+<section class="card">
+<h3><span class="n">1</span>Summary &amp; purpose</h3>
+<p>Operators push a notification to devices.</p>
+<div class="callout missing"><strong>Why it works this way</strong><p>The reason isn&#39;t recorded in the KB.</p></div>
+</section>
+
+
+<section class="card">
+<h3><span class="n">4</span>What you can configure</h3>
+<table><thead><tr><th>Setting</th><th>Where</th><th>Default</th></tr></thead><tbody>
+<tr><td>Send time</td><td><span class="tag unknown">Unknown</span></td><td></td></tr>
+</tbody></table>
+</section>
+
+<section class="card">
+<h3>You could ask next</h3>
+<ul class="follow"><li>How does campaign approval work?</li><li>How do push campaigns reach a device?</li><li>What stops an email campaign?</li></ul>
+</section>
+<footer>
+<p>Some content was shortened.</p>
+<p>Engineers: add --tech for the service flow and source citations.</p>
+
+</footer>
+</main>
+</body>
+</html>

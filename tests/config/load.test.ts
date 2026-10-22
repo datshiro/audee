@@ -27,6 +27,7 @@ describe('config', () => {
   it('TestConfigRejectsBadPrincipalPrefix', () => expect(rejection('bad-prefix.yaml')).toContain('entra:x'));
   it('TestConfigRejectsDuplicateIds', () => expect(rejection('duplicate-ids.yaml')).toContain('appears twice'));
   it('TestConfigRejectsUnknownCapabilityGrant', () => expect(rejection('unknown-grant.yaml')).toContain('not a configured capability'));
+  it('rejects default_mode outside kb_read', () => expect(rejection('default-mode-wrong-profile.yaml')).toContain('default_mode is only allowed on profile kb_read'));
   it('TestConfigAllowsSubscriptionForTeammates', () => expect(loadConfig(fixture('teammates-subscription.yaml')).auth.teammates).toBe('subscription'));
   it('TestConfigRejectsMcpOnFixedProfile', () => expect(rejection('mcp-on-fixed.yaml')).toContain('only allowed on profile mcp_read'));
   it('TestConfigRejectsBadRegex', () => expect(rejection('bad-regex.yaml')).toContain('mr_url_pattern'));
