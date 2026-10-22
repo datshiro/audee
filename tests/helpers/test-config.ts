@@ -15,6 +15,7 @@ export type TestConfigOptions = {
   peopleIds?: string[]; // extra people named after their Teams id, teams:<id>, can ['*']
   grants?: Record<string, string[]>; // overrides `can` for a person named by id
   kbDir?: string;
+  kbDefaultMode?: 'tech' | 'product';
   mcpRead?: { name: string; trigger: string; mcp: string[]; tools: string[] };
   review?: { prompt?: string; postFindings?: boolean; workdir?: string; routes?: Array<{ match: string; prompt: string }>; seatbelt?: boolean; autoApprove?: boolean };
   gitlab?: Record<string, string>; // person id (owner, p1, ...) -> GitLab username
@@ -78,7 +79,7 @@ channels:
 capabilities:
   review: { ${review} }
   code_mapping: { ${mapping} }
-  kb_query: { profile: kb_read, lane: kb${o.kbPerPersonLimit !== undefined ? `, per_person_limit: ${o.kbPerPersonLimit}` : ''}${o.kbDir !== undefined ? `, kb_dir: ${o.kbDir}` : ''} }
+  kb_query: { profile: kb_read, lane: kb${o.kbPerPersonLimit !== undefined ? `, per_person_limit: ${o.kbPerPersonLimit}` : ''}${o.kbDir !== undefined ? `, kb_dir: ${o.kbDir}` : ''}${o.kbDefaultMode !== undefined ? `, default_mode: ${o.kbDefaultMode}` : ''} }
 ${mcpRead}keychain_env: ${JSON.stringify(o.keychainEnv ?? {})}
 mcp_servers: ${JSON.stringify(o.mcpServers ?? {})}
 `;

@@ -217,7 +217,85 @@ function headedCells(html: string): string[] {
   return out;
 }
 
-const answerPageStyle = `:root{color-scheme:light dark;--bg:#fff;--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--code:#f6f8fa}
+// The product answer page comes from kb-mcp render-answer, a binary audee does not build. The check reads the page
+// strictly, so anything a browser could read differently is refused: a lone doctype, one <head> with the fixed CSP
+// meta, one stylesheet that loads nothing, and otherwise only well-formed tags with the renderer's own elements and
+// attributes. Escaped text holds no raw "<" or ">". Reasons are fixed words, never page content.
+export const answerPageCSP = "default-src 'none'; style-src 'unsafe-inline'";
+const ANSWER_PAGE_ELEMENTS = new Set('html head meta title style body main header section div p span strong ol ul li table thead tbody tr th td small footer blockquote h1 h2 h3 svg g rect polygon path text tspan'.split(' '));
+const ANSWER_PAGE_ATTRIBUTES = new Set('class lang charset name content http-equiv viewBox x y width height rx points d role aria-hidden'.split(' '));
+export const maxAnswerPageBytes = 2 * 1024 * 1024;
+// HTML whitespace only: JS \s also matches NBSP and friends, which a browser reads as text or part of a tag name.
+const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[\t\n\f\r ]+[a-zA-Z][-a-zA-Z:]*(?:="[^"<>]*")?)*)[\t\n\f\r ]*(\/?)>/g;
+const ATTR = /[\t\n\f\r ]+([a-zA-Z][-a-zA-Z:]*)(?:="([^"<>]*)")?/g;
+// A browser drops a CSP meta that is not in <head>, and anything but whitespace or another meta before it ends <head>.
+const HEAD_BEFORE_CSP = /^[\t\n\f\r ]*<html(?:[\t\n\f\r ][^<>]*)?>[\t\n\f\r ]*<head>(?:[\t\n\f\r ]*<meta[\t\n\f\r ][^<>]*>)*[\t\n\f\r ]*$/i;
+
+// The reason a page fails the check, or undefined when it passes.
+export function checkAnswerPage(html: string): string | undefined {
+  if (Buffer.byteLength(html) > maxAnswerPageBytes) return 'page too large';
+  if (!/^<!doctype html>/i.test(html)) return 'markup';
+  const opens = html.match(/<style/gi) ?? [];
+  const closes = html.match(/<\/style/gi) ?? [];
+  const style = /<style>([\s\S]*?)<\/style>/.exec(html);
+  if (opens.length !== 1 || closes.length !== 1 || style === null) return 'stylesheet';
+  if (/url\(|image-set\(|src\(|@import|expression\(|\\|<|>/i.test(style[1] ?? '')) return 'stylesheet';
+  const markup = html.replace(/^<!doctype html>/i, '').replace(style[0], '<style></style>');
+  let csp = 0;
+  let cspAt = -1;
+  let charset = 0;
+  let charsetAt = -1;
+  for (const m of markup.matchAll(TAG)) {
+    const name = (m[2] ?? '').toLowerCase();
+    if (!ANSWER_PAGE_ELEMENTS.has(name)) return 'element';
+    const attrs = new Map<string, string>();
+    for (const [, attr = '', value = ''] of (m[3] ?? '').matchAll(ATTR)) {
+      if (!ANSWER_PAGE_ATTRIBUTES.has(attr) || attrs.has(attr.toLowerCase())) return 'attribute';
+      attrs.set(attr.toLowerCase(), value);
+    }
+    if (attrs.has('charset')) {
+      if (name !== 'meta' || attrs.get('charset')?.toLowerCase() !== 'utf-8') return 'attribute';
+      charset++;
+      charsetAt = m.index ?? -1;
+    }
+    if (attrs.has('http-equiv')) {
+      if (name !== 'meta' || attrs.get('http-equiv')?.toLowerCase() !== 'content-security-policy') return 'csp';
+      const content = (attrs.get('content') ?? '').replaceAll('&#39;', "'");
+      if (content !== answerPageCSP) return 'csp';
+      csp++;
+      cspAt = m.index ?? -1;
+    }
+  }
+  if (/[<>]/.test(markup.replace(TAG, ''))) return 'markup';
+  if (csp !== 1 || !HEAD_BEFORE_CSP.test(markup.slice(0, cspAt))) return 'csp';
+  // Without a declared charset the browser sniffs one, which can read the page differently from this check.
+  if (charset !== 1 || charsetAt > cspAt) return 'attribute';
+  return undefined;
+}
+
+const NAMED_ENTITIES: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'", nbsp: ' ' };
+
+// Every entity decoded, numeric ones included, so an encoded value reads as it shows.
+export function decodeEntities(s: string): string {
+  return s.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, e: string) => {
+    if (e[0] === '#') {
+      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+    }
+    return NAMED_ENTITIES[e.toLowerCase()] ?? m;
+  });
+}
+
+// What a reader of the product page sees, for the secret check: titles and SVG labels included, the stylesheet left
+// out, tags dropped with nothing and with a space, table cells as pairs.
+export function answerPageVisibleTexts(html: string): string[] {
+  const body = html.replace(/<style>[\s\S]*?<\/style>/gi, '');
+  const strip = (s: string, sep: string) => decodeEntities(s.replace(/<[^>]*>/g, sep));
+  const cells = body.replace(/<\/t[dh]>\s*<t[dh][^>]*>/g, ': ');
+  return [strip(body, ''), strip(cells, ' '), ...headedCells(body).map((c) => strip(c, ''))];
+}
+
+const answerPageStyle =`:root{color-scheme:light dark;--bg:#fff;--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--code:#f6f8fa}
 @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--code:#151b23}}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:860px;margin:0 auto;padding:24px 16px}

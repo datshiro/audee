@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { authSettings } from './authz/people.js';
+import { answerSchemaMatches, printAnswerSchema } from './capability/kb-answer.js';
 import { kbQueryDirs } from './capability/kb-query.js';
 import { expandHome } from './config/load.js';
 import type { Config, ProfileName } from './config/schema.js';
@@ -29,6 +30,7 @@ export type DoctorDeps = {
   env?: NodeJS.ProcessEnv;
   optionsFor?: (profile: ProfileName, cap: Config['capabilities'][string]) => Options;
   kbDirs?: (kbDir: string) => KbPaths;
+  printAnswerSchema?: (kbDir: string) => Promise<unknown>;
   shadowDirs?: string[]; // ~/.ciel/raw, ~/.ciel/failed
   launchdNode?: string; // the plist's program
   journeyTriggerRepo?: string;
@@ -259,6 +261,17 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
       check(`kb ${name}`, hasBin, hasBin ? `${paths.repos.length} service checkouts readable` : `${bin} is missing`);
     } catch (e) {
       check(`kb ${name}`, false, (e as Error).message);
+    }
+    // Product answers need kb-mcp render-answer and the contract audee pinned; tech answers need neither.
+    if (cap.default_mode === 'product') {
+      try {
+        const printed = await (deps.printAnswerSchema ?? printAnswerSchema)(kbDir);
+        check(`kb render-answer ${name}`, true, 'kb-mcp render-answer runs');
+        const same = answerSchemaMatches(printed);
+        check(`kb answer schema ${name}`, same, same ? 'matches the pinned kb-answer-v1' : 'KB contract changed: update src/capability/kb-answer-schema.ts');
+      } catch (e) {
+        check(`kb render-answer ${name}`, false, `kb-mcp render-answer --print-schema failed (rebuild or pull the KB repo): ${(e as Error).message}`);
+      }
     }
   }
 
