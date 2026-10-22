@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { KB_ANSWER_SCHEMA } from '../src/capability/kb-answer-schema.js';
 import { type Check, type DoctorDeps, formatChecks, runDoctor } from '../src/doctor.js';
 import { testConfig, type TestConfigOptions } from './helpers/test-config.js';
 
@@ -166,6 +167,18 @@ describe('doctor', () => {
     expect((await find({}))?.detail).toContain('warning: no mcp_servers.atlassian');
     expect(await find({ mcpServers: { atlassian } })).toMatchObject({ ok: false });
     expect(await find({ mcpServers: { atlassian }, keychainEnv: { GL_TOKEN: 'audee-gitlab', ATL: 'audee-atlassian' } })).toMatchObject({ ok: true, detail: 'mcp_servers.atlassian is configured and its keychain_env variables are defined; review sessions may only read with it' });
+  });
+
+  it('checks the renderer and the pinned contract only for product answers', async () => {
+    const tech = setup();
+    expect((await runDoctor(tech.cfg, { ...tech.deps, printAnswerSchema: async () => { throw new Error('no such command'); } })).some((c) => c.name.startsWith('kb render-answer'))).toBe(false);
+    const product = setup({ kbDefaultMode: 'product' });
+    const ok = await runDoctor(product.cfg, { ...product.deps, printAnswerSchema: async () => KB_ANSWER_SCHEMA });
+    expect(ok.filter((c) => c.name.startsWith('kb render-answer') || c.name.startsWith('kb answer schema')).map((c) => c.ok)).toEqual([true, true]);
+    const drift = await runDoctor(product.cfg, { ...product.deps, printAnswerSchema: async () => ({ ...KB_ANSWER_SCHEMA, $id: 'kb-answer-v2' }) });
+    expect(failing(drift)).toContain('kb answer schema kb_query');
+    const stale = await runDoctor(product.cfg, { ...product.deps, printAnswerSchema: async () => { throw new Error('unknown command'); } });
+    expect(failing(stale)).toContain('kb render-answer kb_query');
   });
 
   it('TestDoctorClassifierKeyChecked', async () => {

@@ -1,0 +1,46 @@
+{
+  "status": "done",
+  "mode": "product",
+  "lang": "vi",
+  "topic": "Giới hạn tần suất hiển thị popup",
+  "answer": "",
+  "product": {
+    "title": "Giới hạn tần suất popup: **mỗi người chơi** chỉ thấy tối đa N lần",
+    "readings": [
+      {
+        "heading": "",
+        "summary": "Mỗi người chơi chỉ thấy một popup tối đa **N lần** trong khoảng thời gian operator chọn.",
+        "purpose": { "recorded": true, "text": "Tránh làm phiền người chơi khi họ đủ điều kiện nhiều lần.", "source": "explanatory/flows/iam-frequency-check.md" },
+        "journey": [
+          { "actor": "operator", "text": "Tạo chiến dịch trên Portal và chọn tần suất.", "evidence": "kb", "cite": "explanatory/flows/iam-frequency-check.md" },
+          { "actor": "system", "text": "Kiểm tra người chơi đã thấy popup bao nhiêu lần.", "evidence": "src", "cite": "journey-node/internal/check.go:10" },
+          { "actor": "player", "text": "Thấy popup nếu chưa vượt giới hạn.", "evidence": "unverified", "cite": "" }
+        ],
+        "rules": [
+          { "kind": "default", "text": "Mặc định một lần mỗi chiến dịch.", "evidence": "kb", "cite": "explanatory/flows/iam-frequency-check.md" },
+          { "kind": "failure", "text": "Khi bước kiểm tra lỗi, popup **không** hiển thị.", "evidence": "src", "cite": "journey-node/internal/check.go:20" }
+        ],
+        "config": [
+          { "setting": "Tần suất hiển thị", "where": "portal", "default": "Một lần mỗi chiến dịch" },
+          { "setting": "Khoảng thời gian tính giới hạn", "where": "engineering", "default": "" }
+        ],
+        "diagrams": [
+          {
+            "kind": "decision", "caption": "Quyết định hiển thị popup",
+            "nodes": [ { "id": "q", "label": "Đã thấy popup đủ N lần chưa?" }, { "id": "a", "label": "Chưa: hiển thị" }, { "id": "b", "label": "Rồi: bỏ qua" } ],
+            "edges": [ { "from": "q", "to": "a", "label": "Chưa" }, { "from": "q", "to": "b", "label": "Rồi" } ]
+          },
+          {
+            "kind": "steps", "caption": "Từ lúc cấu hình đến lúc người chơi thấy popup",
+            "nodes": [ { "id": "s1", "label": "Operator cấu hình" }, { "id": "s2", "label": "Sự kiện khớp" }, { "id": "s3", "label": "Kiểm tra tần suất" }, { "id": "s4", "label": "Hiển thị popup" } ],
+            "edges": [ { "from": "s1", "to": "s2", "label": "" }, { "from": "s3", "to": "s4", "label": "Cho phép" } ]
+          }
+        ]
+      }
+    ],
+    "follow_ups": []
+  },
+  "sources": ["kb-mcp/wiki/explanatory/flows/iam-frequency-check.md", "journey-node/internal/check.go"],
+  "notes": [],
+  "missing": []
+}

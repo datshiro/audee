@@ -1,6 +1,6 @@
 // Port of ciel/kbquery_test.go TestLiveKBQueryFence and TestLiveKBQueryAnswer onto the kb_read profile.
 // Costs money: run with `pnpm test:live kb-query-fence`.
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -8,7 +8,7 @@ import { resolvePerson } from '../../src/authz/people.js';
 import { kbQuery, kbQueryDirs, kbQuerySchema } from '../../src/capability/kb-query.js';
 import { loadMcpServers } from '../../src/fence/mcp-servers.js';
 import { buildOptions } from '../../src/fence/profiles.js';
-import { kbQueryDoneReply } from '../../src/render/html.js';
+import { checkAnswerPage, kbQueryFileReply } from '../../src/render/html.js';
 import { runAgent } from '../../src/runner/run.js';
 import { testConfig } from '../helpers/test-config.js';
 import { KB_DIR, LIVE_MODEL, liveSecrets, resultText, runLive, structuredOf, yesNo } from './helpers.js';
@@ -80,8 +80,25 @@ describe('kb_query fence (live)', () => {
     });
     console.log(`status=${outcome.event.status} cost=${outcome.event.costUsd} turns=${outcome.event.numTurns} tools=${(outcome.event.toolUses ?? []).length} withheld: ${yesNo(outcome.event.status === 'withheld')}`);
     expect(outcome.event.status).toBe('done');
-    expect(outcome.reply?.html.startsWith(kbQueryDoneReply)).toBe(true);
-    expect(outcome.reply?.html).toContain('<li>'); // sources
+    expect(outcome.reply?.html.startsWith(kbQueryFileReply)).toBe(true); // kb_query answers as a file
+    expect(outcome.reply?.file?.content).toContain('<li>'); // sources
     expect(outcome.event.toolUses).toContain('StructuredOutput'); // the gate let the structured-output tool through
   });
+
+  // A product answer through the real capability and the KB's own renderer; needs a KB with kb-mcp render-answer.
+  it.skipIf(!existsSync(join(KB_DIR, 'kb-mcp', 'internal', 'answer')))('kb_query product answer (live)', async () => {
+    const cfg = testConfig({ kbDir: KB_DIR, kbDefaultMode: 'product' });
+    const person = resolvePerson(cfg, 'teams:owner');
+    if (person === undefined) throw new Error('no owner');
+    const outcome = await kbQuery({
+      cfg, person, run: runAgent, dataDir: cfg.data_dir, signal: new AbortController().signal, secrets: liveSecrets(),
+      job: { kind: 'kb_query', channel: 'teams', chatId: '19:abc@thread.v2', principal: 'teams:owner', requesterName: 'owner', messageId: '1791513774215', input: 'Giới hạn tần suất popup (IAM) hoạt động thế nào và tại sao?', requestedAt: new Date().toISOString() },
+    });
+    console.log(`status=${outcome.event.status} reason=${String(outcome.event.reason)} cost=${outcome.event.costUsd}`);
+    expect(outcome.event.status).toBe('done');
+    const page = outcome.reply?.file?.content ?? '';
+    expect(checkAnswerPage(page)).toBeUndefined();
+    expect(page).toContain('class="card"');
+  });
 });
+

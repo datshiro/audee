@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { clip, deniedText, escapeHTML, fitAnswer, kbAnswerFileName, kbAnswerPage, kbQueryReplyHTML, kbTopicLine, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../../src/render/html.js';
+import { answerPageVisibleTexts, checkAnswerPage, clip, decodeEntities, deniedText, escapeHTML, fitAnswer, kbAnswerFileName, kbAnswerPage, kbQueryReplyHTML, kbTopicLine, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../../src/render/html.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { runeLength } from '../../src/render/text.js';
 
 const count = (s: string, needle: string): number => s.split(needle).length - 1;
@@ -122,3 +124,56 @@ describe('kbTopicLine', () => {
     expect(kbTopicLine('', '')).toBe('');
   });
 });
+
+describe('product answer page', () => {
+  const golden = (name: string): string => readFileSync(fileURLToPath(new URL(`../fixtures/kb-answer/${name}`, import.meta.url)), 'utf8');
+
+  it('accepts the renderer\'s pages, escaped look-alike text included', () => {
+    expect(checkAnswerPage(golden('product-vi.html'))).toBeUndefined();
+    expect(checkAnswerPage(golden('product-en-overview.html'))).toBeUndefined();
+    expect(checkAnswerPage(golden('product-vi.html').replace('</main>', '<p>&lt;img src=x onerror=y&gt; url(z) href=q</p></main>'))).toBeUndefined();
+  });
+
+  it('refuses anything outside the renderer\'s markup', () => {
+    const page = golden('product-vi.html');
+    const bad: Array<[string, string]> = [
+      ['<script>alert(1)</script>', 'element'],
+      ['<a href="x">y</a>', 'element'],
+      ['<p onclick="x">y</p>', 'attribute'],
+      ['<p style="color:red">y</p>', 'attribute'],
+      ['<p class="a" class="b">y</p>', 'attribute'],
+      ['<svg><foreignObject></foreignObject></svg>', 'element'],
+      ['<img src=x>', 'markup'],
+      ['<!-- x -->', 'markup'],
+      ['< p>', 'markup'],
+      ['<img src="https://evil/x.png" <p>', 'markup'],
+      ['<meta http-equiv="refresh" content="0;url=https://evil/" <p>', 'markup'],
+      ['<meta http-equiv="refresh" content="0;url=https://evil">', 'csp'],
+      [`<meta http-equiv="Content-Security-Policy" content="${"default-src 'none'; style-src 'unsafe-inline'"}">`, 'csp'],
+      ['<style >p{background:url(https://evil/t)}</style>', 'stylesheet'],
+      ['x > y', 'markup'],
+    ];
+    for (const [markup, reason] of bad) expect(checkAnswerPage(page.replace('</main>', `${markup}</main>`)), markup).toBe(reason);
+    expect(checkAnswerPage(page.replace('</style>', 'p{background:url(https://x)}</style>'))).toBe('stylesheet');
+    expect(checkAnswerPage(page.replace('</style>', '</style ><a href="x">y</a><style></style>'))).toBe('stylesheet');
+    expect(checkAnswerPage(page.replace('</style>', '</STYLE><form></form><style></style>'))).toBe('stylesheet');
+    expect(checkAnswerPage(page.replace("default-src 'none'", "default-src *"))).toBe('csp');
+    expect(checkAnswerPage(page.replace(/<meta http-equiv[^>]*>/, ''))).toBe('csp');
+    expect(checkAnswerPage(page.replace('http-equiv="Content-Security-Policy"', 'http-equiv="X-Nothing"'))).toBe('csp');
+    expect(checkAnswerPage(page.replace('http-equiv="Content-Security-Policy"', 'http-equiv="refresh" content="0;url=https://evil"'))).toBe('attribute');
+    const meta = /<meta http-equiv[^>]*>/.exec(page)?.[0] ?? '';
+    expect(checkAnswerPage(page.replace(meta, '').replace('<main>', `<main>${meta}`))).toBe('csp');
+    expect(checkAnswerPage(page.replace('<!doctype html>', ''))).toBe('markup');
+    expect(checkAnswerPage(page + ' '.repeat(2 * 1024 * 1024))).toBe('page too large');
+  });
+
+  it('reads what the page shows, SVG labels and encoded text included', () => {
+    expect(decodeEntities('&#115;k&#x2d;&lt;&amp;&#43;&nbsp;&bogus;')).toBe('sk-<&+\u00a0&bogus;'.replace('\u00a0', ' '));
+    const page = golden('product-vi.html').replace('</svg>', '<text x="1" y="1">to&#107;en: abcdefgh123</text></svg>');
+    expect(answerPageVisibleTexts(page).some((t) => t.includes('token: abcdefgh123'))).toBe(true);
+    expect(answerPageVisibleTexts(page).some((t) => t.includes('--bg'))).toBe(false);
+    const titled = golden('product-vi.html').replace(/<title>[^<]*<\/title>/, '<title>to&#107;en: abcdefgh456</title>');
+    expect(answerPageVisibleTexts(titled).some((t) => t.includes('token: abcdefgh456'))).toBe(true);
+  });
+});
+

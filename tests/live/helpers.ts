@@ -6,7 +6,7 @@ import { loadKeychainEnv } from '../../src/keychain.js';
 import { apiKeyHelperCommand, sessionEnv } from '../../src/runner/env.js';
 
 export const LIVE_MODEL = process.env['AUDEE_LIVE_MODEL'] ?? 'claude-opus-5-5';
-export const KB_DIR = expandHome('~/.claude/kb');
+export const KB_DIR = expandHome(process.env['AUDEE_KB_DIR'] ?? '~/.claude/kb'); // a KB worktree under test
 
 export type ToolUse = { id: string; name: string; input: unknown };
 export type ToolResult = { toolUseId: string; content: string; isError: boolean };
