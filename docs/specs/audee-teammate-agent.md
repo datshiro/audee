@@ -46,7 +46,7 @@ The topic passes the same secret check as the answer.
 
 ### Product answers (`default_mode`)
 `capabilities.kb_query.default_mode` picks the answer style when the question has no flag: `tech` (the default, the
-Markdown page above, byte-for-byte today's schema and prompt) or `product`. audee decides the mode itself: `--tech`,
+Markdown page above, with today's schema; its prompt only adds a line stating the mode) or `product`. audee decides the mode itself: `--tech`,
 `--full` or `--code-flow` (any dash a chat client turns `--` into) always mean tech, and `--tech` is stripped from
 `question.txt`. Rollback for product answers is setting `default_mode: tech`.
 

@@ -225,8 +225,11 @@ export const answerPageCSP = "default-src 'none'; style-src 'unsafe-inline'";
 const ANSWER_PAGE_ELEMENTS = new Set('html head meta title style body main header section div p span strong ol ul li table thead tbody tr th td small footer blockquote h1 h2 h3 svg g rect polygon path text tspan'.split(' '));
 const ANSWER_PAGE_ATTRIBUTES = new Set('class lang charset name content http-equiv viewBox x y width height rx points d role aria-hidden'.split(' '));
 export const maxAnswerPageBytes = 2 * 1024 * 1024;
-const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:\s+[a-zA-Z][-a-zA-Z:]*(?:="[^"<>]*")?)*)\s*(\/?)>/g;
-const ATTR = /\s+([a-zA-Z][-a-zA-Z:]*)(?:="([^"<>]*)")?/g;
+// HTML whitespace only: JS \s also matches NBSP and friends, which a browser reads as text or part of a tag name.
+const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[\t\n\f\r ]+[a-zA-Z][-a-zA-Z:]*(?:="[^"<>]*")?)*)[\t\n\f\r ]*(\/?)>/g;
+const ATTR = /[\t\n\f\r ]+([a-zA-Z][-a-zA-Z:]*)(?:="([^"<>]*)")?/g;
+// A browser drops a CSP meta that is not in <head>, and anything but whitespace or another meta before it ends <head>.
+const HEAD_BEFORE_CSP = /^[\t\n\f\r ]*<html(?:[\t\n\f\r ][^<>]*)?>[\t\n\f\r ]*<head>(?:[\t\n\f\r ]*<meta[\t\n\f\r ][^<>]*>)*[\t\n\f\r ]*$/i;
 
 // The reason a page fails the check, or undefined when it passes.
 export function checkAnswerPage(html: string): string | undefined {
@@ -236,10 +239,12 @@ export function checkAnswerPage(html: string): string | undefined {
   const closes = html.match(/<\/style/gi) ?? [];
   const style = /<style>([\s\S]*?)<\/style>/.exec(html);
   if (opens.length !== 1 || closes.length !== 1 || style === null) return 'stylesheet';
-  if (/url\(|@import|expression\(|\\|<|>/i.test(style[1] ?? '')) return 'stylesheet';
+  if (/url\(|image-set\(|src\(|@import|expression\(|\\|<|>/i.test(style[1] ?? '')) return 'stylesheet';
   const markup = html.replace(/^<!doctype html>/i, '').replace(style[0], '<style></style>');
   let csp = 0;
   let cspAt = -1;
+  let charset = 0;
+  let charsetAt = -1;
   for (const m of markup.matchAll(TAG)) {
     const name = (m[2] ?? '').toLowerCase();
     if (!ANSWER_PAGE_ELEMENTS.has(name)) return 'element';
@@ -247,6 +252,11 @@ export function checkAnswerPage(html: string): string | undefined {
     for (const [, attr = '', value = ''] of (m[3] ?? '').matchAll(ATTR)) {
       if (!ANSWER_PAGE_ATTRIBUTES.has(attr) || attrs.has(attr.toLowerCase())) return 'attribute';
       attrs.set(attr.toLowerCase(), value);
+    }
+    if (attrs.has('charset')) {
+      if (name !== 'meta' || attrs.get('charset')?.toLowerCase() !== 'utf-8') return 'attribute';
+      charset++;
+      charsetAt = m.index ?? -1;
     }
     if (attrs.has('http-equiv')) {
       if (name !== 'meta' || attrs.get('http-equiv')?.toLowerCase() !== 'content-security-policy') return 'csp';
@@ -257,9 +267,9 @@ export function checkAnswerPage(html: string): string | undefined {
     }
   }
   if (/[<>]/.test(markup.replace(TAG, ''))) return 'markup';
-  const head = markup.search(/<head>/i);
-  const body = markup.search(/<body[\s>]/i);
-  if (csp !== 1 || head < 0 || cspAt < head || body < 0 || cspAt > body) return 'csp';
+  if (csp !== 1 || !HEAD_BEFORE_CSP.test(markup.slice(0, cspAt))) return 'csp';
+  // Without a declared charset the browser sniffs one, which can read the page differently from this check.
+  if (charset !== 1 || charsetAt > cspAt) return 'attribute';
   return undefined;
 }
 
