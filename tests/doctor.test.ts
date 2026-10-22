@@ -161,6 +161,16 @@ describe('doctor', () => {
     expect((await runDoctor(all.cfg, all.deps)).find((c) => c.name === 'review auto-approve')?.detail).toBe('every review requester has people[].gitlab');
   });
 
+  it('takes gitlab from audee\'s mcp_servers and checks its keychain_env variables', async () => {
+    const gitlab = { type: 'stdio', command: 'audee-glab', env: { GITLAB_PAT: '${AUDEE_GL}' } };
+    const run = async (o: TestConfigOptions) => { const { cfg, deps } = setup(o); return runDoctor(cfg, deps); };
+    const missing = await run({ mcpServers: { gitlab } });
+    expect(missing.find((c) => c.name === 'mcp servers')?.detail).toMatch(/^kb defined in .*; gitlab from audee's mcp_servers$/);
+    expect(missing.find((c) => c.name === 'gitlab server env')).toMatchObject({ ok: false, detail: 'mcp_servers.gitlab uses AUDEE_GL, which keychain_env does not define' });
+    const ok = await run({ mcpServers: { gitlab }, keychainEnv: { AUDEE_GL: 'audee-gitlab-pat' } });
+    expect(ok.find((c) => c.name === 'gitlab server env')).toMatchObject({ ok: true });
+  });
+
   it('reports whether reviews can read Jira', async () => {
     const find = async (o: TestConfigOptions) => { const { cfg, deps } = setup(o); return (await runDoctor(cfg, deps)).find((c) => c.name === 'review jira'); };
     const atlassian = { type: 'http', url: 'https://mcp.atlassian.com/v1/mcp', headers: { Authorization: 'Basic ${ATL}' } };

@@ -55,6 +55,9 @@ function writable(dir: string): string | undefined {
   }
 }
 
+const keychainVarsMissing = (def: unknown, keychainEnv: Record<string, string>): string[] =>
+  [...JSON.stringify(def ?? {}).matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1] ?? '').filter((v) => keychainEnv[v] === undefined);
+
 const minutes = (clock: string): number => {
   const [h, m] = clock.split(':').map(Number);
   return (h ?? 0) * 60 + (m ?? 0);
@@ -138,8 +141,17 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     void name;
   }
   try {
-    const servers = loadMcpServers([...serverNames], {}, userConfigPath);
-    check('mcp servers', true, `${[...serverNames].sort().join(', ')} defined in ${userConfigPath}`);
+    const servers = loadMcpServers([...serverNames], {}, userConfigPath, cfg.mcp_servers);
+    const own = [...serverNames].filter((s) => cfg.mcp_servers[s as keyof typeof cfg.mcp_servers] !== undefined).sort();
+    const user = [...serverNames].filter((s) => !own.includes(s)).sort();
+    check('mcp servers', true, [
+      ...(user.length > 0 ? [`${user.join(', ')} defined in ${userConfigPath}`] : []),
+      ...(own.length > 0 ? [`${own.join(', ')} from audee's mcp_servers`] : []),
+    ].join('; '));
+    for (const name of own) {
+      const missing = keychainVarsMissing(servers[name], cfg.keychain_env);
+      check(`${name} server env`, missing.length === 0, missing.length === 0 ? `mcp_servers.${name} reads only keychain_env variables that are defined` : `mcp_servers.${name} uses ${missing.join(', ')}, which keychain_env does not define`);
+    }
     const kb = servers['kb'];
     if (kb !== undefined) {
       const text = JSON.stringify(kb);
@@ -154,8 +166,7 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     if (jira === undefined) {
       check('review jira', true, `warning: no mcp_servers.${REVIEW_JIRA_SERVER}, so reviews cannot read the Jira ticket`);
     } else {
-      const text = JSON.stringify(jira);
-      const missing = [...text.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1] ?? '').filter((v) => cfg.keychain_env[v] === undefined);
+      const missing = keychainVarsMissing(jira, cfg.keychain_env);
       check('review jira', missing.length === 0, missing.length === 0 ? `mcp_servers.${REVIEW_JIRA_SERVER} is configured and its keychain_env variables are defined; review sessions may only read with it` : `mcp_servers.${REVIEW_JIRA_SERVER} uses ${missing.join(', ')}, which keychain_env does not define`);
     }
   }

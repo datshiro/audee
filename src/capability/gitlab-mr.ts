@@ -2,7 +2,7 @@
 // GitLab is reached through the user's glab-mcp server, so the token stays inside that process.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { loadMcpServers } from '../fence/mcp-servers.js';
+import { loadMcpServers, type OwnMcpServers } from '../fence/mcp-servers.js';
 
 export type MrInfo = { iid: number; state: string; sha: string; author_username: string; web_url: string; user_has_approved: boolean; user_can_approve: boolean };
 export type MrRef = { project: string; iid: number };
@@ -66,9 +66,9 @@ function asMrInfo(v: unknown): MrInfo {
   return { iid, state, sha, author_username, web_url, user_has_approved, user_can_approve };
 }
 
-// Starts the user's gitlab MCP server. Never log its definition: its env and args hold tokens.
-export async function connectGitLabMr(secrets: Record<string, string>, userConfigPath?: string, signal?: AbortSignal): Promise<GitLabMr> {
-  const def = loadMcpServers(['gitlab'], secrets, userConfigPath)['gitlab'];
+// Starts audee's gitlab MCP server, else the user's. Never log its definition: its env and args hold tokens.
+export async function connectGitLabMr(secrets: Record<string, string>, userConfigPath?: string, signal?: AbortSignal, own: OwnMcpServers = {}): Promise<GitLabMr> {
+  const def = loadMcpServers(['gitlab'], secrets, userConfigPath, own)['gitlab'];
   if (def === undefined || !('command' in def) || typeof def.command !== 'string') throw new Error('gitlab MCP server has no command');
   const transport = new StdioClientTransport({
     command: def.command,

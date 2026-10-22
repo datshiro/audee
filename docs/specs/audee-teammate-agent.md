@@ -103,6 +103,14 @@ wf-apo-mr-review workflow's tool names match without changing the shared skill. 
 is denied by the gate, and the known write tools are also disallowed. The token acts with its owner's Jira rights, so
 give it read scopes only. Verified 2026-10-20: the preview endpoint read APO-7110 with such a token.
 
+GitLab credential: by default reviews, the approval client and `mcp_read` capabilities use the `gitlab` server from
+`~/.claude.json`, so audee shares the owner's Claude Code token. When `mcp_servers.gitlab` is defined in audee's config
+it replaces that server everywhere audee starts one; `deploy/glab-mcp-keychain.sh <keychain-item>` reads audee's own
+token inside the server process, keeping it off the claude process's argv. GitLab attributes audee's comments and
+approvals to the token's account. `kb` still comes from `~/.claude.json`. `audee doctor` names where each server comes
+from and fails when an audee-defined server uses a `${VAR}` that keychain_env does not define.
+Validation: unit tests only; live check pending.
+
 ## Dashboard
 `audee serve` also serves an admin web UI and API on `127.0.0.1:<admin.port>` (default 7420); `audee dashboard` prints the
 sign-in link (the token, kept in `<data_dir>/admin-token`, rides in the URL fragment). Build the UI with `pnpm build:web`

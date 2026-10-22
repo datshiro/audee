@@ -233,6 +233,17 @@ capabilities:
     }
   });
 
+  it('uses audee\'s own gitlab server over the one in ~/.claude.json', async () => {
+    const gitlab = { type: 'stdio', command: 'audee-glab', env: { GITLAB_PAT: '${AUDEE_GL}' } };
+    const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'), { mcpServers: { gitlab }, keychainEnv: { AUDEE_GL: 'audee-gitlab-pat' } });
+    ctx.secrets = { AUDEE_GL: 'own-token' };
+    await review(ctx);
+    const own = inputs[0]?.options.mcpServers?.['gitlab'] as { command?: string; env?: Record<string, string> };
+    expect(own.command).toBe('audee-glab');
+    expect(own.env?.['GITLAB_PAT']).toBe('own-token');
+    expect(Object.keys(inputs[0]?.options.mcpServers ?? {}).sort()).toEqual(['gitlab', 'kb']);
+  });
+
   it('TestReviewUsesReviewProfile', async () => {
     const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'));
     await review(ctx);
