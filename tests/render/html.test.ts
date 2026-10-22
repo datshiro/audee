@@ -155,6 +155,11 @@ describe('product answer page', () => {
     ];
     for (const [markup, reason] of bad) expect(checkAnswerPage(page.replace('</main>', `${markup}</main>`)), markup).toBe(reason);
     expect(checkAnswerPage(page.replace('</style>', 'p{background:url(https://x)}</style>'))).toBe('stylesheet');
+    expect(checkAnswerPage(page.replace('</style>', 'p{background:image-set("https://x" 1x)}</style>'))).toBe('stylesheet');
+    expect(checkAnswerPage(page.replace('</style>', 'p{background:src("https://x")}</style>'))).toBe('stylesheet');
+    expect(checkAnswerPage(page.replace(/<meta charset="utf-8">/i, '<meta charset="iso-2022-jp">'))).toBe('attribute');
+    expect(checkAnswerPage(page.replace(/<head>/i, '<div></div><head>'))).toBe('csp');
+    expect(checkAnswerPage(page.replace(/<head>/i, 'x<head>'))).toBe('csp');
     expect(checkAnswerPage(page.replace('</style>', '</style ><a href="x">y</a><style></style>'))).toBe('stylesheet');
     expect(checkAnswerPage(page.replace('</style>', '</STYLE><form></form><style></style>'))).toBe('stylesheet');
     expect(checkAnswerPage(page.replace("default-src 'none'", "default-src *"))).toBe('csp');

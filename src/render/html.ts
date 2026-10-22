@@ -236,8 +236,10 @@ export function checkAnswerPage(html: string): string | undefined {
   const closes = html.match(/<\/style/gi) ?? [];
   const style = /<style>([\s\S]*?)<\/style>/.exec(html);
   if (opens.length !== 1 || closes.length !== 1 || style === null) return 'stylesheet';
-  if (/url\(|@import|expression\(|\\|<|>/i.test(style[1] ?? '')) return 'stylesheet';
+  if (/url\(|image-set\(|src\(|@import|expression\(|\\|<|>/i.test(style[1] ?? '')) return 'stylesheet';
   const markup = html.replace(/^<!doctype html>/i, '').replace(style[0], '<style></style>');
+  // Anything before <head> starts an implicit body, and a browser ignores a CSP meta found there.
+  if (!/^\s*<html(?:\s[^<>]*)?>\s*<head>/i.test(markup)) return 'csp';
   let csp = 0;
   let cspAt = -1;
   for (const m of markup.matchAll(TAG)) {
@@ -248,6 +250,7 @@ export function checkAnswerPage(html: string): string | undefined {
       if (!ANSWER_PAGE_ATTRIBUTES.has(attr) || attrs.has(attr.toLowerCase())) return 'attribute';
       attrs.set(attr.toLowerCase(), value);
     }
+    if (attrs.has('charset') && attrs.get('charset')?.toLowerCase() !== 'utf-8') return 'attribute';
     if (attrs.has('http-equiv')) {
       if (name !== 'meta' || attrs.get('http-equiv')?.toLowerCase() !== 'content-security-policy') return 'csp';
       const content = (attrs.get('content') ?? '').replaceAll('&#39;', "'");
