@@ -68,13 +68,15 @@ describe('gitlab-mr', () => {
       expect(await gl.hasPassAck(ref, mr.sha, 'dat')).toBe(true);
       expect(await gl.hasPassAck(ref, mr.sha, 'kha')).toBe(false);
       await gl.approve(ref, mr.sha);
+      await gl.comment(ref, 'note');
     } finally {
       await gl.close();
     }
     const calls = fake.calls();
-    expect(calls.map((c) => c.name)).toEqual(['get_mr', 'list_mr_discussions', 'list_mr_discussions', 'list_mr_discussions', 'list_mr_discussions', 'approve_mr']);
+    expect(calls.map((c) => c.name)).toEqual(['get_mr', 'list_mr_discussions', 'list_mr_discussions', 'list_mr_discussions', 'list_mr_discussions', 'approve_mr', 'comment_mr']);
     expect(calls.filter((c) => c.name === 'list_mr_discussions').map((c) => c.args['page'])).toEqual([1, 2, 1, 2]);
-    expect(calls.at(-1)?.args).toEqual({ project_id: 'g/p', mr_iid: 5, sha: '0123456789abcdef' });
+    expect(calls.at(-2)?.args).toEqual({ project_id: 'g/p', mr_iid: 5, sha: '0123456789abcdef' });
+    expect(calls.at(-1)?.args).toEqual({ project_id: 'g/p', mr_iid: 5, body: 'note' });
   });
 
   it('turns a tool error into an error that does not carry the tool text', async () => {

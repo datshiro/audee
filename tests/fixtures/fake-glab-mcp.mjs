@@ -26,4 +26,8 @@ server.registerTool('approve_mr', { inputSchema: { ...ref, sha: z.string().optio
   log('approve_mr', args);
   return reply({ approved: true });
 });
+server.registerTool('comment_mr', { inputSchema: { ...ref, body: z.string() } }, async (args) => {
+  log('comment_mr', args);
+  return reply({ id: 1 });
+});
 await server.connect(new StdioServerTransport());
