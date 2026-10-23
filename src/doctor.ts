@@ -161,6 +161,19 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
   } catch (e) {
     check('mcp servers', false, `${(e as Error).message} (read ${userConfigPath})`);
   }
+  const ownGitlab = cfg.mcp_servers.gitlab;
+  if (ownGitlab !== undefined) {
+    const stdio = ownGitlab['type'] === undefined || ownGitlab['type'] === 'stdio';
+    if (!stdio || typeof ownGitlab['command'] !== 'string' || ownGitlab['command'] === '') {
+      check('audee gitlab', false, 'mcp_servers.gitlab needs type stdio and a command: audee starts it itself to approve MRs');
+    } else if (JSON.stringify(ownGitlab).includes('${')) {
+      check('audee gitlab', true, 'warning: mcp_servers.gitlab takes its token from keychain_env, which puts it on the claude command line; use deploy/glab-mcp-keychain.sh <keychain-item>');
+    } else {
+      check('audee gitlab', true, `mcp_servers.gitlab replaces the gitlab server in ${userConfigPath}`);
+    }
+  } else if (cfg.gitlab_account !== undefined) {
+    check('audee gitlab', false, 'gitlab_account is set but mcp_servers.gitlab is not, so the review posts as the owner, not as gitlab_account');
+  }
   if (Object.values(cfg.capabilities).some((c) => c.profile === 'review')) {
     const jira = cfg.mcp_servers[REVIEW_JIRA_SERVER];
     if (jira === undefined) {
@@ -202,6 +215,7 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     const owner = cfg.people.find((p) => p.owner);
     const unmapped = cfg.people.filter((p) => !p.owner && p.gitlab === undefined && (p.can.includes('*') || p.can.includes('review'))).map((p) => p.name);
     if (owner?.gitlab === undefined) check('review auto-approve', false, 'the owner has no people[].gitlab, so no MR is ever approved');
+    else if (cfg.mcp_servers.gitlab !== undefined && cfg.gitlab_account === undefined) check('review auto-approve', false, 'mcp_servers.gitlab is set without gitlab_account, so the PASS acknowledgement is never found and no MR is ever approved');
     else if (cfg.capabilities['review']?.post_findings !== true) check('review auto-approve', true, 'warning: post_findings is off, so the review may post no PASS acknowledgement and no MR gets approved');
     else check('review auto-approve', true, unmapped.length === 0 ? 'every review requester has people[].gitlab' : `warning: no people[].gitlab for ${unmapped.join(', ')}; their clean MRs wait for the owner`);
   }

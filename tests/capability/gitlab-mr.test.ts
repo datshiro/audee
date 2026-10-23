@@ -43,6 +43,8 @@ describe('gitlab-mr', () => {
       ['owner is the author', { ...ok, ownerGitlab: 'AUTHOR' }, 'MR của Đạt, cần người khác approve'],
       ['cannot approve', { ...ok, after: mr({ user_can_approve: false }) }, 'tài khoản Đạt không approve được MR này'],
       ['already approved', { ...ok, after: mr({ user_has_approved: true }) }, 'Đạt đã approve trước đó'],
+      ['audee cannot approve', { ...ok, approver: 'audee', after: mr({ user_can_approve: false }) }, 'tài khoản audee không approve được MR này'],
+      ['audee already approved', { ...ok, approver: 'audee', after: mr({ user_has_approved: true }) }, 'audee đã approve trước đó'],
     ];
     for (const [name, input, why] of cases) expect(approvalDecision(input), name).toEqual({ approve: false, why });
     expect(approvalDecision(ok)).toEqual({ approve: true, sha: 'h1' });
@@ -75,6 +77,19 @@ describe('gitlab-mr', () => {
     expect(calls.map((c) => c.name)).toEqual(['get_mr', 'list_mr_discussions', 'list_mr_discussions', 'list_mr_discussions', 'list_mr_discussions', 'approve_mr']);
     expect(calls.filter((c) => c.name === 'list_mr_discussions').map((c) => c.args['page'])).toEqual([1, 2, 1, 2]);
     expect(calls.at(-1)?.args).toEqual({ project_id: 'g/p', mr_iid: 5, sha: '0123456789abcdef' });
+  });
+
+  it('starts audee\'s own gitlab server instead of the one in ~/.claude.json', async () => {
+    const fake = fakeServerConfig('ok');
+    const own = (JSON.parse(readFileSync(fake.userConfigPath, 'utf8')) as { mcpServers: { gitlab: Record<string, unknown> } }).mcpServers.gitlab;
+    writeFileSync(fake.userConfigPath, JSON.stringify({ mcpServers: { gitlab: { command: '/nonexistent/glab-mcp' } } }));
+    const gl = await connectGitLabMr({}, fake.userConfigPath, undefined, { gitlab: own });
+    try {
+      expect((await gl.getMr({ project: 'g/p', iid: 5 })).iid).toBe(5);
+    } finally {
+      await gl.close();
+    }
+    expect(fake.calls().map((c) => c.name)).toEqual(['get_mr']);
   });
 
   it('turns a tool error into an error that does not carry the tool text', async () => {

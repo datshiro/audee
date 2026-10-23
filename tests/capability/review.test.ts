@@ -50,6 +50,7 @@ function fakeGitlab(info: Partial<MrInfo> = {}, opts: { approveThrows?: boolean;
 
 const READY = text('REVIEW_STATUS: ready: review sạch\nREVIEW_POSTED: yes');
 const AUTO = { review: { autoApprove: true }, gitlab: { owner: 'dat', p1: 'kha' } };
+const OWN_GITLAB = { type: 'stdio', command: 'glab-mcp-keychain.sh', args: ['audee-gitlab-pat'] };
 
 describe('review', () => {
   // ciel/ciel_test.go:111
@@ -234,14 +235,31 @@ capabilities:
   });
 
   it('uses audee\'s own gitlab server over the one in ~/.claude.json', async () => {
-    const gitlab = { type: 'stdio', command: 'audee-glab', env: { GITLAB_PAT: '${AUDEE_GL}' } };
-    const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'), { mcpServers: { gitlab }, keychainEnv: { AUDEE_GL: 'audee-gitlab-pat' } });
-    ctx.secrets = { AUDEE_GL: 'own-token' };
+    const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'), { mcpServers: { gitlab: OWN_GITLAB } });
     await review(ctx);
-    const own = inputs[0]?.options.mcpServers?.['gitlab'] as { command?: string; env?: Record<string, string> };
-    expect(own.command).toBe('audee-glab');
-    expect(own.env?.['GITLAB_PAT']).toBe('own-token');
+    const own = inputs[0]?.options.mcpServers?.['gitlab'] as { command?: string; args?: string[] };
+    expect(own).toMatchObject({ command: 'glab-mcp-keychain.sh', args: ['audee-gitlab-pat'] });
     expect(Object.keys(inputs[0]?.options.mcpServers ?? {}).sort()).toEqual(['gitlab', 'kb']);
+  });
+
+  it('with audee\'s own gitlab server, finds the PASS acknowledgement by gitlab_account and still guards the owner', async () => {
+    const opts = { ...AUTO, mcpServers: { gitlab: OWN_GITLAB }, gitlabAccount: 'audee-bot' };
+    const gl = fakeGitlab();
+    const out = await review(harness(READY, opts, gl.factory).ctx);
+    expect(gl.calls).toEqual(['get', 'close', 'get', 'ack:h1:audee-bot', 'approve:h1', 'close']);
+    expect(out.notifyOwner).toBe(`review approved as audee-bot: ${MR}`);
+
+    const owners = fakeGitlab({ author_username: 'dat' });
+    expect((await review(harness(READY, opts, owners.factory).ctx)).reply?.html).toContain('MR của Đạt, cần người khác approve');
+    expect(owners.calls.filter((c) => c.startsWith('approve:'))).toEqual([]);
+
+    const cannot = fakeGitlab({ user_can_approve: false });
+    expect((await review(harness(READY, opts, cannot.factory).ctx)).reply?.html).toContain('tài khoản audee không approve được MR này');
+
+    const unset = fakeGitlab();
+    const { gitlabAccount: _, ...noAccount } = opts;
+    expect((await review(harness(READY, noAccount, unset.factory).ctx)).reply?.html).toContain('chưa thấy xác nhận PASS trên MR');
+    expect(unset.calls.filter((c) => c.startsWith('ack:') || c.startsWith('approve:'))).toEqual([]);
   });
 
   it('TestReviewUsesReviewProfile', async () => {

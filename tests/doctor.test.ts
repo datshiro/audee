@@ -161,14 +161,32 @@ describe('doctor', () => {
     expect((await runDoctor(all.cfg, all.deps)).find((c) => c.name === 'review auto-approve')?.detail).toBe('every review requester has people[].gitlab');
   });
 
-  it('takes gitlab from audee\'s mcp_servers and checks its keychain_env variables', async () => {
-    const gitlab = { type: 'stdio', command: 'audee-glab', env: { GITLAB_PAT: '${AUDEE_GL}' } };
+  it('takes gitlab from audee\'s mcp_servers and checks its shape and keychain_env variables', async () => {
+    const launcher = { type: 'stdio', command: '/a/deploy/glab-mcp-keychain.sh', args: ['audee-gitlab-pat'] };
+    const viaEnv = { type: 'stdio', command: 'glab-mcp', env: { GITLAB_PAT: '${AUDEE_GL}' } };
     const run = async (o: TestConfigOptions) => { const { cfg, deps } = setup(o); return runDoctor(cfg, deps); };
-    const missing = await run({ mcpServers: { gitlab } });
-    expect(missing.find((c) => c.name === 'mcp servers')?.detail).toMatch(/^kb defined in .*; gitlab from audee's mcp_servers$/);
-    expect(missing.find((c) => c.name === 'gitlab server env')).toMatchObject({ ok: false, detail: 'mcp_servers.gitlab uses AUDEE_GL, which keychain_env does not define' });
-    const ok = await run({ mcpServers: { gitlab }, keychainEnv: { AUDEE_GL: 'audee-gitlab-pat' } });
-    expect(ok.find((c) => c.name === 'gitlab server env')).toMatchObject({ ok: true });
+    const find = (checks: Awaited<ReturnType<typeof run>>, name: string) => checks.find((c) => c.name === name);
+
+    const good = await run({ mcpServers: { gitlab: launcher } });
+    expect(find(good, 'mcp servers')?.detail).toMatch(/^kb defined in .*; gitlab from audee's mcp_servers$/);
+    expect(find(good, 'audee gitlab')).toMatchObject({ ok: true });
+    expect(find(good, 'audee gitlab')?.detail).not.toContain('warning');
+
+    const missing = await run({ mcpServers: { gitlab: viaEnv } });
+    expect(find(missing, 'gitlab server env')).toMatchObject({ ok: false, detail: 'mcp_servers.gitlab uses AUDEE_GL, which keychain_env does not define' });
+    const warned = await run({ mcpServers: { gitlab: viaEnv }, keychainEnv: { AUDEE_GL: 'audee-gitlab-pat' } });
+    expect(find(warned, 'gitlab server env')).toMatchObject({ ok: true });
+    expect(find(warned, 'audee gitlab')).toMatchObject({ ok: true });
+    expect(find(warned, 'audee gitlab')?.detail).toContain('warning: mcp_servers.gitlab takes its token from keychain_env');
+
+    expect(find(await run({ mcpServers: { gitlab: { type: 'http', url: 'https://x' } } }), 'audee gitlab')).toMatchObject({ ok: false });
+    expect(find(await run({ mcpServers: { gitlab: { type: 'stdio', cmd: 'glab' } } }), 'audee gitlab')).toMatchObject({ ok: false });
+    expect(find(await run({ gitlabAccount: 'audee-bot' }), 'audee gitlab')).toMatchObject({ ok: false });
+    expect(find(await run({}), 'audee gitlab')).toBeUndefined();
+
+    const auto = { review: { workdir: tmp(), autoApprove: true, postFindings: true }, gitlab: { owner: 'dat', p1: 'kha', p2: 'p2', p3: 'p3', p4: 'p4', p5: 'p5' }, mcpServers: { gitlab: launcher } };
+    expect(find(await run(auto), 'review auto-approve')).toMatchObject({ ok: false, detail: 'mcp_servers.gitlab is set without gitlab_account, so the PASS acknowledgement is never found and no MR is ever approved' });
+    expect(find(await run({ ...auto, gitlabAccount: 'audee-bot' }), 'review auto-approve')).toMatchObject({ ok: true });
   });
 
   it('reports whether reviews can read Jira', async () => {

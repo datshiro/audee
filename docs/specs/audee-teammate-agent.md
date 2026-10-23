@@ -74,14 +74,16 @@ The review session ends with `REVIEW_STATUS: ready|blocked|unreviewable: <reason
 four templates: `✅ MR sẵn sàng merge, mình đã approve`, `✅ MR sẵn sàng merge, chờ Đạt approve: <why>`,
 `⛔ MR chưa merge được: <reason>`, and `⚠️ Chưa đánh giá được MR: <reason>`. The session never approves:
 `mcp__gitlab__approve_mr` stays in the review fence.
-With `review.auto_approve: true` (default false), audee itself approves a ready MR under the owner's GitLab account,
+With `review.auto_approve: true` (default false), audee itself approves a ready MR under the GitLab account its token belongs to (the owner's, or
+`gitlab_account` when `mcp_servers.gitlab` gives audee its own token),
 calling `get_mr`, `list_mr_discussions` and `approve_mr` through glab-mcp 1.6.0 or later over MCP stdio, so the token
 stays in that process. It approves only when all of these hold:
 - the head did not move between the fetches before and after the session, and the MR is still open;
-- the owner's PASS acknowledgement for that head is on the MR;
+- the PASS acknowledgement for that head is on the MR, written by the account the session posts as (the owner, or
+  `gitlab_account`);
 - the requester has `people[].gitlab` and is not the author;
 - the owner has `people[].gitlab` and is not the author;
-- GitLab says the owner can approve and has not approved yet.
+- GitLab says the approving account can approve and has not approved yet.
 The approve call carries the reviewed head SHA, so GitLab refuses it if the MR moved. Any GitLab error means no
 approval. This is an exception to the No-Self-Approval invariant, accepted by the owner: a review session judges the
 MR and audee approves under the owner's name. A review already running keeps the config it started with, so turning
@@ -103,12 +105,17 @@ wf-apo-mr-review workflow's tool names match without changing the shared skill. 
 is denied by the gate, and the known write tools are also disallowed. The token acts with its owner's Jira rights, so
 give it read scopes only. Verified 2026-10-20: the preview endpoint read APO-7110 with such a token.
 
-GitLab credential: by default reviews, the approval client and `mcp_read` capabilities use the `gitlab` server from
-`~/.claude.json`, so audee shares the owner's Claude Code token. When `mcp_servers.gitlab` is defined in audee's config
-it replaces that server everywhere audee starts one; `deploy/glab-mcp-keychain.sh <keychain-item>` reads audee's own
-token inside the server process, keeping it off the claude process's argv. GitLab attributes audee's comments and
-approvals to the token's account. `kb` still comes from `~/.claude.json`. `audee doctor` names where each server comes
-from and fails when an audee-defined server uses a `${VAR}` that keychain_env does not define.
+GitLab credential: by default reviews and the approval client use the `gitlab` server from `~/.claude.json`, so
+audee shares the owner's Claude Code token. When `mcp_servers.gitlab` is defined in audee's config it replaces that
+server for review sessions and the approval client. `deploy/glab-mcp-keychain.sh <keychain-item>` reads audee's own
+token inside the server process, keeping it off the claude process's argv; create the item with
+`security add-generic-password -a "$USER" -s <item> -T /usr/bin/security -w`, or the daemon's headless lookup can stall
+on a Keychain prompt. GitLab attributes the session's notes and audee's approvals to the token's account, so
+`gitlab_account` must name it: the PASS acknowledgement is matched against that account, while the owner and
+requester author checks still use `people[].gitlab`. `kb` still comes from `~/.claude.json`. `mcp_read` cannot name
+gitlab (only servers in the read-only tool list may be used). `audee doctor` names where each server comes from,
+requires a stdio `command` for `mcp_servers.gitlab`, warns when it takes its token through a `${VAR}`, and fails when
+`gitlab_account` is missing with auto-approve on or is set without `mcp_servers.gitlab`.
 Validation: unit tests only; live check pending.
 
 ## Dashboard

@@ -21,6 +21,7 @@ export type TestConfigOptions = {
   gitlab?: Record<string, string>; // person id (owner, p1, ...) -> GitLab username
   keychainEnv?: Record<string, string>;
   mcpServers?: Record<string, Record<string, unknown>>; // audee's own mcp_servers
+  gitlabAccount?: string;
   onedriveDir?: string;
   mapping?: { skillDir?: string; skillSource?: string; prompt?: string };
   teams?: { chats?: string[]; aliases?: string[]; mrUrlPattern?: string; historySize?: number; quietAfter?: string; shadow?: boolean; workHours?: { days: string[]; start: string; end: string } };
@@ -82,7 +83,7 @@ capabilities:
   kb_query: { profile: kb_read, lane: kb${o.kbPerPersonLimit !== undefined ? `, per_person_limit: ${o.kbPerPersonLimit}` : ''}${o.kbDir !== undefined ? `, kb_dir: ${o.kbDir}` : ''}${o.kbDefaultMode !== undefined ? `, default_mode: ${o.kbDefaultMode}` : ''} }
 ${mcpRead}keychain_env: ${JSON.stringify(o.keychainEnv ?? {})}
 mcp_servers: ${JSON.stringify(o.mcpServers ?? {})}
-`;
+${o.gitlabAccount !== undefined ? `gitlab_account: ${q(o.gitlabAccount)}\n` : ''}`;
   const path = join(dir, 'config.yaml');
   writeFileSync(path, yaml);
   return loadConfig(path);

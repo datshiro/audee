@@ -170,11 +170,17 @@ export const review: Capability = async (ctx) => {
   const secrets = Object.values(ctx.secrets);
   if (res.status === 'ready' && cap.auto_approve) {
     const ownerGitlab = ctx.cfg.people.find((p) => p.owner)?.gitlab;
+    // With audee's own gitlab server the session posts, and audee approves, as gitlab_account.
+    const own = ctx.cfg.mcp_servers.gitlab !== undefined;
+    const ackAuthor = own ? ctx.cfg.gitlab_account : ownerGitlab;
     const decided = await withGitLab(ctx, async (gl): Promise<ApprovalDecision> => {
       const ref = mrRef(mrUrl);
       const after = await gl.getMr(ref);
-      const ackFound = ownerGitlab !== undefined && await gl.hasPassAck(ref, after.sha, ownerGitlab);
-      const d = approvalDecision({ autoApprove: true, status: res.status, before, after, ackFound, requesterGitlab: ctx.person.gitlab, ownerGitlab, statusReason: res.statusReason });
+      const ackFound = ackAuthor !== undefined && await gl.hasPassAck(ref, after.sha, ackAuthor);
+      const d = approvalDecision({
+        autoApprove: true, status: res.status, before, after, ackFound, requesterGitlab: ctx.person.gitlab, ownerGitlab, statusReason: res.statusReason,
+        ...(own ? { approver: 'audee' } : {}),
+      });
       if (!d.approve) return d;
       try {
         await gl.approve(ref, d.sha);
@@ -188,7 +194,7 @@ export const review: Capability = async (ctx) => {
     if (d.approve) {
       return {
         reply: { html: replyHTML(reviewApprovedReply(res.statusReason, secrets), mrUrl) },
-        notifyOwner: `review approved as owner: ${mrUrl}`,
+        notifyOwner: `review approved as ${own ? ctx.cfg.gitlab_account ?? 'audee' : 'owner'}: ${mrUrl}`,
         event: { ...base, status: 'approved', reason: res.statusReason },
       };
     }

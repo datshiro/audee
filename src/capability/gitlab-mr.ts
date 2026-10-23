@@ -1,5 +1,5 @@
-// Approving a clean MR as the owner. audee decides here, in code; the review session never approves.
-// GitLab is reached through the user's glab-mcp server, so the token stays inside that process.
+// Approving a clean MR, as the owner or as audee's own GitLab account. audee decides here, in code; the review session
+// never approves. GitLab is reached through a glab-mcp server, so the token stays inside that process.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { loadMcpServers, type OwnMcpServers } from '../fence/mcp-servers.js';
@@ -8,7 +8,7 @@ export type MrInfo = { iid: number; state: string; sha: string; author_username:
 export type MrRef = { project: string; iid: number };
 export type GitLabMr = {
   getMr(ref: MrRef): Promise<MrInfo>;
-  hasPassAck(ref: MrRef, sha: string, ownerGitlab: string): Promise<boolean>;
+  hasPassAck(ref: MrRef, sha: string, author: string): Promise<boolean>;
   approve(ref: MrRef, sha: string): Promise<void>;
   close(): Promise<void>;
 };
@@ -26,7 +26,9 @@ const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCas
 export function approvalDecision(i: {
   autoApprove: boolean; status: string; before?: MrInfo; after?: MrInfo; ackFound: boolean;
   requesterGitlab?: string; ownerGitlab?: string; statusReason: string;
+  approver?: string; // who approves, in the refusal text: the owner's name, or audee with its own account
 }): ApprovalDecision {
+  const approver = i.approver ?? 'Đạt';
   if (!i.autoApprove || i.status !== 'ready') return { approve: false, why: i.statusReason };
   const { before, after } = i;
   if (before === undefined || after === undefined) return { approve: false, why: 'không gọi được GitLab' };
@@ -37,19 +39,19 @@ export function approvalDecision(i: {
   if (i.requesterGitlab === undefined) return { approve: false, why: 'chưa map tài khoản GitLab của bạn' };
   if (same(i.requesterGitlab, after.author_username)) return { approve: false, why: 'bạn là tác giả MR' };
   if (same(i.ownerGitlab, after.author_username)) return { approve: false, why: 'MR của Đạt, cần người khác approve' };
-  if (!after.user_can_approve) return { approve: false, why: 'tài khoản Đạt không approve được MR này' };
-  if (after.user_has_approved) return { approve: false, why: 'Đạt đã approve trước đó' };
+  if (!after.user_can_approve) return { approve: false, why: `tài khoản ${approver} không approve được MR này` };
+  if (after.user_has_approved) return { approve: false, why: `${approver} đã approve trước đó` };
   return { approve: true, sha: after.sha };
 }
 
 type Note = { body?: unknown; author?: { username?: unknown } };
 
-// The skill's clean acknowledgement for this head, written by the owner's account (the session posts as the owner).
-// Matching the body alone would let the MR author forge it.
-export function noteHasPassAck(note: Note, sha: string, ownerGitlab: string): boolean {
+// The skill's clean acknowledgement for this head, written by the account the review session posts as (the owner, or
+// gitlab_account with audee's own token). Matching the body alone would let the MR author forge it.
+export function noteHasPassAck(note: Note, sha: string, author: string): boolean {
   const body = typeof note.body === 'string' ? note.body : '';
-  const author = typeof note.author?.username === 'string' ? note.author.username : '';
-  return same(author, ownerGitlab) && body.includes('Verdict: PASS') && body.includes('head `' + sha.slice(0, 10) + '`');
+  const by = typeof note.author?.username === 'string' ? note.author.username : '';
+  return same(by, author) && body.includes('Verdict: PASS') && body.includes('head `' + sha.slice(0, 10) + '`');
 }
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -92,13 +94,13 @@ export async function connectGitLabMr(secrets: Record<string, string>, userConfi
   };
   return {
     getMr: async (ref) => asMrInfo(await call('get_mr', { project_id: ref.project, mr_iid: ref.iid })),
-    hasPassAck: async (ref, sha, ownerGitlab) => {
+    hasPassAck: async (ref, sha, author) => {
       for (let page = 1; page <= maxDiscussionPages; page++) {
         const discussions = await call('list_mr_discussions', { project_id: ref.project, mr_iid: ref.iid, page, per_page: 100 });
         if (!Array.isArray(discussions)) throw new Error('list_mr_discussions returned an unexpected shape');
         for (const d of discussions) {
           const notes: unknown = isPlainObject(d) ? d['notes'] : undefined;
-          if (Array.isArray(notes) && notes.some((n) => isPlainObject(n) && noteHasPassAck(n as Note, sha, ownerGitlab))) return true;
+          if (Array.isArray(notes) && notes.some((n) => isPlainObject(n) && noteHasPassAck(n as Note, sha, author))) return true;
         }
         if (discussions.length < 100) return false;
       }

@@ -80,9 +80,11 @@ keychain_env: {}               # ENV_VAR: keychain-item, for MCP servers that re
 #   Atlassian org admin, a scoped API token with read:jira:agent-interface (the preview endpoint's scope; the GA endpoint
 #   lists no Jira tools for such tokens), and a Keychain item holding base64("<email>:<api token>"), e.g. keychain_env: { ATLASSIAN_BASIC: audee-atlassian }.
 # - "gitlab" replaces the gitlab server in ~/.claude.json, so audee comments and approves with its own token. The
-#   launcher reads the token from the Keychain item given as its argument; GitLab shows audee's actions as that token's account.
+#   launcher reads the token from the Keychain item given as its argument (create it with -T /usr/bin/security);
+#   GitLab shows audee's notes and approvals as that token's account, which gitlab_account must name.
 mcp_servers: {}
 #   atlassian: { type: http, url: "https://mcp.atlassian.com/v1/mcp/preview", headers: { Authorization: "Basic ${ATLASSIAN_BASIC}" } }
 #   gitlab: { type: stdio, command: /path/to/audee/deploy/glab-mcp-keychain.sh, args: [audee-gitlab-pat], env: { GITLAB_URL: "https://gitlab.example.com/" } }
+# gitlab_account: audee-bot          # the GitLab username of mcp_servers.gitlab's token
 
 admin: { port: 7420 }            # dashboard on 127.0.0.1; `audee dashboard` prints the sign-in link
