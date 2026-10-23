@@ -83,12 +83,13 @@ stays in that process. It approves only when all of these hold:
   `gitlab_account`);
 - the requester has `people[].gitlab` and is not the author;
 - the owner has `people[].gitlab` and is not the author;
+- with audee's own token, `gitlab_account` is not the author;
 - GitLab says the approving account can approve and has not approved yet.
 The approve call carries the reviewed head SHA, so GitLab refuses it if the MR moved. Any GitLab error means no
 approval. This is an exception to the No-Self-Approval invariant, accepted by the owner: a review session judges the
-MR and audee approves under the owner's name. A review already running keeps the config it started with, so turning
+MR and audee approves under the owner's name, or under `gitlab_account` with its own token. A review already running keeps the config it started with, so turning
 the flag off does not stop it.
-Accepted residual risk: the review session reads MR content the author controls and posts notes as the owner, so a
+Accepted residual risk: the review session reads MR content the author controls and posts notes as the owner (or `gitlab_account`), so a
 prompt injection that makes the session print `ready` and post a PASS acknowledgement would pass every check above.
 The checks stop self-approval by the requester, approval of a moved head and approval of the owner's own MR; they do
 not prove the review is sound. GitLab's required-approvals rules stay the backstop, and every approval notifies the
@@ -115,7 +116,10 @@ on a Keychain prompt. GitLab attributes the session's notes and audee's approval
 requester author checks still use `people[].gitlab`. `kb` still comes from `~/.claude.json`. `mcp_read` cannot name
 gitlab (only servers in the read-only tool list may be used). `audee doctor` names where each server comes from,
 requires a stdio `command` for `mcp_servers.gitlab`, warns when it takes its token through a `${VAR}`, and fails when
-`gitlab_account` is missing with auto-approve on or is set without `mcp_servers.gitlab`.
+`gitlab_account` is missing with auto-approve on, is set without `mcp_servers.gitlab`, or names a person in `people`.
+Review sessions are denied running the gitlab server's own command (it would reach `approve_mr` past the
+`mcp__gitlab` deny). That is a Bash deny list, not a boundary: without `seatbelt` a session that finds another way to
+run it can still approve, so doctor warns when review runs without seatbelt.
 Validation: unit tests only; live check pending.
 
 ## Dashboard

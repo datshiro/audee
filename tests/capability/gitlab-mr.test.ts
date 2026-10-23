@@ -43,6 +43,7 @@ describe('gitlab-mr', () => {
       ['owner is the author', { ...ok, ownerGitlab: 'AUTHOR' }, 'MR của Đạt, cần người khác approve'],
       ['cannot approve', { ...ok, after: mr({ user_can_approve: false }) }, 'tài khoản Đạt không approve được MR này'],
       ['already approved', { ...ok, after: mr({ user_has_approved: true }) }, 'Đạt đã approve trước đó'],
+      ['audee is the author', { ...ok, approver: 'audee', approverGitlab: 'Author' }, 'MR của audee, cần người khác approve'],
       ['audee cannot approve', { ...ok, approver: 'audee', after: mr({ user_can_approve: false }) }, 'tài khoản audee không approve được MR này'],
       ['audee already approved', { ...ok, approver: 'audee', after: mr({ user_has_approved: true }) }, 'audee đã approve trước đó'],
     ];
@@ -58,6 +59,7 @@ describe('gitlab-mr', () => {
     expect(noteHasPassAck({ body: body.replace('0123456789', '9999999999'), author: { username: 'dat' } }, sha, 'dat')).toBe(false);
     expect(noteHasPassAck({ body: body.replace('Verdict: PASS', 'Verdict: NEEDS WORK'), author: { username: 'dat' } }, sha, 'dat')).toBe(false);
     expect(noteHasPassAck({ author: { username: 'dat' } }, sha, 'dat')).toBe(false);
+    expect(noteHasPassAck({ body }, sha, '')).toBe(false);
   });
 
   it('talks to the gitlab MCP server: reads the MR, pages discussions for the ack, approves with the sha', async () => {

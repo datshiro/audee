@@ -121,7 +121,7 @@ export const ConfigSchema = z.strictObject({
     gitlab: z.record(z.string(), z.unknown()).optional(),
   }).default({}),
   // GitLab username of mcp_servers.gitlab's token: the account the review's PASS acknowledgement is posted as
-  gitlab_account: z.string().optional(),
+  gitlab_account: z.string().min(1).optional(),
   // The dashboard, served by `audee serve` on 127.0.0.1 only.
   admin: z.strictObject({ port: z.number().int().min(1024).max(65535).default(7420) }).prefault({}),
 });

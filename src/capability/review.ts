@@ -179,7 +179,7 @@ export const review: Capability = async (ctx) => {
       const ackFound = ackAuthor !== undefined && await gl.hasPassAck(ref, after.sha, ackAuthor);
       const d = approvalDecision({
         autoApprove: true, status: res.status, before, after, ackFound, requesterGitlab: ctx.person.gitlab, ownerGitlab, statusReason: res.statusReason,
-        ...(own ? { approver: 'audee' } : {}),
+        ...(own ? { approver: 'audee', ...(ackAuthor !== undefined ? { approverGitlab: ackAuthor } : {}) } : {}),
       });
       if (!d.approve) return d;
       try {

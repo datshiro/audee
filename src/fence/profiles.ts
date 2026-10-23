@@ -63,7 +63,10 @@ export function buildOptions(input: ProfileInput): Options {
   switch (input.profile) {
     case 'review': {
       const jira = input.mcpServers[REVIEW_JIRA_ALIAS] !== undefined;
-      const denied = [...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED, ...(jira ? REVIEW_JIRA_WRITE_TOOLS : [])];
+      // The gitlab server's own command would reach approve_mr past the mcp__gitlab deny, e.g. audee's token launcher.
+      const gitlab = input.mcpServers['gitlab'];
+      const launcher = gitlab !== undefined && 'command' in gitlab && typeof gitlab.command === 'string' ? [`Bash(${gitlab.command})`, `Bash(${gitlab.command} *)`] : [];
+      const denied = [...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED, ...launcher, ...(jira ? REVIEW_JIRA_WRITE_TOOLS : [])];
       Object.assign(options, {
         permissionMode: 'auto',
         settingSources: ['user', 'project', 'local'],

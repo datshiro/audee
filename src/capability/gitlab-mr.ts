@@ -27,6 +27,7 @@ export function approvalDecision(i: {
   autoApprove: boolean; status: string; before?: MrInfo; after?: MrInfo; ackFound: boolean;
   requesterGitlab?: string; ownerGitlab?: string; statusReason: string;
   approver?: string; // who approves, in the refusal text: the owner's name, or audee with its own account
+  approverGitlab?: string; // audee's own account, which must not approve its own MR
 }): ApprovalDecision {
   const approver = i.approver ?? 'Đạt';
   if (!i.autoApprove || i.status !== 'ready') return { approve: false, why: i.statusReason };
@@ -39,6 +40,7 @@ export function approvalDecision(i: {
   if (i.requesterGitlab === undefined) return { approve: false, why: 'chưa map tài khoản GitLab của bạn' };
   if (same(i.requesterGitlab, after.author_username)) return { approve: false, why: 'bạn là tác giả MR' };
   if (same(i.ownerGitlab, after.author_username)) return { approve: false, why: 'MR của Đạt, cần người khác approve' };
+  if (i.approverGitlab !== undefined && same(i.approverGitlab, after.author_username)) return { approve: false, why: 'MR của audee, cần người khác approve' };
   if (!after.user_can_approve) return { approve: false, why: `tài khoản ${approver} không approve được MR này` };
   if (after.user_has_approved) return { approve: false, why: `${approver} đã approve trước đó` };
   return { approve: true, sha: after.sha };
@@ -51,7 +53,7 @@ type Note = { body?: unknown; author?: { username?: unknown } };
 export function noteHasPassAck(note: Note, sha: string, author: string): boolean {
   const body = typeof note.body === 'string' ? note.body : '';
   const by = typeof note.author?.username === 'string' ? note.author.username : '';
-  return same(by, author) && body.includes('Verdict: PASS') && body.includes('head `' + sha.slice(0, 10) + '`');
+  return by !== '' && same(by, author) && body.includes('Verdict: PASS') && body.includes('head `' + sha.slice(0, 10) + '`');
 }
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

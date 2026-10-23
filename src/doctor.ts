@@ -167,12 +167,18 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     if (!stdio || typeof ownGitlab['command'] !== 'string' || ownGitlab['command'] === '') {
       check('audee gitlab', false, 'mcp_servers.gitlab needs type stdio and a command: audee starts it itself to approve MRs');
     } else if (JSON.stringify(ownGitlab).includes('${')) {
-      check('audee gitlab', true, 'warning: mcp_servers.gitlab takes its token from keychain_env, which puts it on the claude command line; use deploy/glab-mcp-keychain.sh <keychain-item>');
+      check('audee gitlab', true, 'warning: mcp_servers.gitlab reads keychain_env, which puts those values on the claude command line; pass the token with deploy/glab-mcp-keychain.sh <keychain-item>');
+    } else if (Object.values(cfg.capabilities).some((c) => c.profile === 'review' && !c.seatbelt)) {
+      check('audee gitlab', true, "warning: review runs without seatbelt, so only a Bash deny list stops a session from starting audee's gitlab server itself");
     } else {
       check('audee gitlab', true, `mcp_servers.gitlab replaces the gitlab server in ${userConfigPath}`);
     }
   } else if (cfg.gitlab_account !== undefined) {
     check('audee gitlab', false, 'gitlab_account is set but mcp_servers.gitlab is not, so the review posts as the owner, not as gitlab_account');
+  }
+  const account = cfg.gitlab_account?.toLowerCase();
+  if (account !== undefined && cfg.people.some((p) => p.gitlab?.toLowerCase() === account)) {
+    check('gitlab account', false, `gitlab_account ${cfg.gitlab_account} is also a person's people[].gitlab; it must be the account of audee's own token`);
   }
   if (Object.values(cfg.capabilities).some((c) => c.profile === 'review')) {
     const jira = cfg.mcp_servers[REVIEW_JIRA_SERVER];

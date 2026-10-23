@@ -239,6 +239,7 @@ capabilities:
     await review(ctx);
     const own = inputs[0]?.options.mcpServers?.['gitlab'] as { command?: string; args?: string[] };
     expect(own).toMatchObject({ command: 'glab-mcp-keychain.sh', args: ['audee-gitlab-pat'] });
+    expect(inputs[0]?.options.disallowedTools).toEqual(expect.arrayContaining(['Bash(glab-mcp-keychain.sh)', 'Bash(glab-mcp-keychain.sh *)']));
     expect(Object.keys(inputs[0]?.options.mcpServers ?? {}).sort()).toEqual(['gitlab', 'kb']);
   });
 
@@ -255,6 +256,17 @@ capabilities:
 
     const cannot = fakeGitlab({ user_can_approve: false });
     expect((await review(harness(READY, opts, cannot.factory).ctx)).reply?.html).toContain('tài khoản audee không approve được MR này');
+
+    const bots = fakeGitlab({ author_username: 'Audee-Bot' });
+    expect((await review(harness(READY, opts, bots.factory).ctx)).reply?.html).toContain('MR của audee, cần người khác approve');
+    expect(bots.calls.filter((c) => c.startsWith('approve:'))).toEqual([]);
+
+    const requesters = fakeGitlab({ author_username: 'kha' });
+    expect((await review(harness(READY, opts, requesters.factory).ctx)).reply?.html).toContain('bạn là tác giả MR');
+
+    const ownerToken = fakeGitlab();
+    await review(harness(READY, { ...AUTO, gitlabAccount: 'audee-bot' }, ownerToken.factory).ctx);
+    expect(ownerToken.calls).toContain('ack:h1:dat');
 
     const unset = fakeGitlab();
     const { gitlabAccount: _, ...noAccount } = opts;
