@@ -8,7 +8,7 @@ import type { GitLabMr, MrInfo } from '../../src/capability/gitlab-mr.js';
 import { parseReviewOutput, review, reviewPrompt, reviewPromptTemplate } from '../../src/capability/review.js';
 import type { CapabilityContext } from '../../src/capability/types.js';
 import { loadConfig } from '../../src/config/load.js';
-import { REVIEW_DENIED_TOOLS } from '../../src/fence/constants.js';
+import { REVIEW_DENIED_TOOLS, REVIEW_EXTRA_DENIED } from '../../src/fence/constants.js';
 import type { Job } from '../../src/queue/job.js';
 import { failedReply } from '../../src/render/html.js';
 import { InterruptedError, type RunInput, type RunResult } from '../../src/runner/run.js';
@@ -234,12 +234,18 @@ capabilities:
     }
   });
 
+  it('denies exactly the review deny lists without audee\'s own gitlab server', async () => {
+    const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'));
+    await review(ctx);
+    expect(inputs[0]?.options.disallowedTools).toEqual([...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED]);
+  });
+
   it('uses audee\'s own gitlab server over the one in ~/.claude.json', async () => {
     const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'), { mcpServers: { gitlab: OWN_GITLAB } });
     await review(ctx);
     const own = inputs[0]?.options.mcpServers?.['gitlab'] as { command?: string; args?: string[] };
     expect(own).toMatchObject({ command: 'glab-mcp-keychain.sh', args: ['audee-gitlab-pat'] });
-    expect(inputs[0]?.options.disallowedTools).toEqual(expect.arrayContaining(['Bash(glab-mcp-keychain.sh)', 'Bash(glab-mcp-keychain.sh *)']));
+    expect(inputs[0]?.options.disallowedTools).toEqual([...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED]);
     expect(Object.keys(inputs[0]?.options.mcpServers ?? {}).sort()).toEqual(['gitlab', 'kb']);
   });
 

@@ -164,14 +164,13 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
   const ownGitlab = cfg.mcp_servers.gitlab;
   if (ownGitlab !== undefined) {
     const stdio = ownGitlab['type'] === undefined || ownGitlab['type'] === 'stdio';
-    if (!stdio || typeof ownGitlab['command'] !== 'string' || ownGitlab['command'] === '') {
-      check('audee gitlab', false, 'mcp_servers.gitlab needs type stdio and a command: audee starts it itself to approve MRs');
-    } else if (JSON.stringify(ownGitlab).includes('${')) {
-      check('audee gitlab', true, 'warning: mcp_servers.gitlab reads keychain_env, which puts those values on the claude command line; pass the token with deploy/glab-mcp-keychain.sh <keychain-item>');
-    } else if (Object.values(cfg.capabilities).some((c) => c.profile === 'review' && !c.seatbelt)) {
-      check('audee gitlab', true, "warning: review runs without seatbelt, so only a Bash deny list stops a session from starting audee's gitlab server itself");
-    } else {
-      check('audee gitlab', true, `mcp_servers.gitlab replaces the gitlab server in ${userConfigPath}`);
+    const usable = stdio && typeof ownGitlab['command'] === 'string' && ownGitlab['command'] !== '';
+    check('audee gitlab', usable, usable ? `mcp_servers.gitlab replaces the gitlab server in ${userConfigPath}` : 'mcp_servers.gitlab needs type stdio and a command: audee starts it itself to approve MRs');
+    if (JSON.stringify(ownGitlab).includes('${')) {
+      check('audee gitlab token', true, 'warning: mcp_servers.gitlab reads keychain_env, which puts those values on the claude command line; pass the token with deploy/glab-mcp-keychain.sh <keychain-item>');
+    }
+    if (Object.values(cfg.capabilities).some((c) => c.profile === 'review' && !c.seatbelt)) {
+      check('audee gitlab seatbelt', true, "warning: review runs without seatbelt, so a session that starts audee's gitlab server or reads its Keychain item itself can approve MRs past audee's checks");
     }
   } else if (cfg.gitlab_account !== undefined) {
     check('audee gitlab', false, 'gitlab_account is set but mcp_servers.gitlab is not, so the review posts as the owner, not as gitlab_account');

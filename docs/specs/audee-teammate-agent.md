@@ -117,9 +117,10 @@ requester author checks still use `people[].gitlab`. `kb` still comes from `~/.c
 gitlab (only servers in the read-only tool list may be used). `audee doctor` names where each server comes from,
 requires a stdio `command` for `mcp_servers.gitlab`, warns when it takes its token through a `${VAR}`, and fails when
 `gitlab_account` is missing with auto-approve on, is set without `mcp_servers.gitlab`, or names a person in `people`.
-Review sessions are denied running the gitlab server's own command (it would reach `approve_mr` past the
-`mcp__gitlab` deny). That is a Bash deny list, not a boundary: without `seatbelt` a session that finds another way to
-run it can still approve, so doctor warns when review runs without seatbelt.
+The `mcp__gitlab` deny keeps `approve_mr` out of the session's MCP tools, but without `seatbelt` a session can start the
+launcher or read its Keychain item through Bash and approve past audee's checks. A Bash deny on the launcher's path
+was tried and dropped: `sh <path>`, relative paths and wrappers got past it. So doctor warns, as its own check, when
+`mcp_servers.gitlab` is set and review runs without seatbelt.
 Validation: unit tests only; live check pending.
 
 ## Dashboard

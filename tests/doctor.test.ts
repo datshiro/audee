@@ -170,15 +170,18 @@ describe('doctor', () => {
     const good = await run({ mcpServers: { gitlab: launcher }, review: { seatbelt: true } });
     expect(find(good, 'mcp servers')?.detail).toMatch(/^kb defined in .*; gitlab from audee's mcp_servers$/);
     expect(find(good, 'audee gitlab')).toMatchObject({ ok: true });
-    expect(find(good, 'audee gitlab')?.detail).not.toContain('warning');
-    expect(find(await run({ mcpServers: { gitlab: launcher } }), 'audee gitlab')?.detail).toContain('warning: review runs without seatbelt');
+    expect(good.filter((c) => c.name.startsWith('audee gitlab ')).map((c) => c.name)).toEqual([]);
+    expect(find(await run({ mcpServers: { gitlab: launcher } }), 'audee gitlab seatbelt')?.detail).toContain('warning: review runs without seatbelt');
+    const both = await run({ mcpServers: { gitlab: { ...launcher, env: { GITLAB_PAT: '${AUDEE_GL}' } } }, keychainEnv: { AUDEE_GL: 'audee-gitlab-pat' } });
+    expect(both.filter((c) => c.name.startsWith('audee gitlab ')).map((c) => c.name)).toEqual(['audee gitlab token', 'audee gitlab seatbelt']);
+    expect(find(both, 'audee gitlab')).toMatchObject({ ok: true });
 
     const missing = await run({ mcpServers: { gitlab: viaEnv } });
     expect(find(missing, 'gitlab server env')).toMatchObject({ ok: false, detail: 'mcp_servers.gitlab uses AUDEE_GL, which keychain_env does not define' });
     const warned = await run({ mcpServers: { gitlab: viaEnv }, keychainEnv: { AUDEE_GL: 'audee-gitlab-pat' } });
     expect(find(warned, 'gitlab server env')).toMatchObject({ ok: true });
     expect(find(warned, 'audee gitlab')).toMatchObject({ ok: true });
-    expect(find(warned, 'audee gitlab')?.detail).toContain('warning: mcp_servers.gitlab reads keychain_env');
+    expect(find(warned, 'audee gitlab token')?.detail).toContain('warning: mcp_servers.gitlab reads keychain_env');
 
     expect(find(await run({ mcpServers: { gitlab: { type: 'http', url: 'https://x' } } }), 'audee gitlab')).toMatchObject({ ok: false });
     expect(find(await run({ mcpServers: { gitlab: { type: 'stdio', cmd: 'glab' } } }), 'audee gitlab')).toMatchObject({ ok: false });
