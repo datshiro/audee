@@ -55,6 +55,9 @@ function writable(dir: string): string | undefined {
   }
 }
 
+const keychainVarsMissing = (def: unknown, keychainEnv: Record<string, string>): string[] =>
+  [...JSON.stringify(def ?? {}).matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1] ?? '').filter((v) => keychainEnv[v] === undefined);
+
 const minutes = (clock: string): number => {
   const [h, m] = clock.split(':').map(Number);
   return (h ?? 0) * 60 + (m ?? 0);
@@ -104,9 +107,9 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     check('claude code version', pkg.claudeCodeVersion === verified.claudeCode, `bundled ${pkg.claudeCodeVersion ?? 'unknown'}, fence verified on ${verified.claudeCode}`);
   }
 
-  // CLAUDE_CONFIG_DIR: sessions never see it (sessionEnv), so the daemon runs on ~/.claude
-  if (env['CLAUDE_CONFIG_DIR'] !== undefined) check('config dir', true, `warning: CLAUDE_CONFIG_DIR is set in this shell; sessions use ~/.claude (its login and settings)`);
-  else check('config dir', true, '~/.claude');
+  // CLAUDE_CONFIG_DIR: sessions never see it (sessionEnv); subscription sessions get ~/.claude-hack from deploy/claude-hack.sh
+  if (env['CLAUDE_CONFIG_DIR'] !== undefined) check('config dir', true, `warning: CLAUDE_CONFIG_DIR is set in this shell; subscription sessions use ~/.claude-hack (its login and settings)`);
+  else check('config dir', true, '~/.claude-hack');
 
   // 4. seatbelt fails closed
   const optionsFor = deps.optionsFor ?? ((profile, cap) => buildOptions({
@@ -138,8 +141,17 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     void name;
   }
   try {
-    const servers = loadMcpServers([...serverNames], {}, userConfigPath);
-    check('mcp servers', true, `${[...serverNames].sort().join(', ')} defined in ${userConfigPath}`);
+    const servers = loadMcpServers([...serverNames], {}, userConfigPath, cfg.mcp_servers);
+    const own = [...serverNames].filter((s) => cfg.mcp_servers[s as keyof typeof cfg.mcp_servers] !== undefined).sort();
+    const user = [...serverNames].filter((s) => !own.includes(s)).sort();
+    check('mcp servers', true, [
+      ...(user.length > 0 ? [`${user.join(', ')} defined in ${userConfigPath}`] : []),
+      ...(own.length > 0 ? [`${own.join(', ')} from audee's mcp_servers`] : []),
+    ].join('; '));
+    for (const name of own) {
+      const missing = keychainVarsMissing(servers[name], cfg.keychain_env);
+      check(`${name} server env`, missing.length === 0, missing.length === 0 ? `mcp_servers.${name} reads only keychain_env variables that are defined` : `mcp_servers.${name} uses ${missing.join(', ')}, which keychain_env does not define`);
+    }
     const kb = servers['kb'];
     if (kb !== undefined) {
       const text = JSON.stringify(kb);
@@ -149,13 +161,30 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
   } catch (e) {
     check('mcp servers', false, `${(e as Error).message} (read ${userConfigPath})`);
   }
+  const ownGitlab = cfg.mcp_servers.gitlab;
+  if (ownGitlab !== undefined) {
+    const stdio = ownGitlab['type'] === undefined || ownGitlab['type'] === 'stdio';
+    const usable = stdio && typeof ownGitlab['command'] === 'string' && ownGitlab['command'] !== '';
+    check('audee gitlab', usable, usable ? `mcp_servers.gitlab replaces the gitlab server in ${userConfigPath}` : 'mcp_servers.gitlab needs type stdio and a command: audee starts it itself to approve MRs');
+    if (JSON.stringify(ownGitlab).includes('${')) {
+      check('audee gitlab token', true, 'warning: mcp_servers.gitlab reads keychain_env, which puts those values on the claude command line; pass the token with deploy/glab-mcp-keychain.sh <keychain-item>');
+    }
+    if (Object.values(cfg.capabilities).some((c) => c.profile === 'review' && !c.seatbelt)) {
+      check('audee gitlab seatbelt', true, "warning: review runs without seatbelt, so a session that starts audee's gitlab server or reads its Keychain item itself can approve MRs past audee's checks");
+    }
+  } else if (cfg.gitlab_account !== undefined) {
+    check('audee gitlab', false, 'gitlab_account is set but mcp_servers.gitlab is not, so the review posts as the owner, not as gitlab_account');
+  }
+  const account = cfg.gitlab_account?.toLowerCase();
+  if (account !== undefined && cfg.people.some((p) => p.gitlab?.toLowerCase() === account)) {
+    check('gitlab account', false, `gitlab_account ${cfg.gitlab_account} is also a person's people[].gitlab; it must be the account of audee's own token`);
+  }
   if (Object.values(cfg.capabilities).some((c) => c.profile === 'review')) {
     const jira = cfg.mcp_servers[REVIEW_JIRA_SERVER];
     if (jira === undefined) {
       check('review jira', true, `warning: no mcp_servers.${REVIEW_JIRA_SERVER}, so reviews cannot read the Jira ticket`);
     } else {
-      const text = JSON.stringify(jira);
-      const missing = [...text.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1] ?? '').filter((v) => cfg.keychain_env[v] === undefined);
+      const missing = keychainVarsMissing(jira, cfg.keychain_env);
       check('review jira', missing.length === 0, missing.length === 0 ? `mcp_servers.${REVIEW_JIRA_SERVER} is configured and its keychain_env variables are defined; review sessions may only read with it` : `mcp_servers.${REVIEW_JIRA_SERVER} uses ${missing.join(', ')}, which keychain_env does not define`);
     }
   }
@@ -191,6 +220,7 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     const owner = cfg.people.find((p) => p.owner);
     const unmapped = cfg.people.filter((p) => !p.owner && p.gitlab === undefined && (p.can.includes('*') || p.can.includes('review'))).map((p) => p.name);
     if (owner?.gitlab === undefined) check('review auto-approve', false, 'the owner has no people[].gitlab, so no MR is ever approved');
+    else if (cfg.mcp_servers.gitlab !== undefined && cfg.gitlab_account === undefined) check('review auto-approve', false, 'mcp_servers.gitlab is set without gitlab_account, so the PASS acknowledgement is never found and no MR is ever approved');
     else if (cfg.capabilities['review']?.post_findings !== true) check('review auto-approve', true, 'warning: post_findings is off, so the review may post no PASS acknowledgement and no MR gets approved');
     else check('review auto-approve', true, unmapped.length === 0 ? 'every review requester has people[].gitlab' : `warning: no people[].gitlab for ${unmapped.join(', ')}; their clean MRs wait for the owner`);
   }

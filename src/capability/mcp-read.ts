@@ -43,7 +43,7 @@ export const mcpRead: Capability = async (ctx) => {
   try {
     dir = mcpReadDir(ctx.dataDir, ctx.job.messageId);
     const servers = cap.mcp ?? [];
-    const mcpServers = loadMcpServers(servers, ctx.secrets, ctx.userConfigPath);
+    const mcpServers = loadMcpServers(servers, ctx.secrets, ctx.userConfigPath, ctx.cfg.mcp_servers);
     freshDir(dir);
     options = buildOptions({
       profile: 'mcp_read', cwd: dir, mcpServers, mcpTools: mcpToolsByServer(servers, cap.tools ?? []), schema: mcpReadSchema,

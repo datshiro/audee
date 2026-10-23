@@ -8,7 +8,7 @@ import type { GitLabMr, MrInfo } from '../../src/capability/gitlab-mr.js';
 import { parseReviewOutput, review, reviewPrompt, reviewPromptTemplate } from '../../src/capability/review.js';
 import type { CapabilityContext } from '../../src/capability/types.js';
 import { loadConfig } from '../../src/config/load.js';
-import { REVIEW_DENIED_TOOLS } from '../../src/fence/constants.js';
+import { REVIEW_DENIED_TOOLS, REVIEW_EXTRA_DENIED } from '../../src/fence/constants.js';
 import type { Job } from '../../src/queue/job.js';
 import { failedReply } from '../../src/render/html.js';
 import { InterruptedError, type RunInput, type RunResult } from '../../src/runner/run.js';
@@ -50,6 +50,7 @@ function fakeGitlab(info: Partial<MrInfo> = {}, opts: { approveThrows?: boolean;
 
 const READY = text('REVIEW_STATUS: ready: review sạch\nREVIEW_POSTED: yes');
 const AUTO = { review: { autoApprove: true }, gitlab: { owner: 'dat', p1: 'kha' } };
+const OWN_GITLAB = { type: 'stdio', command: 'glab-mcp-keychain.sh', args: ['audee-gitlab-pat'] };
 
 describe('review', () => {
   // ciel/ciel_test.go:111
@@ -231,6 +232,52 @@ capabilities:
     for (const write of ['mcp__claude_ai_Atlassian__editJiraIssue', 'mcp__claude_ai_Atlassian__addOrEditJiraIssueComment', 'mcp__claude_ai_Atlassian__createConfluencePage']) {
       expect(options?.disallowedTools, write).toContain(write);
     }
+  });
+
+  it('denies exactly the review deny lists without audee\'s own gitlab server', async () => {
+    const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'));
+    await review(ctx);
+    expect(inputs[0]?.options.disallowedTools).toEqual([...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED]);
+  });
+
+  it('uses audee\'s own gitlab server over the one in ~/.claude.json', async () => {
+    const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'), { mcpServers: { gitlab: OWN_GITLAB } });
+    await review(ctx);
+    const own = inputs[0]?.options.mcpServers?.['gitlab'] as { command?: string; args?: string[] };
+    expect(own).toMatchObject({ command: 'glab-mcp-keychain.sh', args: ['audee-gitlab-pat'] });
+    expect(inputs[0]?.options.disallowedTools).toEqual([...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED]);
+    expect(Object.keys(inputs[0]?.options.mcpServers ?? {}).sort()).toEqual(['gitlab', 'kb']);
+  });
+
+  it('with audee\'s own gitlab server, finds the PASS acknowledgement by gitlab_account and still guards the owner', async () => {
+    const opts = { ...AUTO, mcpServers: { gitlab: OWN_GITLAB }, gitlabAccount: 'audee-bot' };
+    const gl = fakeGitlab();
+    const out = await review(harness(READY, opts, gl.factory).ctx);
+    expect(gl.calls).toEqual(['get', 'close', 'get', 'ack:h1:audee-bot', 'approve:h1', 'close']);
+    expect(out.notifyOwner).toBe(`review approved as audee-bot: ${MR}`);
+
+    const owners = fakeGitlab({ author_username: 'dat' });
+    expect((await review(harness(READY, opts, owners.factory).ctx)).reply?.html).toContain('MR của Đạt, cần người khác approve');
+    expect(owners.calls.filter((c) => c.startsWith('approve:'))).toEqual([]);
+
+    const cannot = fakeGitlab({ user_can_approve: false });
+    expect((await review(harness(READY, opts, cannot.factory).ctx)).reply?.html).toContain('tài khoản audee không approve được MR này');
+
+    const bots = fakeGitlab({ author_username: 'Audee-Bot' });
+    expect((await review(harness(READY, opts, bots.factory).ctx)).reply?.html).toContain('MR của audee, cần người khác approve');
+    expect(bots.calls.filter((c) => c.startsWith('approve:'))).toEqual([]);
+
+    const requesters = fakeGitlab({ author_username: 'kha' });
+    expect((await review(harness(READY, opts, requesters.factory).ctx)).reply?.html).toContain('bạn là tác giả MR');
+
+    const ownerToken = fakeGitlab();
+    await review(harness(READY, { ...AUTO, gitlabAccount: 'audee-bot' }, ownerToken.factory).ctx);
+    expect(ownerToken.calls).toContain('ack:h1:dat');
+
+    const unset = fakeGitlab();
+    const { gitlabAccount: _, ...noAccount } = opts;
+    expect((await review(harness(READY, noAccount, unset.factory).ctx)).reply?.html).toContain('chưa thấy xác nhận PASS trên MR');
+    expect(unset.calls.filter((c) => c.startsWith('ack:') || c.startsWith('approve:'))).toEqual([]);
   });
 
   it('TestReviewUsesReviewProfile', async () => {

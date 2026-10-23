@@ -33,7 +33,7 @@ const Capability = z.strictObject({
   workdir: z.string().optional(),
   prompt: z.string().optional(),
   post_findings: z.boolean().default(false),
-  auto_approve: z.boolean().default(false), // review only: approve a clean MR as the owner through glab-mcp
+  auto_approve: z.boolean().default(false), // review only: approve a clean MR through glab-mcp, as the owner or gitlab_account
   routes: z.array(Route).default([]),
   seatbelt: z.boolean().default(false),
   skill_source: z.string().optional(),
@@ -114,8 +114,14 @@ export const ConfigSchema = z.strictObject({
   }).prefault({}),
   capabilities: Capabilities,
   keychain_env: z.record(z.string(), z.string()).default({}),
-  // audee-only MCP servers; only the review's Jira server, so gitlab and kb always come from ~/.claude.json
-  mcp_servers: z.strictObject({ atlassian: z.record(z.string(), z.unknown()).optional() }).default({}),
+  // audee-only MCP servers: the review's Jira server, and a gitlab server with audee's own credential that replaces
+  // the one in ~/.claude.json; kb always comes from ~/.claude.json
+  mcp_servers: z.strictObject({
+    atlassian: z.record(z.string(), z.unknown()).optional(),
+    gitlab: z.record(z.string(), z.unknown()).optional(),
+  }).default({}),
+  // GitLab username of mcp_servers.gitlab's token: the account the review's PASS acknowledgement is posted as
+  gitlab_account: z.string().min(1).optional(),
   // The dashboard, served by `audee serve` on 127.0.0.1 only.
   admin: z.strictObject({ port: z.number().int().min(1024).max(65535).default(7420) }).prefault({}),
 });

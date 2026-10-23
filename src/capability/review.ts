@@ -107,12 +107,12 @@ export function parseReviewOutput(result: RunResult): ReviewResult {
   return { posted: false, reason, ...reviewStatus(text, false, reason) };
 }
 
-// gitlab and kb from ~/.claude.json, plus Jira when audee's mcp_servers defines it, under the connector's name.
+// gitlab from audee's mcp_servers, else ~/.claude.json; kb from ~/.claude.json; plus Jira when audee's mcp_servers
+// defines it, under the connector's name.
 function reviewMcpServers(ctx: CapabilityContext): Record<string, McpServerConfig> {
-  const servers = loadMcpServers(REVIEW_MCP_SERVERS, ctx.secrets, ctx.userConfigPath);
-  const own = ctx.cfg.mcp_servers[REVIEW_JIRA_SERVER];
-  if (own === undefined) return servers;
-  const jira = loadMcpServers([REVIEW_JIRA_SERVER], ctx.secrets, ctx.userConfigPath, { [REVIEW_JIRA_SERVER]: own })[REVIEW_JIRA_SERVER];
+  const servers = loadMcpServers(REVIEW_MCP_SERVERS, ctx.secrets, ctx.userConfigPath, ctx.cfg.mcp_servers);
+  if (ctx.cfg.mcp_servers[REVIEW_JIRA_SERVER] === undefined) return servers;
+  const jira = loadMcpServers([REVIEW_JIRA_SERVER], ctx.secrets, ctx.userConfigPath, ctx.cfg.mcp_servers)[REVIEW_JIRA_SERVER];
   return jira === undefined ? servers : { ...servers, [REVIEW_JIRA_ALIAS]: jira };
 }
 
@@ -120,7 +120,7 @@ function reviewMcpServers(ctx: CapabilityContext): Record<string, McpServerConfi
 async function withGitLab<T>(ctx: CapabilityContext, fn: (gl: GitLabMr) => Promise<T>): Promise<T | undefined> {
   let gl: GitLabMr | undefined;
   try {
-    gl = await (ctx.gitlab ?? (() => connectGitLabMr(ctx.secrets, ctx.userConfigPath, ctx.signal)))();
+    gl = await (ctx.gitlab ?? (() => connectGitLabMr(ctx.secrets, ctx.userConfigPath, ctx.signal, ctx.cfg.mcp_servers)))();
     return await fn(gl);
   } catch (e) {
     console.error(`review: GitLab step failed: ${(e as Error).name}`); // never the message: it may carry tool text
@@ -170,11 +170,17 @@ export const review: Capability = async (ctx) => {
   const secrets = Object.values(ctx.secrets);
   if (res.status === 'ready' && cap.auto_approve) {
     const ownerGitlab = ctx.cfg.people.find((p) => p.owner)?.gitlab;
+    // With audee's own gitlab server the session posts, and audee approves, as gitlab_account.
+    const own = ctx.cfg.mcp_servers.gitlab !== undefined;
+    const ackAuthor = own ? ctx.cfg.gitlab_account : ownerGitlab;
     const decided = await withGitLab(ctx, async (gl): Promise<ApprovalDecision> => {
       const ref = mrRef(mrUrl);
       const after = await gl.getMr(ref);
-      const ackFound = ownerGitlab !== undefined && await gl.hasPassAck(ref, after.sha, ownerGitlab);
-      const d = approvalDecision({ autoApprove: true, status: res.status, before, after, ackFound, requesterGitlab: ctx.person.gitlab, ownerGitlab, statusReason: res.statusReason });
+      const ackFound = ackAuthor !== undefined && await gl.hasPassAck(ref, after.sha, ackAuthor);
+      const d = approvalDecision({
+        autoApprove: true, status: res.status, before, after, ackFound, requesterGitlab: ctx.person.gitlab, ownerGitlab, statusReason: res.statusReason,
+        ...(own ? { approver: 'audee', ...(ackAuthor !== undefined ? { approverGitlab: ackAuthor } : {}) } : {}),
+      });
       if (!d.approve) return d;
       try {
         await gl.approve(ref, d.sha);
@@ -188,7 +194,7 @@ export const review: Capability = async (ctx) => {
     if (d.approve) {
       return {
         reply: { html: replyHTML(reviewApprovedReply(res.statusReason, secrets), mrUrl) },
-        notifyOwner: `review approved as owner: ${mrUrl}`,
+        notifyOwner: `review approved as ${own ? ctx.cfg.gitlab_account ?? 'audee' : 'owner'}: ${mrUrl}`,
         event: { ...base, status: 'approved', reason: res.statusReason },
       };
     }

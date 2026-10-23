@@ -20,9 +20,11 @@ function injectSecrets(def: Record<string, unknown>, secrets: Record<string, str
   return out;
 }
 
+export type OwnMcpServers = Record<string, Record<string, unknown> | undefined>;
+
 // Picks the named servers from audee's own mcp_servers, else the user's Claude Code config, and fills ${VAR} in
 // their env, args and headers from secrets. Never log the file, a server definition or secrets: they hold tokens.
-export function loadMcpServers(names: string[], secrets: Record<string, string>, userConfigPath = expandHome('~/.claude.json'), own: Record<string, Record<string, unknown>> = {}): Record<string, McpServerConfig> {
+export function loadMcpServers(names: string[], secrets: Record<string, string>, userConfigPath = expandHome('~/.claude.json'), own: OwnMcpServers = {}): Record<string, McpServerConfig> {
   let user: unknown;
   try {
     user = JSON.parse(readFileSync(userConfigPath, 'utf8'));
