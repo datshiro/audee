@@ -90,7 +90,7 @@ export function reviewPrompt(template: string, mrUrl: string, postFindings: bool
 // config.go reviewPromptTemplate: the prompt of the first route matching mrUrl, or the default prompt.
 export function reviewPromptTemplate(cap: CapabilityConfig, mrUrl: string): string {
   for (const r of cap.routes) if (new RegExp(r.match).test(mrUrl)) return r.prompt;
-  return cap.prompt ?? '/apo-review-mr {url}';
+  return cap.prompt ?? '/apo-review-mr {url} --security';
 }
 
 // actions.go:356-388 parseReviewOutput, reading RunResult.text
