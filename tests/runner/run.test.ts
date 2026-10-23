@@ -11,6 +11,7 @@ const SLOW = fixture('fake-claude-slow.sh');
 const FAILING = fixture('fake-claude.sh');
 const ENV_DUMP = fixture('fake-claude-env.sh');
 const STDERR_ARGV = fixture('fake-claude-stderr-argv.sh');
+const STREAM = fixture('fake-claude-stream.mjs');
 
 async function pidGone(pid: number, withinMs: number): Promise<boolean> {
   const deadline = Date.now() + withinMs;
@@ -114,4 +115,53 @@ describe('runner', () => {
     await runAgent({ options: {}, prompt: 'x', timeoutMs: 10_000, auth: 'subscription', extraEnv: { PATH: `${dir}:${process.env['PATH'] ?? ''}` } }).catch(() => undefined);
     expect((await readFile(configOut, 'utf8')).trim()).toBe(join(process.env['HOME'] ?? '', '.claude-hack'));
   }, 20_000);
+
+  describe('follow-up turn', () => {
+    const task = { task_id: 't1', task_type: 'local_workflow', description: 'review' };
+    const tasks = (list: unknown[]): unknown => ({ type: 'system', subtype: 'background_tasks_changed', tasks: list });
+    async function stream(turns: unknown[][], followUp?: (text: string) => string | undefined) {
+      const dir = await mkdtemp(join(tmpdir(), 'audee-run-'));
+      const log = join(dir, 'inputs');
+      await writeFile(log, '');
+      const asked: string[] = [];
+      const res = await runAgent({
+        options: { pathToClaudeCodeExecutable: STREAM }, prompt: 'review it', timeoutMs: 10_000, auth: 'subscription',
+        extraEnv: { FAKE_TURNS: JSON.stringify(turns), FAKE_STREAM_LOG: log },
+        ...(followUp !== undefined ? { followUp: (t: string) => { asked.push(t); return followUp(t); } } : {}),
+      });
+      const inputs = (await readFile(log, 'utf8')).split('\n').filter((l) => l !== '').map((l) => JSON.parse(l) as string);
+      return { res, inputs, asked };
+    }
+
+    it('continues the session once when the turn ends unfinished', async () => {
+      const { res, inputs, asked } = await stream([[{ result: 'started' }], [{ result: 'DONE' }]], (t) => (t.includes('DONE') ? undefined : 'finish it'));
+      expect(inputs).toEqual(['review it', 'finish it']);
+      expect(asked).toEqual(['started']);
+      expect(res.text).toBe('DONE');
+    }, 20_000);
+
+    it('asks only once', async () => {
+      const { res, inputs } = await stream([[{ result: 'a' }], [{ result: 'b' }]], () => 'again');
+      expect(inputs).toEqual(['review it', 'again']);
+      expect(res.text).toBe('b');
+    }, 20_000);
+
+    it('waits for background work before deciding', async () => {
+      const { res, inputs, asked } = await stream([[tasks([task]), { result: 'waiting' }, { delay: 300 }, tasks([]), { result: 'DONE' }]], (t) => (t.includes('DONE') ? undefined : 'finish it'));
+      expect(asked).toEqual(['DONE']);
+      expect(inputs).toEqual(['review it']);
+      expect(res.text).toBe('DONE');
+    }, 20_000);
+
+    it('ignores ambient tasks', async () => {
+      const { inputs } = await stream([[tasks([{ ...task, ambient: true }]), { result: 'a' }], [{ result: 'DONE' }]], (t) => (t.includes('DONE') ? undefined : 'finish it'));
+      expect(inputs).toEqual(['review it', 'finish it']);
+    }, 20_000);
+
+    it('keeps the plain prompt without a follow-up', async () => {
+      const { res, inputs } = await stream([[{ result: 'only' }]]);
+      expect(inputs).toEqual(['review it']);
+      expect(res.text).toBe('only');
+    }, 20_000);
+  });
 });

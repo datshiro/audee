@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { resolvePerson } from '../../src/authz/people.js';
 import type { GitLabMr, MrInfo } from '../../src/capability/gitlab-mr.js';
-import { parseReviewOutput, review, reviewPrompt, reviewPromptTemplate } from '../../src/capability/review.js';
+import { fallbackNote, finishReviewPrompt, parseReviewOutput, review, reviewPrompt, reviewPromptTemplate } from '../../src/capability/review.js';
 import type { CapabilityContext } from '../../src/capability/types.js';
 import { loadConfig } from '../../src/config/load.js';
 import { REVIEW_DENIED_TOOLS } from '../../src/fence/constants.js';
@@ -35,7 +35,7 @@ function harness(result: RunResult | Error, opts: Parameters<typeof testConfig>[
 }
 
 // Records every call, so tests can check that approve runs on the second client before it closes.
-function fakeGitlab(info: Partial<MrInfo> = {}, opts: { approveThrows?: boolean; ack?: boolean; getThrows?: boolean; afterSha?: string } = {}) {
+function fakeGitlab(info: Partial<MrInfo> = {}, opts: { approveThrows?: boolean; commentThrows?: boolean; ack?: boolean; getThrows?: boolean; afterSha?: string } = {}) {
   const calls: string[] = [];
   const mr: MrInfo = { iid: 5, state: 'opened', sha: 'h1', author_username: 'author', web_url: MR, user_has_approved: false, user_can_approve: true, ...info };
   let gets = 0;
@@ -43,6 +43,7 @@ function fakeGitlab(info: Partial<MrInfo> = {}, opts: { approveThrows?: boolean;
     getMr: async () => { calls.push('get'); gets++; if (opts.getThrows === true) throw new Error('x'); return gets > 1 && opts.afterSha !== undefined ? { ...mr, sha: opts.afterSha } : mr; },
     hasPassAck: async (_r, sha, owner) => { calls.push(`ack:${sha}:${owner}`); return opts.ack ?? true; },
     approve: async (_r, sha) => { calls.push('approve:' + sha); if (opts.approveThrows === true) throw new Error('x'); },
+    comment: async (_r, body) => { calls.push('comment:' + body); if (opts.commentThrows === true) throw new Error('x'); },
     close: async () => { calls.push('close'); },
   };
   return { calls, factory: async () => gl };
@@ -171,6 +172,48 @@ describe('review', () => {
     const out = await review(harness(READY, { gitlab: { owner: 'dat', p1: 'kha' } }, off.factory).ctx);
     expect(off.calls).toEqual([]);
     expect(out.reply?.html).toContain('chờ Đạt approve: review sạch');
+  });
+
+  it('asks an unfinished session once more to finish', async () => {
+    const h = harness(READY);
+    await review(h.ctx);
+    const followUp = h.inputs[0]?.followUp;
+    expect(followUp?.('Workflow started, waiting for it.')).toBe(finishReviewPrompt);
+    expect(followUp?.('REVIEW_POSTED: yes')).toBe(finishReviewPrompt);
+    expect(followUp?.('REVIEW_STATUS: blocked: 2 lỗi\nREVIEW_POSTED: yes')).toBeUndefined();
+  });
+
+  it('posts its own note when the session left nothing on the MR', async () => {
+    const withTools = (r: RunResult, toolUses: string[]): RunResult => ({ ...r, toolUses });
+    const silent = fakeGitlab();
+    const out = await review(harness(text('session text sk-live-shh\nWorkflow running.'), {}, silent.factory).ctx);
+    expect(silent.calls).toEqual(['comment:' + fallbackNote('the review did not say whether it posted anything', []), 'close']);
+    expect(silent.calls.join()).not.toContain('session text');
+    expect(out.event).toMatchObject({ status: 'unreviewable' });
+
+    const failed = fakeGitlab();
+    await review(harness(new Error('session failed: timed out token=abc'), {}, failed.factory).ctx);
+    expect(failed.calls).toEqual(['comment:' + fallbackNote('phiên review bị lỗi', []), 'close']);
+
+    const cases: Array<[string, RunResult, Parameters<typeof testConfig>[0]]> = [
+      ['posted', text('REVIEW_STATUS: blocked: 2 lỗi\nREVIEW_POSTED: yes'), {}],
+      ['said no after commenting', withTools(text('REVIEW_STATUS: unreviewable: x\nREVIEW_POSTED: no: rule'), ['mcp__gitlab__comment_mr']), {}],
+      ['report-only', text('done'), { review: { postFindings: false } }],
+    ];
+    for (const [name, result, opts] of cases) {
+      const gl = fakeGitlab();
+      await review(harness(result, opts, gl.factory).ctx);
+      expect(gl.calls, name).toEqual([]);
+    }
+
+    const throwing = fakeGitlab({}, { commentThrows: true });
+    const kept = await review(harness(text('done'), {}, throwing.factory).ctx);
+    expect(kept.reply?.html).toContain('⚠️ <b>Chưa đánh giá được MR</b>');
+  });
+
+  it('keeps secrets and long reasons out of its note', () => {
+    expect(fallbackNote('token abcdefgh12345678', ['abcdefgh12345678'])).toBe('⚠️ audee chưa review xong MR này. Chưa có nhận xét nào được đăng, Đạt sẽ xem lại.');
+    expect(fallbackNote('x'.repeat(400), [])).toContain(': ' + 'x'.repeat(300) + '.');
   });
 
   // ciel/ciel_test.go:761
