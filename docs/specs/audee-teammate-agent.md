@@ -74,6 +74,14 @@ The review session ends with `REVIEW_STATUS: ready|blocked|unreviewable: <reason
 four templates: `✅ MR sẵn sàng merge, mình đã approve`, `✅ MR sẵn sàng merge, chờ Đạt approve: <why>`,
 `⛔ MR chưa merge được: <reason>`, and `⚠️ Chưa đánh giá được MR: <reason>`. The session never approves:
 `mcp__gitlab__approve_mr` stays in the review fence.
+Finishing: the review session's input stays open while background work (the review workflow) runs. When a turn ends
+with no background work left and without the two closing lines, audee sends the same session one follow-up turn
+telling it to finish (review the diff itself if the workflow failed), publish and print the closing lines. Added
+2026-10-23 after apollo-portal MR 514 (about 190 files) ended right after starting the workflow, with nothing posted.
+With `review.post_findings: true`, a review whose session never called `comment_mr` or `post_review_findings` (including
+a failed or timed-out session) gets one note from audee itself through glab-mcp `comment_mr`: a fixed Vietnamese line
+with the status reason, dropped if it looks like a secret, never session output or error text. Report-only reviews get
+no note.
 With `review.auto_approve: true` (default false), audee itself approves a ready MR under the owner's GitLab account,
 calling `get_mr`, `list_mr_discussions` and `approve_mr` through glab-mcp 1.6.0 or later over MCP stdio, so the token
 stays in that process. It approves only when all of these hold:

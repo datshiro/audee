@@ -6,6 +6,8 @@ import { REVIEW_JIRA_ALIAS, REVIEW_JIRA_SERVER, REVIEW_MCP_SERVERS } from '../fe
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions } from '../fence/profiles.js';
 import { failedReply, firstLine, replyHTML, reviewApprovedReply, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../render/html.js';
+import { leaksSecret } from '../render/secrets.js';
+import { runeSlice } from '../render/text.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
 import { type ApprovalDecision, approvalDecision, connectGitLabMr, type GitLabMr, mrRef } from './gitlab-mr.js';
 import { capabilityConfig, sessionEvent, sessionInput } from './session.js';
@@ -57,6 +59,13 @@ Last: "REVIEW_POSTED: yes" if you posted anything on the MR (inline comments, a 
 or if the review skipped the acknowledgement because one for the same head commit already exists,
 otherwise "REVIEW_POSTED: no: <short reason>".`;
 
+// Sent once into the same session when it stops without its closing lines, for example after a workflow that
+// failed or never reported back.
+export const finishReviewPrompt = `You stopped without the two closing lines, so the review is not finished.
+If the review workflow failed or returned no result, review the MR yourself from its diff against the target branch.
+If you have not published yet, publish as instructed above. Then finish with exactly the two closing lines:
+"REVIEW_STATUS: ..." and then "REVIEW_POSTED: ...".`;
+
 export const reviewPostedMarker = 'REVIEW_POSTED:';
 export const maxStatusReasonWords = 15;
 
@@ -66,14 +75,19 @@ export type ReviewResult = { posted: boolean; reason: string; status: ReviewStat
 const clipWords = (s: string, n: number): string => s.trim().split(/\s+/).filter((w) => w !== '').slice(0, n).join(' ');
 
 const statusLine = /^REVIEW_STATUS:\s*(ready|blocked|unreviewable)\s*(?::\s*(.*))?$/i;
+const nonEmptyLines = (text: string): string[] => text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+
+export function reviewFinished(text: string): boolean {
+  const lines = nonEmptyLines(text);
+  return (lines.at(-1) ?? '').startsWith(reviewPostedMarker) && statusLine.test(lines.at(-2) ?? '');
+}
 
 // Only the session's own closing lines count: the status must be the line right before the final REVIEW_POSTED
 // line, so a status quoted from MR text earlier in the output cannot pass. Anything else is unreviewable, and
 // ready without anything posted cannot be trusted as clean.
 function reviewStatus(text: string, posted: boolean, reason: string): { status: ReviewStatus; statusReason: string } {
-  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
-  const m = statusLine.exec(lines.at(-2) ?? '');
-  if (!(lines.at(-1) ?? '').startsWith(reviewPostedMarker) || m === null) {
+  const m = reviewFinished(text) ? statusLine.exec(nonEmptyLines(text).at(-2) ?? '') : null;
+  if (m === null) {
     return { status: 'unreviewable', statusReason: posted ? 'the review did not report a status' : reason };
   }
   const status = (m[1] ?? '').toLowerCase() as ReviewStatus;
@@ -130,16 +144,36 @@ async function withGitLab<T>(ctx: CapabilityContext, fn: (gl: GitLabMr) => Promi
   }
 }
 
+const postingTools = ['mcp__gitlab__comment_mr', 'mcp__gitlab__post_review_findings'];
+const fallbackNoteReason = 'phiên review bị lỗi';
+const maxNoteReasonChars = 300;
+
+// audee's own note for a review that left nothing on the MR. The reason is model text: dropped if it looks like a
+// secret, and capped. Never session output or error text.
+export function fallbackNote(reason: string, knownSecrets: string[]): string {
+  const safe = reason.trim() === '' || leaksSecret([reason], knownSecrets) ? '' : `: ${runeSlice(reason.trim(), maxNoteReasonChars)}`;
+  return `⚠️ audee chưa review xong MR này${safe}. Chưa có nhận xét nào được đăng, Đạt sẽ xem lại.`;
+}
+
 export const review: Capability = async (ctx) => {
   const cap = capabilityConfig(ctx);
   const mrUrl = ctx.job.mrUrl ?? '';
   const started = Date.now();
-  const fail = (reason: string, result?: RunResult): CapabilityOutcome => ({
-    reply: { html: replyHTML(failedReply, mrUrl) },
-    notifyOwner: `review failed: ${mrUrl}`,
-    forgetReview: mrUrl,
-    event: { ...sessionEvent(result, Date.now() - started), kind: 'review', status: 'failed', reason, mrUrl },
-  });
+  const secrets = Object.values(ctx.secrets);
+  // Something always lands on the MR when posting is on: a session that posted nothing gets audee's note.
+  const noteIfSilent = async (reason: string, result?: RunResult): Promise<void> => {
+    if (!cap.post_findings || result?.toolUses.some((t) => postingTools.includes(t)) === true) return;
+    await withGitLab(ctx, (gl) => gl.comment(mrRef(mrUrl), fallbackNote(reason, secrets)));
+  };
+  const fail = async (reason: string, result?: RunResult): Promise<CapabilityOutcome> => {
+    await noteIfSilent(fallbackNoteReason, result);
+    return {
+      reply: { html: replyHTML(failedReply, mrUrl) },
+      notifyOwner: `review failed: ${mrUrl}`,
+      forgetReview: mrUrl,
+      event: { ...sessionEvent(result, Date.now() - started), kind: 'review', status: 'failed', reason, mrUrl },
+    };
+  };
   let options;
   try {
     options = buildOptions({
@@ -155,7 +189,7 @@ export const review: Capability = async (ctx) => {
   const before = cap.auto_approve ? await withGitLab(ctx, (gl) => gl.getMr(mrRef(mrUrl))) : undefined;
   let result: RunResult;
   try {
-    result = await ctx.run(sessionInput(ctx, cap, options, prompt));
+    result = await ctx.run({ ...sessionInput(ctx, cap, options, prompt), followUp: (text) => (reviewFinished(text) ? undefined : finishReviewPrompt) });
   } catch (e) {
     if (e instanceof InterruptedError) throw e;
     return fail((e as Error).message);
@@ -166,8 +200,8 @@ export const review: Capability = async (ctx) => {
   } catch (e) {
     return fail((e as Error).message, result);
   }
+  if (!res.posted) await noteIfSilent(res.statusReason, result);
   const base = { ...sessionEvent(result, Date.now() - started), kind: 'review', mrUrl };
-  const secrets = Object.values(ctx.secrets);
   if (res.status === 'ready' && cap.auto_approve) {
     const ownerGitlab = ctx.cfg.people.find((p) => p.owner)?.gitlab;
     const decided = await withGitLab(ctx, async (gl): Promise<ApprovalDecision> => {

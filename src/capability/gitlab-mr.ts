@@ -10,6 +10,7 @@ export type GitLabMr = {
   getMr(ref: MrRef): Promise<MrInfo>;
   hasPassAck(ref: MrRef, sha: string, ownerGitlab: string): Promise<boolean>;
   approve(ref: MrRef, sha: string): Promise<void>;
+  comment(ref: MrRef, body: string): Promise<void>;
   close(): Promise<void>;
 };
 export type ApprovalDecision = { approve: true; sha: string } | { approve: false; why: string };
@@ -105,6 +106,7 @@ export async function connectGitLabMr(secrets: Record<string, string>, userConfi
       return false;
     },
     approve: async (ref, sha) => { await call('approve_mr', { project_id: ref.project, mr_iid: ref.iid, sha }); },
+    comment: async (ref, body) => { await call('comment_mr', { project_id: ref.project, mr_iid: ref.iid, body }); },
     close: async () => { await client.close(); },
   };
 }

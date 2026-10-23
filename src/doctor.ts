@@ -104,9 +104,9 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     check('claude code version', pkg.claudeCodeVersion === verified.claudeCode, `bundled ${pkg.claudeCodeVersion ?? 'unknown'}, fence verified on ${verified.claudeCode}`);
   }
 
-  // CLAUDE_CONFIG_DIR: sessions never see it (sessionEnv), so the daemon runs on ~/.claude
-  if (env['CLAUDE_CONFIG_DIR'] !== undefined) check('config dir', true, `warning: CLAUDE_CONFIG_DIR is set in this shell; sessions use ~/.claude (its login and settings)`);
-  else check('config dir', true, '~/.claude');
+  // CLAUDE_CONFIG_DIR: sessions never see it (sessionEnv); subscription sessions get ~/.claude-hack from deploy/claude-hack.sh
+  if (env['CLAUDE_CONFIG_DIR'] !== undefined) check('config dir', true, `warning: CLAUDE_CONFIG_DIR is set in this shell; subscription sessions use ~/.claude-hack (its login and settings)`);
+  else check('config dir', true, '~/.claude-hack');
 
   // 4. seatbelt fails closed
   const optionsFor = deps.optionsFor ?? ((profile, cap) => buildOptions({

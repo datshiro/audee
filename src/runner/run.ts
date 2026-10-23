@@ -1,5 +1,5 @@
-import { query, type Options, type SDKMessage, type SDKResultMessage, type Settings } from '@anthropic-ai/claude-agent-sdk';
-import { apiKeyHelperCommand, sessionEnv } from './env.js';
+import { query, type Options, type SDKMessage, type SDKResultMessage, type SDKUserMessage, type Settings } from '@anthropic-ai/claude-agent-sdk';
+import { apiKeyHelperCommand, CLAUDE_HACK, sessionEnv } from './env.js';
 
 export type RunInput = {
   options: Options;
@@ -11,6 +11,8 @@ export type RunInput = {
   tmpdir?: string;
   signal?: AbortSignal;
   extraEnv?: Record<string, string>; // tests only
+  // Asked once, when a turn ends with no background work left: a returned prompt continues the same session.
+  followUp?: (text: string) => string | undefined;
 };
 
 export type RunResult = {
@@ -72,6 +74,29 @@ function collectToolUses(message: SDKMessage, toolUses: string[]): void {
   for (const block of message.message.content) if (block.type === 'tool_use') toolUses.push(block.name);
 }
 
+// The session's input stays open while background work runs, so its completion notice still gets a turn.
+// undefined ends the input, and with it the session.
+function turns(first: string): { messages: AsyncIterable<SDKUserMessage>; send: (text: string | undefined) => void } {
+  const pending: Array<string | undefined> = [];
+  let wake: (() => void) | undefined;
+  const user = (text: string): SDKUserMessage => ({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null });
+  return {
+    messages: (async function* () {
+      yield user(first);
+      for (;;) {
+        while (pending.length === 0) await new Promise<void>((resolve) => { wake = resolve; });
+        const text = pending.shift();
+        if (text === undefined) return;
+        yield user(text);
+      }
+    })(),
+    send: (text) => {
+      pending.push(text);
+      wake?.();
+    },
+  };
+}
+
 export async function runAgent(input: RunInput): Promise<RunResult> {
   const started = Date.now();
   const options = input.auth === 'api_key' ? withApiKeyHelper(input.options, input.apiKeyItem) : input.options;
@@ -87,18 +112,29 @@ export async function runAgent(input: RunInput): Promise<RunResult> {
 
   const toolUses: string[] = [];
   let result: SDKResultMessage | undefined;
+  const turnInput = input.followUp === undefined ? undefined : turns(input.prompt);
+  let background = 0;
+  let followedUp = false;
   try {
     const gateway = input.auth === 'api_key' && input.baseUrl !== undefined ? { ANTHROPIC_BASE_URL: input.baseUrl } : {};
     const env = { ...sessionEnv({ tmpdir: input.tmpdir }), ...gateway, ...(input.extraEnv ?? {}) };
-    for await (const message of query({ prompt: input.prompt, options: { ...options, env, abortController: controller } })) {
+    const executable = input.auth === 'subscription' ? { pathToClaudeCodeExecutable: CLAUDE_HACK } : {};
+    for await (const message of query({ prompt: turnInput?.messages ?? input.prompt, options: { ...executable, ...options, env, abortController: controller } })) {
       collectToolUses(message, toolUses);
-      if (message.type === 'result') result = message;
+      if (message.type === 'system' && message.subtype === 'background_tasks_changed') background = message.tasks.filter((t) => t.ambient !== true).length;
+      if (message.type !== 'result') continue;
+      result = message;
+      if (turnInput === undefined || background > 0) continue;
+      const next: string | undefined = followedUp || message.subtype !== 'success' ? undefined : input.followUp?.(message.result);
+      followedUp ||= next !== undefined;
+      turnInput.send(next);
     }
   } catch (e) {
     if (input.signal?.aborted === true) throw new InterruptedError();
     if (timedOut) throw new Error(`timed out after ${input.timeoutMs} ms`);
     throw new Error(`session failed: ${redactMcpSecrets(e instanceof Error ? e.message : String(e), options)}`);
   } finally {
+    turnInput?.send(undefined);
     clearTimeout(timer);
     input.signal?.removeEventListener('abort', onAbort);
   }
