@@ -48,7 +48,7 @@ const Capability = z.strictObject({
 
 // Ciel's per-capability defaults (config.go loadConfig), keyed by capability name.
 const CAPABILITY_DEFAULTS: Record<string, Record<string, unknown>> = {
-  review: { timeout: '45m', budget_usd: 8, prompt: '/apo-review-mr {url}', workdir: '~/.claude/kb' },
+  review: { timeout: '45m', budget_usd: 8, prompt: '/apo-review-mr {url} --security', workdir: '~/.claude/kb' },
   code_mapping: {
     timeout: '30m', budget_usd: 5, skill_source: '~/.claude/kb/.claude/skills/kb-eventsource-ops',
     prompt: 'Read {skill}/SKILL.md and {skill}/references/author-eventsource.md and follow them.', // ciel config.go:128
