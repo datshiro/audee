@@ -1,25 +1,19 @@
 // The iam_trace timeline page and chat notice, built by audee from the merged trace: no model HTML, every model
 // string defanged, clipped and escaped, and only the markup checkAnswerPage allows.
-import { type CheckedPoint, ictTime, type IamTraceRequest, type MergedTrace, type PointKind, type PointState, rowOf, type TraceResult } from '../capability/iam-trace-schema.js';
+import { type CheckedPoint, ictTime, type IamTraceRequest, type MergedTrace, type PointOutcome, type PointState, rowOf, type TraceResult } from '../capability/iam-trace-schema.js';
 import { strings } from '../capability/kb-answer.js';
 import { defang } from './defang.js';
 import { answerPageCSP, answerPageStyle, clip, escapeHTML, maxNoteChars, maxNotes } from './html.js';
+import { idTail, KIND_VI, type LayoutLane, type LayoutPlayer, layoutTrace } from './iam-trace-layout.js';
+import { laneSvg, widthRules } from './iam-trace-svg.js';
 
 const t = (s: string, n: number): string => escapeHTML(clip(defang(s), n));
 
+export const IAM_TRACE_24H_BANNER = 'Đã tra 24 giờ gần nhất; thêm dd/mm hh:mm để tra ngày khác';
+
 const STATE_VI: Record<PointState, string> = { seen: 'ghi nhận', inferred: 'suy ra', not_recorded: 'không ghi nhận' };
+const OUTCOME_VI: Record<PointOutcome, string> = { pass: 'đạt', block: 'chặn', info: 'thông tin' };
 const CHECK_VI: Record<CheckedPoint['check'], string> = { confirmed: ' · đã kiểm chứng', corrected: ' · đã sửa khi kiểm chứng', unverified: ' · chưa kiểm chứng' };
-const KIND_VI: Record<PointKind, string> = {
-  trigger: 'Trigger',
-  wait_end: 'Hết wait',
-  check_call: 'Gọi kiểm tra',
-  condition: 'Kết quả điều kiện',
-  frequency: 'Frequency check',
-  send: 'Gửi IAM',
-  delivered: 'Client ack',
-  sdk_event: 'SDK tracking',
-  inbox: 'App Inbox',
-};
 // The merge's reasons are fixed English words; any other value is shown as the generic phrase, never as given.
 const REASON_VI = new Map([
   ['verifier checked no point', 'phiên kiểm chứng không kiểm lại được mốc nào'],
@@ -28,20 +22,42 @@ const REASON_VI = new Map([
 const reasonText = (reason: string): string => REASON_VI.get(reason) ?? 'kết quả kiểm chứng không dùng được';
 
 const STYLE = `${answerPageStyle}
-:root{--srv:#0969da;--cli:#8250df}
-@media (prefers-color-scheme:dark){:root{--srv:#4493f8;--cli:#ab7df8}}
+:root{--blk:#2563eb;--cor:#c2410c;--gry:#6e7781}
+@media (prefers-color-scheme:dark){:root{--blk:#4f86e8;--cor:#e0703a;--gry:#8b949e}}
 main{max-width:1100px}
+h1{font-size:24px;line-height:1.3;margin:0 0 4px}
+h2{font-size:20px;margin:32px 0 8px}
+h3{font-size:16px;margin:20px 0 6px}
+h3 small{font-weight:400;color:var(--muted)}
 .warn{color:var(--fg);font-weight:600}
-section{margin:32px 0}
-.row{display:flex;gap:12px;align-items:flex-start;margin:8px 0}
-.lane{flex:0 0 56px;font-weight:600;color:var(--muted)}
-ol.tl{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}
-ol.tl li{display:flex;flex-direction:column;min-width:120px;padding:2px 8px;border-left:4px solid var(--srv)}
-ol.client li{border-left-color:var(--cli)}
-li.inferred{border-left-style:dashed}
-li.not_recorded{border-left-style:dotted;color:var(--muted)}
-.t{font-size:14px;font-variant-numeric:tabular-nums}
-.l{font-weight:600}
+.banner{margin:12px 0;padding:8px 12px;border-left:4px solid var(--cor);background:var(--code);font-weight:600}
+.finding{font-size:17px;margin:16px 0 4px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:8px 0 12px;font-size:14px}
+.dot{display:inline-block;box-sizing:border-box;width:12px;height:12px;margin-right:6px;border-radius:50%;vertical-align:-1px}
+.dot.b{background:var(--blk)}
+.dot.c{border:3px solid var(--cor)}
+.dot.s{background:var(--cor)}
+.dot.o{background:var(--gry)}
+.dot.m{border:2px dashed var(--gry)}
+.dot.i{border:2px dashed var(--fg)}
+.lane{margin:12px 0 20px}
+.lh small{margin-left:8px;color:var(--muted)}
+.scroll{overflow-x:auto;padding-bottom:4px}
+svg{display:block;width:100%;height:auto}
+.empty{margin:4px 0;color:var(--muted)}
+.axis{fill:none;stroke:var(--line);stroke-width:2}
+.nd{stroke-width:3}
+.n-block{fill:var(--blk);stroke:var(--blk)}
+.n-sent{fill:var(--cor);stroke:var(--cor)}
+.n-check{fill:var(--bg);stroke:var(--cor)}
+.n-other{fill:var(--gry);stroke:var(--gry)}
+.n-missing{fill:none;stroke:var(--gry);stroke-width:2;stroke-dasharray:3 3}
+.ring{fill:none;stroke:var(--fg);stroke-width:1.5;stroke-dasharray:3 3}
+text{fill:var(--fg);text-anchor:middle;font:13px/1.2 -apple-system,"Segoe UI",Roboto,sans-serif}
+.lb{font-weight:600}
+.tm{font-variant-numeric:tabular-nums}
+.sb{font-weight:600}
+.gp{fill:var(--muted);font-size:12px}
 .ev{white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,Menlo,monospace;font-size:13px}
 td small{display:block;color:var(--muted)}`;
 
@@ -49,47 +65,72 @@ function timeText(p: CheckedPoint): string {
   if (p.state === 'not_recorded') return '—';
   const ict = ictTime(p.time);
   if (ict === undefined) return '?';
-  return (p.source_field === '_time' ? '≈ ' : '') + ict.text;
-}
-
-// Stable, so points at the same instant keep the model's order; unparseable times go last.
-function byTime(points: CheckedPoint[]): CheckedPoint[] {
-  const at = (p: CheckedPoint): number => ictTime(p.time)?.ms ?? Infinity;
-  return [...points].sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
+  return ict.text + (p.source_field.trim() !== '' && p.source_field.trim() !== '_time' ? ' †' : '');
 }
 
 const label = (p: CheckedPoint): string => (p.label.trim() === '' ? KIND_VI[p.kind] : t(p.label, 80));
 const status = (p: CheckedPoint): string => STATE_VI[p.state] + CHECK_VI[p.check];
+const ids = (player: LayoutPlayer): string => player.ids.map((id) => t(id, 64)).join(' / ');
 
-function row(name: 'server' | 'client', lane: string, points: CheckedPoint[]): string {
-  const items = points.map((p) => `<li class="${p.state}"><span class="t">${timeText(p)}</span><span class="l">${label(p)}${p.state === 'inferred' ? ' *' : ''}</span><small>${status(p)}</small></li>`);
-  const list = items.length > 0 ? items.join('') : '<li class="not_recorded"><span class="l">không ghi nhận mốc nào</span></li>';
-  return `<div class="row"><span class="lane">${lane}</span><ol class="tl ${name}">${list}</ol></div>`;
+function laneHtml(lane: LayoutLane): string {
+  const body = lane.nodes.length > 0 ? `<div class="scroll">${laneSvg(lane.nodes)}</div>` : '<p class="empty">không ghi nhận mốc nào</p>';
+  return `<div class="lane"><div class="lh"><strong>${t(lane.title, 120)}</strong>${lane.sub !== '' ? `<small>${t(lane.sub, 40)}</small>` : ''}</div>${body}</div>`;
 }
 
-function tableRow(p: CheckedPoint): string {
+function playerHtml(player: LayoutPlayer): string {
+  return `<h3>${ids(player)} <small>userId ${t(player.userId, 64) || '—'} · roleId ${t(player.roleId, 64) || '—'}</small></h3>
+${[...player.journeys, player.client].map(laneHtml).join('\n')}`;
+}
+
+const LEGEND = [
+  ['b', 'Bị chặn'],
+  ['c', 'Kiểm tra điều kiện'],
+  ['s', 'Apollo gửi IAM'],
+  ['o', 'Mốc khác'],
+  ['m', 'Không ghi nhận'],
+  ['i', 'Suy ra (viền đứt, dấu *)'],
+] as const;
+const legend = `<p class="legend">${LEGEND.map(([k, text]) => `<span><span class="dot ${k}"></span>${text}</span>`).join('')}</p>`;
+
+function inferredSection(players: LayoutPlayer[]): string {
+  const who = (player: LayoutPlayer): string => (players.length > 1 ? `${ids(player)}: ` : '');
+  const inferred = players.flatMap((pl) => pl.points.filter((p) => p.state === 'inferred').map((p) => `<li>${who(pl)}<strong>${label(p)}</strong>: ${t(p.why, 300)}</li>`));
+  const unknown = players.flatMap((pl) => pl.points.filter((p) => p.state === 'not_recorded').map((p) => `<li>${who(pl)}${label(p)}</li>`));
+  return `<section><h2>Suy luận / chưa biết</h2>
+<h3>Suy ra (dấu *)</h3>
+${inferred.length > 0 ? `<ul>${inferred.join('')}</ul>` : '<p>Không có mốc nào phải suy ra.</p>'}
+<h3>Không ghi nhận</h3>
+${unknown.length > 0 ? `<ul>${unknown.join('')}</ul>` : '<p>Mọi mốc đều tìm thấy dòng log.</p>'}
+<p>"Không ghi nhận" nghĩa là không tìm thấy dòng log trong khoảng đã tra, không có nghĩa là chưa xảy ra.</p></section>`;
+}
+
+function tableRow(p: CheckedPoint, player: LayoutPlayer, many: boolean): string {
+  const where = [many ? ids(player) : '', rowOf(p.kind) === 'server' && p.journey !== '' ? `Journey ${t(idTail(p.journey), 64)}` : '', `kết quả: ${OUTCOME_VI[p.outcome]}`].filter((x) => x !== '').join(' · ');
   const why = p.state === 'inferred' && p.why.trim() !== '' ? `<small>Suy ra vì: ${t(p.why, 300)}</small>` : '';
-  return `<tr><td>${KIND_VI[p.kind]}: ${label(p)}</td><td>${timeText(p)}</td><td>${t(p.source_field, 60)}</td><td>${status(p)}</td><td><div class="ev">${t(p.evidence, 600)}</div>${why}</td></tr>`;
+  return `<tr><td>${KIND_VI[p.kind]}: ${label(p)}<small>· ${where}</small></td><td>${timeText(p)}</td><td>${t(p.source_field, 60)}</td><td>${status(p)}</td><td><div class="ev">${t(p.evidence, 600)}</div>${why}</td></tr>`;
 }
 
-function userSection(u: MergedTrace['users'][number]): string {
-  const server = byTime(u.points.filter((p) => rowOf(p.kind) === 'server'));
-  const client = byTime(u.points.filter((p) => rowOf(p.kind) === 'client'));
-  return `<section><h2>${t(u.id, 64)} <small>userId ${t(u.user_id, 64) || '—'} · roleId ${t(u.role_id, 64) || '—'}</small></h2>
-${row('server', 'Server', server)}
-${row('client', 'Client', client)}
-<table><thead><tr><th>Mốc</th><th>Giờ (ICT)</th><th>Trường</th><th>Trạng thái</th><th>Bằng chứng</th></tr></thead><tbody>${[...server, ...client].map(tableRow).join('')}</tbody></table></section>`;
+// Counted over the points the page shows: a point seen under both ids of one player counts once.
+function tally(players: LayoutPlayer[]): MergedTrace['counts'] {
+  const counts = { confirmed: 0, corrected: 0, unverified: 0 };
+  for (const pl of players) for (const p of pl.points) counts[p.check] += 1;
+  return counts;
 }
 
-function verifyLine(trace: MergedTrace): string {
-  const c = trace.counts;
+function verifyLine(trace: MergedTrace, c: MergedTrace['counts']): string {
+  trace = { ...trace, verified: trace.verified && c.confirmed + c.corrected > 0 };
   if (trace.verified) return ` Đã kiểm chứng độc lập bằng một phiên truy vấn lại: ${c.confirmed} mốc khớp, ${c.corrected} mốc đã sửa, ${c.unverified} mốc chưa kiểm chứng.`;
   return ` Chưa kiểm chứng độc lập${trace.reason !== undefined ? `: ${reasonText(trace.reason)}` : ''}.`;
 }
 
 export function iamTracePage(req: IamTraceRequest, trace: MergedTrace): string {
+  const players = layoutTrace(req, trace);
   const filter = req.timeFilter !== undefined ? ' Bộ lọc thời gian _time chưa được xác minh trên kho log.' : '';
   const notes = trace.notes.slice(0, maxNotes).map((n) => `<li>${t(n, maxNoteChars)}</li>`).join('');
+  const marked = players.some((pl) => pl.points.some((p) => timeText(p).endsWith(' †')));
+  const counts = players.flatMap((pl) => [...pl.journeys, pl.client].map((l) => l.nodes.length));
+  const banner = req.at === undefined ? `<p class="banner">${IAM_TRACE_24H_BANNER}</p>` : '';
+  const conclusion = trace.conclusion.length > 0 ? `<ul>${trace.conclusion.map((c) => `<li>${t(c, 250)}</li>`).join('')}</ul>` : '';
   return `<!doctype html>
 <html lang="vi">
 <head>
@@ -97,13 +138,21 @@ export function iamTracePage(req: IamTraceRequest, trace: MergedTrace): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${answerPageCSP}">
 <title>Trace IAM</title>
-<style>${STYLE}</style>
+<style>${STYLE}
+${widthRules(counts)}</style>
 </head>
 <body>
 <main>
-<header><h1>${t(trace.finding, 300) || 'Trace IAM'}</h1><p>IAM ${t(req.target, 64)} · ${t(req.window, 120)} · giờ ICT</p><p class="warn">Temporal không kiểm tra.${filter}${verifyLine(trace)}</p></header>
-${trace.users.map(userSection).join('\n')}
-<footer><h3>Ghi chú</h3><ul>${notes}<li>* suy ra: không có dòng log trực tiếp, suy từ bước chạy sau.</li><li>≈ ước lượng từ giờ kho log (_time): công cụ không trả về giờ trong dòng log, và giờ kho log có thể lệch so với lúc dòng log được ghi.</li><li>"Không ghi nhận" nghĩa là không tìm thấy dòng log trong khoảng đã tra.</li><li>Không gồm Temporal và các mốc nghiệp vụ của team khác.</li></ul></footer>
+<header><h1>Trace IAM</h1><p>IAM ${t(req.target, 64)}${req.journey !== undefined ? ` · journey ${t(req.journey, 64)}` : ''} · ${t(req.window, 120)} · giờ ICT</p>${banner}<p class="warn">Temporal không kiểm tra.${filter}${verifyLine(trace, tally(players))}</p>
+<p class="finding">${t(trace.finding, 300) || 'Không có kết luận.'}</p>${conclusion}</header>
+<section><h2>Timeline</h2>
+<p>Giờ ICT. Mỗi hàng là một journey; khoảng cách giữa các mốc không theo tỷ lệ, nhãn +… là thời gian từ mốc trước, xN là mốc lặp N lần.</p>
+${legend}
+${players.map(playerHtml).join('\n')}</section>
+${inferredSection(players)}
+<section><h2>Bằng chứng</h2>
+<table><thead><tr><th>Mốc</th><th>Giờ (ICT)</th><th>Trường</th><th>Trạng thái</th><th>Bằng chứng</th></tr></thead><tbody>${players.flatMap((pl) => pl.points.map((p) => tableRow(p, pl, players.length > 1))).join('')}</tbody></table></section>
+<footer><h3>Ghi chú</h3><ul>${notes}<li>Giờ là giờ kho log (_time), có thể lệch so với lúc dòng log được ghi.</li>${marked ? '<li>† giờ in trong nội dung dòng log, khác giờ kho log.</li>' : ''}<li>* suy ra: không có dòng log trực tiếp, suy từ bước chạy sau hoặc từ liên kết journey.</li><li>Không gồm Temporal và các mốc nghiệp vụ của team khác.</li></ul></footer>
 </main>
 </body>
 </html>
@@ -111,17 +160,19 @@ ${trace.users.map(userSection).join('\n')}
 }
 
 export function iamTraceNotice(req: IamTraceRequest, trace: MergedTrace): string {
+  const players = layoutTrace(req, trace);
   const states: Record<PointState, number> = { seen: 0, inferred: 0, not_recorded: 0 };
-  for (const u of trace.users) for (const p of u.points) states[p.state] += 1;
-  const { corrected, unverified } = trace.counts;
+  for (const pl of players) for (const p of pl.points) states[p.state] += 1;
+  const { corrected, unverified } = tally(players);
   return (
     '🤖 <b>Trace IAM tự động</b>, timeline trong file, bạn kiểm tra lại trước khi dùng nhé:<br>' +
     t(trace.finding, 300) +
-    `<br>${trace.users.length} user · ${states.seen} mốc ghi nhận · ${states.inferred} mốc suy ra · ${states.not_recorded} mốc không ghi nhận` +
+    `<br>${players.length} user · ${states.seen} mốc ghi nhận · ${states.inferred} mốc suy ra · ${states.not_recorded} mốc không ghi nhận` +
     (corrected > 0 ? ` · ${corrected} mốc đã sửa khi kiểm chứng` : '') +
     (unverified > 0 ? ` · ${unverified} mốc chưa kiểm chứng` : '') +
     (trace.verified ? '' : ` · chưa kiểm chứng độc lập${trace.reason !== undefined ? ` (${reasonText(trace.reason)})` : ''}`) +
-    `<br><i>Temporal không kiểm tra. Khoảng tra: ${t(req.window, 120)}.</i>`
+    `<br><i>Temporal không kiểm tra. Khoảng tra: ${t(req.window, 120)}.</i>` +
+    (req.at === undefined ? `<br><i>${IAM_TRACE_24H_BANNER}.</i>` : '')
   );
 }
 

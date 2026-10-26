@@ -107,10 +107,11 @@ owner notices carry that name as their kind).
   `roleId`, `gameId` and `serverId` must be at most 128 characters matching `^[A-Za-z0-9_.:@|-]+$`; an empty or null id
   counts as absent (the MCP treats it so) and is the MCP's to refuse.
 - Reduced fidelity (owner decision 2026-10-26): the iam-trace MCP drops structured log fields on purpose, so only a
-  line's message text and its store time reach the model. Times are the store time, marked "≈" on the page, unless the
-  message prints a time; audee converts to ICT itself. A condition outcome or an SDK event name is `seen` only when the
+  line's message text and its store time reach the model. Times are the store time unless the message prints a time;
+  audee converts to ICT itself, and the page says once that times are store time and marks (†) only a point whose time
+  came from the message. A condition outcome or an SDK event name is `seen` only when the
   message prints it, otherwise the point is inferred (from what ran next) or "không ghi nhận" (never "không xảy ra").
-  Nine point kinds: server row trigger, wait_end, check_call, condition, frequency, send, delivered; client row
+  Nine point kinds: server kinds trigger, wait_end, check_call, condition, frequency, send; client kinds delivered,
   sdk_event, inbox. Temporal rows and external business points are out of scope; the page says "Temporal không kiểm
   tra".
 - Verification: a second session on the same fence gets at most 15 points (seen first) with evidence clipped to 160
@@ -123,8 +124,29 @@ owner notices carry that name as their kind).
   The points reach the verifier as JSON with `<` and `>` escaped, so evidence cannot close the data block. An unverified
   page (verifier skipped, failed, broke the contract, re-queried nothing or changed most points) is still delivered,
   with "chưa kiểm chứng độc lập" on the page and in the notice; the owner is notified and the job folder is kept.
-- Output: a page built by audee (`src/render/iam-trace-page.ts`), sent as `iam-trace-<message
-  id>-<yyyymmdd-hhmmss>.html` through the outbox file flow with a short Vietnamese notice. It must pass
+- Tags (2026-10-26, timeline redesign): the trace tags each point with `journey` (an id, empty for client kinds) and
+  `outcome` (`pass`, `block`, `info`) and returns a short `conclusion` (2-4 bullets); the verifier schema is unchanged
+  and never touches them. audee validates the tags: an unsafe journey id becomes empty, the conclusion is capped at 4
+  bullets, a journey tag equal to the campaign (when the request names the journey too), a requested user or a role id becomes empty, a trace holds at most 60 points per user (several journeys per user). After verification a server point's
+  journey counts as seen only when its own evidence carries the journey id (as a whole token) or shares a `traceId`
+  (`traceId`, `trace_id`, with or without escaped quotes) with another point whose evidence does; otherwise, or with no
+  journey tag, the point is shown as inferred with a fixed Vietnamese reason. On real traces most lines may carry
+  neither, so expect many dashed nodes until the log tools show journey or trace ids.
+- Output: a page built by audee (`src/render/iam-trace-page.ts`, layout in `iam-trace-layout.ts`, SVG in
+  `iam-trace-svg.ts`), sent as `iam-trace-<message id>-<yyyymmdd-hhmmss>.html` through the outbox file flow with a short
+  Vietnamese notice. Order: a normal-size title and conclusion (finding plus bullets), the timeline, "Suy luận / chưa
+  biết" (inferred points with their reason, and the points "không ghi nhận"), the evidence table, notes. The timeline
+  is inline SVG drawn by audee: one lane per journey id the logs show for a player (the requested journey first, then by
+  first time; titles are ids such as "Journey …2368 / campaign …2800", the campaign only on the requested lane) and one
+  client lane (delivered, SDK tracking, inbox). Each node has its label above, ICT time below and an optional
+  sub-label; gaps between nodes (`+1.1s`, `+1h54m`) and the date at a day change are computed in code; adjacent
+  identical points (same kind, label, outcome and state) collapse into one node `xN đến <last time>`. Colours: blocked
+  blue filled, check coral outlined, IAM sent coral filled, other grey, not recorded dashed hollow; an inferred node has
+  a dashed ring and an asterisk. A lane's viewBox width grows with its node count, scales down with the page to 85% and
+  scrolls sideways below that. Users whose id, userId or roleId overlap (one player asked for by both ids) merge into
+  one section, a line seen under both ids counts once; two roles of one account stay apart. The verification counts
+  shown are tallied over the points the page shows. A request without a datetime shows a banner on the page and in the notice: "Đã tra 24 giờ gần nhất; thêm
+  dd/mm hh:mm để tra ngày khác". The layout is a pure function (`layoutTrace`). The page must pass
   `checkAnswerPage` (the product-answer CSP and markup rules). Evidence is redacted first: the values of token, key,
   secret and password pairs, of `registration_id`/`registrationId`/`regId` and the plural list forms (`registration_ids`, `fcm_tokens`,
   `device_tokens`; every item of the list), `fcm_token`, `device_token`, `deviceToken`, `device_id`/`deviceId`, and a bare

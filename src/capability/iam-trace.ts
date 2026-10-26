@@ -59,6 +59,8 @@ function windowRule(req: IamTraceRequest, since: string): string {
 }
 
 const TIME_RULE = 'Time: copy the entry time exactly as the tool shows it into "time" and set "source_field" to "_time". Only when the message text itself prints a time, copy that printed value instead and name it as printed in "source_field". Never convert time zones; audee converts.';
+const JOURNEY_RULE = 'Journey: every server point carries "journey", the id of the journey it belongs to, copied from its own log line (the workflow id journey-<journeyId>-<userId>|<time>, a journeyId or journeyInfo id, an API path /journeys/<id>). A line that prints no journey id but shares a traceId with a line that does belongs to that journey: keep the traceId text in the evidence. audee shows a point as inferred unless its own evidence or a same-traceId evidence of another point carries the journey id; if you can only guess the journey, tag the guess and say so in "why". Leave "journey" empty for delivered, sdk_event and inbox points.';
+const OUTCOME_RULE = 'Outcome: "block" when the point stops the user there (condition false, frequency rejected, excluded by a gate), "pass" when a check passed or an action succeeded (send accepted), "info" otherwise.';
 const EVIDENCE_RULE = 'Evidence: one line verbatim, at most 600 characters. Replace the value of every token, key, secret or password field with <redacted>. Never quote push tokens or credentials.';
 
 export function iamTracePrompt(req: IamTraceRequest): string {
@@ -81,18 +83,22 @@ Points, one line each, with the kind in brackets. You see only a log line's mess
 - [sdk_event] apollo.notification.tracking events of this campaign: received, open, read, impression, close; the label is the event name.
 - [inbox] GET /api/v1/inbox/counts, GET /api/v1/inbox/messages, PUT /api/v1/inbox/messages/read.
 Out of scope: Temporal workflow list rows and external business points (purchase, join): do not report them.
+A user can run several journeys of the same campaign or other journeys: report the points of every journey your queries show for the user, the requested journey first, without running extra queries only to find more journeys. The page draws one timeline lane per journey id and one client lane per user.
 
 Reading rules:
 - ${TIME_RULE}
 - ${EVIDENCE_RULE}
+- ${JOURNEY_RULE}
+- ${OUTCOME_RULE}
 - States: seen = a line you retrieved shows it in its message text. inferred = no line shows it, but what ran next proves it (for example, worker lines lost after a wait: the next node's call or the message-delivery send proves the check passed); say why in "why". not_recorded = no line found; time and evidence empty.
 - A condition outcome or an SDK event name is seen only if the message prints it; otherwise the point is inferred (what ran next proves it; say why) or not_recorded.
 - Cross-check every SDK read against inbox mark-read. An inbox read with no SDK event is its own [inbox] point. Out-app opt-in/opt-out events are push-permission events; leave them out.
 - For a missing line write "không ghi nhận", never "không xảy ra".
 
 Output rules:
-- status "done": one users entry per requested id, with "id" exactly as requested and "user_id"/"role_id" as resolved or empty; at most 40 points per user.
+- status "done": one users entry per requested id, with "id" exactly as requested and "user_id"/"role_id" as resolved or empty; at most 60 points per user.
 - "finding": 1-2 Vietnamese sentences, at most 300 characters.
+- "conclusion": 2-4 Vietnamese bullets, each under 250 characters: which journey sent the IAM or blocked the user and why, and what the client logs show. Only what the points support; say "không ghi nhận" for what is missing. Empty array for status need_input or failed.
 - status "need_input": Vietnamese "missing", only when the logs cannot tell which IAM or user is meant.
 - status "failed": Vietnamese "notes", when list_services shows no services or a tool is denied.
 - "notes": at most 5, each under 250 characters, in Vietnamese.`;
@@ -102,7 +108,7 @@ Output rules:
 // evidence cannot close the data block.
 export function iamVerifyPrompt(req: IamTraceRequest, trace: TraceResult, since: string): string {
   const points = verifierPoints(numberPoints(trace)).map((p) => ({
-    ref: p.ref, user: p.user, kind: p.kind, label: p.label, time: p.time, source_field: p.source_field, state: p.state, evidence: clip(p.evidence, VERIFY_EVIDENCE_CHARS), why: p.why,
+    ref: p.ref, user: p.user, kind: p.kind, label: p.label, journey: p.journey, outcome: p.outcome, time: p.time, source_field: p.source_field, state: p.state, evidence: clip(p.evidence, VERIFY_EVIDENCE_CHARS), why: p.why,
   }));
   return `You are an independent verifier, running unattended; nobody can answer questions. Use only your tools: trace_identity, trace_key, search_logs, list_services.
 Another session traced an Apollo in-app message (IAM) for the request below and produced the points below.
@@ -120,7 +126,7 @@ ${JSON.stringify(points).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e')}
 POINTS>>>
 
 Verdict rules:
-- Exactly one verdict per ref; never add refs.
+- Exactly one verdict per ref; never add refs. "journey" and "outcome" are shown for context only; audee keeps them.
 - CONFIRMED: a line you retrieved in this session shows the same time value and the same state. Give only "ref" and "verdict".
 - CORRECTED: give all of "time", "source_field", "evidence", "state" and "why" as the logs show them.
 - ${TIME_RULE}
