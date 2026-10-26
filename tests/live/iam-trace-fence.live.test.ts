@@ -39,7 +39,10 @@ describe('iam_trace fence (live)', () => {
     const otherMcp = names.some((n) => n.startsWith('mcp__') && !n.startsWith(prefix));
     console.log(`built-in tool attempted: ${yesNo(builtIn)}; other MCP tool attempted: ${yesNo(otherMcp)}`);
     expect(status, `the ${IAM_TRACE_SERVER} server did not connect`).toBe('connected');
-    expect([...offered].sort(), 'the offered iam-trace tools differ from IAM_TRACE_TOOLS').toEqual([...IAM_TRACE_TOOLS].sort());
+    for (const tool of IAM_TRACE_TOOLS) expect(offered, `${tool} is not offered`).toContain(tool);
+    const extraUsed = names.filter((n) => n.startsWith(prefix) && !(IAM_TRACE_TOOLS as readonly string[]).includes(n));
+    console.log(`extra tools offered by the server: ${offered.filter((t) => !(IAM_TRACE_TOOLS as readonly string[]).includes(t)).length}; attempted: ${yesNo(extraUsed.length > 0)}`);
+    expect(extraUsed, 'a tool outside IAM_TRACE_TOOLS was attempted').toEqual([]);
     expect(builtIn, 'a built-in tool was available').toBe(false);
     expect(otherMcp, 'a tool of another MCP server was available').toBe(false);
     const searchWith = (needle: string) => (t: ToolUse): boolean => t.name === `${prefix}search_logs` && filterOf(t).includes(needle);

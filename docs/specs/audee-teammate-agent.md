@@ -138,16 +138,23 @@ owner notices carry that name as their kind).
   page.
 - Server prerequisite: `iam-trace` must be defined at user scope with an absolute `command` path; `doctor` fails `mcp
   servers` when it is missing and fails `iam-trace command` unless the command is an absolute path that exists on disk.
-  The binary configured today (built 2026-09-18) predates the MCP's scope-escape hardening, which is why audee's gate
-  enforces the filter rules itself. Owner follow-up, not done here: rebuild the binary or repoint `command` to a current
-  build.
+  Since 2026-10-26 the entry runs the current `apollo-debug-mcp` build (`bin/apollo-debug-mcp`, which has the MCP's
+  scope-escape hardening) with `APOLLO_DEBUG_CONFIG` pointing at a minimal config that holds only the `grafana` block
+  with empty `services` (so no `query_logs`) and no databases or Redis; the entry's env carries only the two Grafana
+  variables. That server offers nine tools (the four iam tools plus `list_sources`, `read_document`, `read_redis`,
+  `segment_record`, `trace_segment`, which have no source configured); the fence still allows only the four, and the
+  live test asserts that none of the others is attempted. The MCP now refuses bracket ranges and scope breakouts
+  itself; audee's gate enforces the same rules, so it does not depend on which build runs. The older standalone
+  `iam-trace-mcp` binary (2026-09-18) is kept next to it and `~/.claude.json.bak-261026-iam-trace` holds the previous
+  entry.
 - Known gaps: the cost of a timed-out or thrown session is not recorded; a job interrupted by a restart or reload runs
   again from the start; the page carries raw evidence lines of up to 600 characters to everyone in the chat via
   OneDrive.
 
 Validation status: unit tested. Post-merge manual checks:
-1. Done 2026-10-26: `pnpm test:live iam-trace-fence` on VPN passed against the real `iam-trace` MCP (the 2026-09-18
-   binary): server connected, `offered=4`, no built-in or other-MCP tool attempted, and both the bracket-range filter
+1. Done 2026-10-26: `pnpm test:live iam-trace-fence` on VPN passed against the real `iam-trace` MCP (first the
+   2026-09-18 binary, then, after the repoint described above, the current build, which offers nine tools): server
+   connected, `offered=4` on the old binary, no built-in or other-MCP tool attempted, and both the bracket-range filter
    and the escaped-quote scope-breakout filter were attempted and denied by the gate (Claude Code 2.1.306 through
    `deploy/claude-hack.sh`; the live helper needed that executable, as `runAgent` uses it).
 2. Done 2026-10-26: a live `search_logs` with `_time:(2026-10-26T05:00:00Z, 2026-10-26T05:20:00Z) AND "journey workflow
