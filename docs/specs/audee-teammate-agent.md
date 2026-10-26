@@ -117,8 +117,10 @@ owner notices carry that name as their kind).
 - Subscription check (added 2026-10-26 after the owner compared the page with the reference doc): a `publish` point is
   message-delivery publishing the message to a channel, a `subscribe` point is one SDK session subscribing (at most 8,
   or one not_recorded point when no subscribe line exists); both carry the channel name verbatim in `channel` (empty
-  on every other kind; a point with an unusable channel, or a publish/subscribe point without one, is shown as
-  inferred). Both sit on the client lane and are exempt from the journey proof. The page section "Kiểm tra kênh
+  on every other kind; a name is any run of at most 300 characters without whitespace, `<`, `>`, `"` or a backslash;
+  an unusable channel, or a publish/subscribe point without one, is shown as inferred). After verification a
+  publish/subscribe point counts as seen only when its own evidence names the channel (as a whole token), otherwise it
+  is inferred; a verifier correction to not_recorded clears the channel. Both sit on the client lane and are exempt from the journey proof. The page section "Kiểm tra kênh
   subscribe" lists them (time, kind, channel, game = the second `:` segment, state) and audee computes the verdict from
   `seen` points only: the published channel is among the subscribed ones; or no subscribed game is the published game
   ("Lệch game"); or the same game with another channel; or the logs show no publish or no subscribe, which is said as
