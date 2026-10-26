@@ -22,7 +22,8 @@ export const MISSING_USERS = 'ít nhất một userId hoặc roleId (nhiều mã
 const HOUR_MS = 3_600_000;
 
 // windowStart/windowEnd exist only with a datetime; timeFilter carries the same bounds as text.
-export type IamTraceRequest = { target: string; users: string[]; at?: Date; since: string; timeFilter?: string; windowStart?: Date; windowEnd?: Date; window: string };
+// journey is the journey id when the message carried both a campaign and a journey id (target is then the campaign).
+export type IamTraceRequest = { target: string; journey?: string; users: string[]; at?: Date; since: string; timeFilter?: string; windowStart?: Date; windowEnd?: Date; window: string };
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,63}$/u;
 // dd/mm[/yyyy] h:mm[:ss] anywhere after the users, followed by a space, punctuation or the end.
@@ -34,6 +35,29 @@ const DURATION_TOKEN = /^\d{1,3}[hdmp]$/u;
 export const MISSING_DATETIME = 'thời điểm theo dạng dd/mm hh:mm (ví dụ 25/10 09:30), có cả ngày và giờ';
 export const MISSING_COMMAS = 'các userId/roleId phải cách nhau bằng dấu phẩy, không phải dấu cách (ví dụ u1,u2)';
 
+// A pasted bug report: a campaign link or id, a journeyInfo id, and UID:/RID: lines. Only values of these shapes are
+// read; the surrounding words never reach the request.
+const CAMPAIGN_RES = [/\/campaigns?\/(\d{6,25})\b/iu, /campaign[\s_-]?id"?\s*[:=#]\s*"?(\d{6,25})/iu];
+const JOURNEY_RES = [/\/journeys?\/(\d{6,25})\b/iu, /journeyInfo"?\s*[:=]\s*\{\s*"?id"?\s*[:=]\s*"?(\d{6,25})/iu, /journey[\s_-]?id"?\s*[:=#]\s*"?(\d{6,25})/iu];
+const USER_LABEL_RE = /\b(?:uid|rid|user[\s_-]?id|role[\s_-]?id)"?\s*[:=#]\s*"?([^\s"',;]+(?:"?\s*,\s*"?[^\s"',;]+)*)/giu;
+
+function firstMatch(res: RegExp[], text: string): string | undefined {
+  for (const re of res) {
+    const m = re.exec(text);
+    if (m?.[1] !== undefined) return m[1];
+  }
+  return undefined;
+}
+
+function freeForm(text: string): { target: string; journey?: string; users: string[] } | undefined {
+  const campaign = firstMatch(CAMPAIGN_RES, text);
+  const journey = firstMatch(JOURNEY_RES, text);
+  const users = [...new Set([...text.matchAll(USER_LABEL_RE)].flatMap((m) => (m[1] ?? '').split(/"?\s*,\s*"?/u)).filter((u) => u !== ''))];
+  if (campaign === undefined && journey === undefined && users.length === 0) return undefined;
+  const target = campaign ?? journey ?? '';
+  return { target, ...(campaign !== undefined && journey !== undefined && journey !== campaign ? { journey } : {}), users };
+}
+
 const iso = (ms: number): string => new Date(ms).toISOString().replace(/\.\d{3}Z$/u, 'Z');
 
 function ictMs(y: number, mo: number, d: number, h: number, mi: number): number | undefined {
@@ -44,9 +68,9 @@ function ictMs(y: number, mo: number, d: number, h: number, mi: number): number 
 }
 
 // The datetime found after the users, or the need_input entry explaining why it cannot be used.
-function requestTime(rest: string, now: Date): { at?: number; x?: string; problem?: string } {
+function requestTime(rest: string, now: Date, lenient = false): { at?: number; x?: string; problem?: string } {
   const dt = DATETIME_RE.exec(rest);
-  if (!dt) return DATE_LIKE.test(rest) || TIME_LIKE.test(rest) ? { problem: MISSING_DATETIME } : {};
+  if (!dt) return !lenient && (DATE_LIKE.test(rest) || TIME_LIKE.test(rest)) ? { problem: MISSING_DATETIME } : {};
   const [d, mo, h, mi] = [dt[1], dt[2], dt[4], dt[5]].map(Number) as [number, number, number, number];
   const x = `${dt[1]}/${dt[2]}${dt[3] !== undefined ? `/${dt[3]}` : ''} ${dt[4]}:${dt[5]}`;
   const year = dt[3] !== undefined ? Number(dt[3]) : new Date(now.getTime() + ICT_OFFSET_MS).getUTCFullYear();
@@ -63,36 +87,41 @@ function requestTime(rest: string, now: Date): { at?: number; x?: string; proble
   return { at, x };
 }
 
-// iam_trace <campaignId|journeyId> <userId|roleId>[,...] [dd/mm hh:mm]. Users come only from the first token after
-// the target (spaces around commas allowed); other words are ignored, except an id-like word right after the users,
-// which is taken for a user missing its comma.
-export function parseTraceRequest(text: string, now: Date): { request?: IamTraceRequest; missing: string[] } {
+// iam_trace <campaignId|journeyId> <userId|roleId>[,...] [dd/mm hh:mm], or a pasted message with a campaign link or id,
+// a journeyInfo id and UID:/RID: lines. In the short form users come only from the first token after the target
+// (spaces around commas allowed); other words are ignored, except an id-like word right after the users, which is
+// taken for a user missing its comma.
+export function parseTraceRequest(raw: string, now: Date): { request?: IamTraceRequest; missing: string[] } {
+  const text = raw.replace(/\s+/gu, ' '); // one space per run: the patterns below then stay linear on long whitespace
+  const free = freeForm(text);
   const tokens = text.replace(/\s*,\s*/gu, ',').trim().split(/\s+/u).filter((t) => t !== '');
-  const target = tokens[0] ?? '';
   const second = tokens[1] ?? '';
   const list = DATE_OR_TIME_TOKEN.test(second) ? '' : second;
-  const rest = tokens.slice(list === '' ? 1 : 2);
-  const users = [...new Set(list.split(',').filter((u) => u !== ''))];
+  const rest = free !== undefined ? [text] : tokens.slice(list === '' ? 1 : 2);
+  const target = free !== undefined ? free.target : (tokens[0] ?? '');
+  const journey = free?.journey;
+  const users = free !== undefined ? free.users : [...new Set(list.split(',').filter((u) => u !== ''))];
   const missing: string[] = [];
   if (target === '') missing.push(MISSING_TARGET);
   if (users.length === 0) missing.push(MISSING_USERS);
-  for (const token of [target, ...users]) {
+  for (const token of [target, ...(journey !== undefined ? [journey] : []), ...users]) {
     if (token !== '' && !ID_RE.test(token)) missing.push(`mã "${token.slice(0, 64)}" không hợp lệ (chỉ gồm chữ, số và _ . : @ -)`);
   }
   if (users.length > MAX_USERS) missing.push(`tối đa ${MAX_USERS} userId/roleId mỗi lần`);
   const next = (rest[0] ?? '').replace(/[.,;!?]+$/u, '');
-  if (list !== '' && ID_RE.test(next) && /\d/u.test(next) && !DATE_OR_TIME_TOKEN.test(next) && !DURATION_TOKEN.test(next)) missing.push(MISSING_COMMAS);
+  if (free === undefined && list !== '' && ID_RE.test(next) && /\d/u.test(next) && !DATE_OR_TIME_TOKEN.test(next) && !DURATION_TOKEN.test(next)) missing.push(MISSING_COMMAS);
 
-  const { at, x, problem } = requestTime(rest.join(' '), now);
+  const { at, x, problem } = requestTime(rest.join(' '), now, free !== undefined);
   if (problem !== undefined) missing.push(problem);
   if (missing.length > 0) return { missing };
-  if (at === undefined) return { request: { target, users, since: '24h', window: '24 giờ gần nhất' }, missing };
+  if (at === undefined) return { request: { target, ...(journey !== undefined ? { journey } : {}), users, since: '24h', window: '24 giờ gần nhất' }, missing };
 
   const start = at - 30 * 60_000;
   const end = Math.min(at + 3 * HOUR_MS, now.getTime());
   return {
     request: {
       target,
+      ...(journey !== undefined ? { journey } : {}),
       users,
       at: new Date(at),
       since: `${Math.min(RETENTION_HOURS, Math.ceil((now.getTime() - start) / HOUR_MS) + 1)}h`,

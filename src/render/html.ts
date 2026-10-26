@@ -82,7 +82,7 @@ export const readFailedReply = '❌ <b>Tra cứu bị lỗi.</b> Mình sẽ xem 
 export const iamTraceQueuedReply = '👀 <b>Đang trace IAM.</b> Xong mình sẽ gửi timeline nhé.';
 export const iamTraceFailedReply = '❌ <b>Trace IAM bị lỗi.</b> Mình sẽ xem lại.';
 export const iamTraceWithheldReply = '❌ <b>Kết quả trace IAM có thể chứa thông tin bí mật nên mình không gửi.</b> Mình sẽ xem lại.';
-export const iamTraceUsageReply = 'Cú pháp: <b>iam_trace</b> &lt;campaignId|journeyId&gt; &lt;userId|roleId&gt;[,...] [dd/mm hh:mm], nhiều user cách nhau bằng dấu phẩy, ví dụ: iam_trace 1234 u1,u2 25/10 09:30';
+export const iamTraceUsageReply = 'Cú pháp: <b>iam_trace</b> &lt;campaignId|journeyId&gt; &lt;userId|roleId&gt;[,...] [dd/mm hh:mm], nhiều user cách nhau bằng dấu phẩy, ví dụ: iam_trace 1234 u1,u2 25/10 09:30. Cũng có thể dán link campaign kèm dòng UID: / RID: (và journeyInfo id nếu có).';
 export function iamTraceMissingReply(missing: string[]): string {
   return '<b>Mình cần thêm thông tin để trace IAM:</b>' + noteList(defangAll(missing)) + iamTraceUsageReply;
 }

@@ -419,6 +419,15 @@ describe('iam_trace capability', () => {
     expect(inputs[1]?.prompt).toContain('since "5h"');
   });
 
+  it('TestIamTracePromptCarriesBothIds', () => {
+    const { request } = parseTraceRequest('campaign https://hub.example/apollo/campaign/555000111\n"journeyInfo": { "id": "777000222" }\nUID: u1', new Date());
+    if (request === undefined) throw new Error('no request');
+    const prompt = iamTracePrompt(request);
+    expect(prompt).toContain('id: 555000111');
+    expect(prompt).toContain('journeyId: 777000222');
+    expect(iamTracePrompt({ ...request, journey: undefined })).not.toContain('journeyId:');
+  });
+
   it('TestIamTracePrompts', () => {
     const now = new Date();
     const { request } = parseTraceRequest('C1 u1,r2', now);

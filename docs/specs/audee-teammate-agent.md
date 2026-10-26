@@ -81,6 +81,13 @@ owner notices carry that name as their kind).
   a time without a date, `9h30`, impossible values), which never falls back to the last 24 hours; a time later today or
   a future `dd/mm/yyyy`; a datetime outside the last 165 hours (log retention is 7 days). Any other future `dd/mm` is
   read as last year's. A bare `iam_trace` gets the usage line.
+  Pasted messages work too (added 2026-10-26 after a colleague's first test): when the text holds a campaign link
+  (`/campaign/<id>`) or `campaignId:`, a `journeyInfo` id or `journeyId:`, or `UID:` / `RID:` / `userId:` / `roleId:`
+  lines, audee reads only values of those shapes (ids of at most 64 safe characters, campaign and journey ids of 6 to 25
+  digits) and ignores every other word; the campaign id is the target, and a journey id found with it is passed to the
+  sessions as `journeyId`. A date in such a message counts only as `dd/mm hh:mm`, so timestamps in pasted JSON are
+  ignored. A message with users but no campaign or journey, or with an id but no users, gets a need_input reply for the
+  missing part only.
 - Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by two sessions are the defaults of every
   capability on profile `iam_trace`, whatever its name; values set in config win. The example config gives it its own lane, `iam_trace` with concurrency 1. The trace gets 65%
   of each; the verifier gets the budget left after the trace's actual cost and the time left, and is skipped below $0.30
