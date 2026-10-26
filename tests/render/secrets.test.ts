@@ -83,6 +83,12 @@ describe('secret filter', () => {
       expect(redactSecretPairs(text), text).toBe(text);
     }
   });
+  it('still catches a secret pair whose value starts with a bracket', () => {
+    for (const text of ['password=[s3cr3tpassw0rd]', 'token=[abcdef123456]', 'api_key=[AbCdEf123456]', 'secret: [hunter2hunter2]', 'password = "[hunter2hunter2]"', 'password=[x1234567']) {
+      expect(leaksSecret([text]), text).toBe(true);
+      expect(leaksSecret([redactSecretPairs(text)]), text).toBe(false);
+    }
+  });
   it('catches and redacts push registration and device keys', () => {
     const cases: Array<[string, string]> = [
       ['{"registration_id":"APA91bHabcdefgh123"}', '{"registration_id":"<redacted>"}'],

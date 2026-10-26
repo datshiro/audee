@@ -119,9 +119,10 @@ owner notices carry that name as their kind).
 - Output: a page built by audee (`src/render/iam-trace-page.ts`), sent as `iam-trace-<message
   id>-<yyyymmdd-hhmmss>.html` through the outbox file flow with a short Vietnamese notice. It must pass
   `checkAnswerPage` (the product-answer CSP and markup rules). Evidence is redacted first: the values of token, key,
-  secret and password pairs, of `registration_id`/`registration_ids` (every item of the list), `fcm_token`,
-  `device_token`, `deviceToken` and `device_id`, and `Bearer`/`Basic` credentials of at least 16 token characters
-  holding a digit, `+`, `/` or `=` (a placeholder like `YOUR_ACCESS_TOKEN` is left alone). Escaped quotes are undone
+  secret and password pairs, of `registration_id`/`registrationId`/`regId` and the plural list forms (`registration_ids`, `fcm_tokens`,
+  `device_tokens`; every item of the list), `fcm_token`, `device_token`, `deviceToken`, `device_id`/`deviceId`, and a bare
+  FCM registration token, and `Bearer`/`Basic` credentials of at least 16 token characters
+  holding a digit or `=` (a placeholder like `YOUR_ACCESS_TOKEN` is left alone). Escaped quotes are undone
   first, any number of backslashes deep, so JSON-escaped and double-escaped pairs are caught; the leak check reads each
   text both as given and unescaped, and a `<redacted>` value is not flagged again. Secret checks then run on the trace,
   on the merged trace and on the page's visible text. When the trace names fewer of the requested users than asked, the

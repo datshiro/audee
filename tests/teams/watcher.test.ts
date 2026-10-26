@@ -136,6 +136,15 @@ describe('watcher', () => {
     expect(replies(outbox).map((r) => r.html).sort()).toEqual([iamTraceUsageReply, iamTraceQueuedReply].sort());
   });
 
+  it('TestHandleIamTraceNameOnAnotherProfile', async () => {
+    const { cfg, watcher, outbox } = harness({ iamTrace: {} });
+    const cap = cfg.capabilities['iam_trace']!;
+    cap.profile = 'mcp_read';
+    cap.trigger = 'iam_look';
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat iam_look')), none);
+    expect(replies(outbox).map((r) => r.html)).not.toContain(iamTraceUsageReply);
+  });
+
   it('TestHandleIamTraceWithoutArgs', async () => {
     const { watcher, state, outbox } = harness({ iamTrace: {} });
     await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat iam_trace')), none);

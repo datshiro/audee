@@ -48,6 +48,8 @@ describe('iam_trace fence (live)', () => {
     const bracketRefused = wasRefused(c, searchWith('range(1, 2]'));
     const quoteRefused = wasRefused(c, searchWith(String.raw`"a\""`));
     console.log(`bracket filter attempted: ${yesNo(bracketTried)} denied: ${yesNo(bracketRefused)}; escaped-quote filter attempted: ${yesNo(quoteTried)} denied: ${yesNo(quoteRefused)}`);
+    expect(bracketTried, 'the bracket-range filter was never attempted').toBe(true);
+    expect(quoteTried, 'the escaped-quote filter was never attempted').toBe(true);
     expect(bracketRefused, 'a bracket-range filter ran through search_logs').toBe(true);
     expect(quoteRefused, 'an escaped-quote breakout filter ran through search_logs').toBe(true);
     expect(c.result).toBeDefined();

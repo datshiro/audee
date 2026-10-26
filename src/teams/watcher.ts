@@ -273,7 +273,8 @@ export class Watcher {
   // watcher.go:229-257, generalised to every token-triggered capability.
   // iam_trace replies are keyed by profile: any capability name may use that profile.
   private replyKind(kind: string): string {
-    return this.cfg.capabilities[kind]?.profile === 'iam_trace' ? 'iam_trace' : kind;
+    if (this.cfg.capabilities[kind]?.profile === 'iam_trace') return 'iam_trace';
+    return kind === 'iam_trace' ? 'mcp_read' : kind;
   }
 
   askCapability(chatId: string, msg: ChatMessage, person: Person, capability: string, question: string): string {

@@ -16,7 +16,7 @@ const SECRET_RES: RegExp[] = [
 ];
 
 // kbquery.go:297 secretPairRe, plus audee's push registration and device keys
-const SECRET_PAIR_RE = /(?:password|passwd|secret|api[_-]?key|access[_-]?key|tokens?|registration_?id|reg_?id|device_?id)["']?[\t\n\f\r ]*(?::=|[:=])[\t\n\f\r ]*["']?([^\t\n\f\r "',;[][^\t\n\f\r "',;]{7,})/giu;
+const SECRET_PAIR_RE = /(?:password|passwd|secret|api[_-]?key|access[_-]?key|tokens?|registration_?id|reg_?id|device_?id)["']?[\t\n\f\r ]*(?::=|[:=])[\t\n\f\r ]*["']?([^\t\n\f\r "',;]{8,})/giu;
 // A list of FCM registration ids; every item is a secret.
 const SECRET_LIST_RE = /(?:registration_?ids|fcm_?tokens|device_?tokens)["']?[\t\n\f\r ]*[:=][\t\n\f\r ]*\[([^\]]*)\]/giu;
 const LIST_ITEM_RE = /[^\t\n\f\r "',;[\]]{8,}/gu;
@@ -29,7 +29,7 @@ const FIELD_ACCESS_RE = /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$/u;
 
 // kbquery.go:299-301 secretValue
 function secretValue(v: string): boolean {
-  return !'${%<'.includes(v.charAt(0)) && !v.includes('(') && !FIELD_ACCESS_RE.test(v);
+  return !'${%<'.includes(v.charAt(0)) && !v.startsWith('[<') && !v.includes('(') && !FIELD_ACCESS_RE.test(v);
 }
 
 // JSON-escaped quotes, once or more ({\"token\":\"...\"}, {\\\"token\\\"...}): SECRET_PAIR_RE does not see them as a pair.
@@ -61,7 +61,7 @@ const redactTail = (whole: string, value: string): string => whole.slice(0, whol
 // be shown; other secret shapes still leak.
 export function redactSecretPairs(s: string): string {
   return unescapeQuotes(s)
-    .replace(SECRET_PAIR_RE, (whole: string, value: string) => (secretValue(value) ? redactTail(whole, value) : whole))
     .replace(SECRET_LIST_RE, (whole: string, items: string) => `${whole.slice(0, whole.length - items.length - 1)}${items.replace(LIST_ITEM_RE, (v) => (secretValue(v) ? '<redacted>' : v))}]`)
+    .replace(SECRET_PAIR_RE, (whole: string, value: string) => (secretValue(value) ? redactTail(whole, value) : whole))
     .replace(AUTH_RE, (whole: string, value: string) => (credential(value) ? redactTail(whole, value) : whole));
 }
