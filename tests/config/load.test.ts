@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../../src/config/load.js';
+import { testConfig } from '../helpers/test-config.js';
 
 const fixture = (name: string): string => fileURLToPath(new URL(`../fixtures/config/${name}`, import.meta.url));
 const EXAMPLE = fileURLToPath(new URL('../../config.example.yaml', import.meta.url));
@@ -41,6 +42,15 @@ describe('config', () => {
   });
   it('TestConfigRejectsWriteToolInMcpRead', () => expect(rejection('mcp-read-write-tool.yaml')).toContain('update_dashboard'));
   it('TestConfigRejectsUnknownMcpServer', () => expect(rejection('mcp-read-unknown-server.yaml')).toContain('argocd'));
+  it('TestConfigAcceptsIamTrace', () => expect(testConfig({ iamTrace: {} }).capabilities['iam_trace']).toMatchObject({ profile: 'iam_trace', lane: 'kb', timeout: 1_200_000, budget_usd: 4, per_person_limit: 1 }));
+  it('TestConfigGivesRenamedIamTraceTheDefaults', () => {
+    expect(loadConfig(fixture('iam-trace-renamed.yaml')).capabilities['traces']).toMatchObject({ profile: 'iam_trace', timeout: 1_200_000, budget_usd: 4, per_person_limit: 1 });
+    expect(loadConfig(fixture('iam-trace-renamed-tuned.yaml')).capabilities['traces']).toMatchObject({ profile: 'iam_trace', timeout: 300_000, budget_usd: 1.5, per_person_limit: 2 });
+  });
+  it('TestConfigRejectsToolsOnIamTrace', () => expect(rejection('iam-trace-tools.yaml')).toContain('only allowed on profile mcp_read'));
+  it('TestConfigRejectsSecondIamTrace', () => expect(rejection('iam-trace-twice.yaml')).toContain('at most one capability may use profile iam_trace'));
+  it('TestConfigRejectsIamTraceServerInMcpRead', () => expect(rejection('mcp-read-iam-trace.yaml')).toContain('mcp server "iam-trace" is not a read-only server audee allows'));
+  it('TestConfigRejectsIamTraceAsMcpReadTrigger', () => expect(rejection('mcp-read-trigger-iam-trace.yaml')).toContain('not be kb_query or iam_trace'));
 
   it('TestConfigGatewayMustBeHttps', () => {
     const example = readFileSync(EXAMPLE, 'utf8');

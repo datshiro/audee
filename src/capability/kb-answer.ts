@@ -32,7 +32,7 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 // The structured result against the pinned schema: types, enums, required and no extra fields.
-function matches(v: unknown, s: Obj): boolean {
+export function matches(v: unknown, s: Obj): boolean {
   switch (s['type']) {
     case 'object': {
       if (!isObj(v)) return false;
@@ -51,7 +51,7 @@ function matches(v: unknown, s: Obj): boolean {
   }
 }
 
-function strings(v: unknown, out: string[] = []): string[] {
+export function strings(v: unknown, out: string[] = []): string[] {
   if (typeof v === 'string') out.push(v, v.replaceAll('**', ''));
   else if (Array.isArray(v)) for (const x of v) strings(x, out);
   else if (isObj(v)) for (const x of Object.values(v)) strings(x, out);

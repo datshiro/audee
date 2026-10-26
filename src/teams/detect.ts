@@ -89,11 +89,12 @@ export function tokenRe(token: string): RegExp {
 
 export type Trigger = { capability: string; token: string };
 
-// kb_query plus every mcp_read capability's trigger word.
+// kb_query, the fixed iam_trace word and every mcp_read capability's trigger word.
 export function triggersOf(cfg: Config): Trigger[] {
   const out: Trigger[] = [{ capability: 'kb_query', token: 'kb_query' }];
   for (const [name, cap] of Object.entries(cfg.capabilities)) {
     if (cap.profile === 'mcp_read' && cap.trigger !== undefined) out.push({ capability: name, token: cap.trigger });
+    if (cap.profile === 'iam_trace') out.push({ capability: name, token: 'iam_trace' });
   }
   return out;
 }

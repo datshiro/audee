@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { KB_ANSWER_SCHEMA } from '../src/capability/kb-answer-schema.js';
 import { type Check, type DoctorDeps, formatChecks, runDoctor } from '../src/doctor.js';
@@ -179,6 +179,47 @@ describe('doctor', () => {
     expect(failing(drift)).toContain('kb answer schema kb_query');
     const stale = await runDoctor(product.cfg, { ...product.deps, printAnswerSchema: async () => { throw new Error('unknown command'); } });
     expect(failing(stale)).toContain('kb render-answer kb_query');
+  });
+
+  it('checks the iam-trace server for iam_trace', async () => {
+    const missing = setup({ iamTrace: {} });
+    const without = await runDoctor(missing.cfg, missing.deps);
+    expect(failing(without)).toContain('mcp servers');
+    expect(without.find((c) => c.name === 'mcp servers')?.detail).toContain('iam-trace');
+
+    const gitlab = { command: 'glab', env: { GITLAB_TOKEN: '${GL_TOKEN}' } };
+    const defined = setup({ iamTrace: {} });
+    writeFileSync(defined.userConfigPath, JSON.stringify({ mcpServers: { gitlab, kb: { command: 'kb' }, 'iam-trace': { command: process.execPath } } }));
+    const ok = await runDoctor(defined.cfg, defined.deps);
+    expect(failing(ok)).toEqual([]);
+    expect(ok.find((c) => c.name === 'mcp servers')?.detail).toContain('iam-trace');
+    expect(ok.find((c) => c.name === 'iam-trace command')).toMatchObject({ ok: true });
+
+    const secret = 'grafana-token-plain-value';
+    const absent = setup({ iamTrace: {} });
+    writeFileSync(absent.userConfigPath, JSON.stringify({ mcpServers: { gitlab, kb: { command: 'kb' }, 'iam-trace': { command: join(tmp(), 'no-such-bin'), env: { GRAFANA_TOKEN: secret } } } }));
+    const gone = await runDoctor(absent.cfg, absent.deps);
+    expect(failing(gone)).toEqual(['iam-trace command']);
+    expect(gone.find((c) => c.name === 'iam-trace command')?.detail).toContain('iam-trace');
+    expect(formatChecks(gone).join('\n')).not.toContain(secret);
+
+    // A relative command resolves against whatever folder the session starts in, so it must be absolute.
+    const relativeCommand = relative(process.cwd(), process.execPath);
+    const relativeSetup = setup({ iamTrace: {} });
+    writeFileSync(relativeSetup.userConfigPath, JSON.stringify({ mcpServers: { gitlab, kb: { command: 'kb' }, 'iam-trace': { command: relativeCommand } } }));
+    const rel = await runDoctor(relativeSetup.cfg, relativeSetup.deps);
+    expect(failing(rel)).toEqual(['iam-trace command']);
+    expect(rel.find((c) => c.name === 'iam-trace command')?.detail).toContain('absolute');
+    expect(formatChecks(rel).join('\n')).not.toContain(relativeCommand);
+
+    const noCommand = setup({ iamTrace: {} });
+    writeFileSync(noCommand.userConfigPath, JSON.stringify({ mcpServers: { gitlab, kb: { command: 'kb' }, 'iam-trace': { type: 'http', url: 'https://example.com', headers: { Authorization: secret } } } }));
+    const http = await runDoctor(noCommand.cfg, noCommand.deps);
+    expect(failing(http)).toEqual(['iam-trace command']);
+    expect(formatChecks(http).join('\n')).not.toContain(secret);
+
+    const sandboxed = setup({ iamTrace: { seatbelt: true } });
+    expect((await runDoctor(sandboxed.cfg, sandboxed.deps)).find((c) => c.name === 'seatbelt iam_trace')).toMatchObject({ ok: true });
   });
 
   it('TestDoctorClassifierKeyChecked', async () => {

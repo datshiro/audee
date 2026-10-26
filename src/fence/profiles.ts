@@ -1,10 +1,10 @@
 import type { McpServerConfig, Options, Settings } from '@anthropic-ai/claude-agent-sdk';
 import type { ProfileName } from '../config/schema.js';
 import {
-  CLASSIFY_DENIED_TOOLS, CLASSIFY_SYSTEM, GDS_CONTRACT_TOOL, KB_QUERY_DENIED, KB_QUERY_REPO_DENIED, KB_QUERY_TOOLS,
+  CLASSIFY_DENIED_TOOLS, CLASSIFY_SYSTEM, GDS_CONTRACT_TOOL, IAM_TRACE_FILTERED_TOOL, IAM_TRACE_SERVER, IAM_TRACE_TOOLS, KB_QUERY_DENIED, KB_QUERY_REPO_DENIED, KB_QUERY_TOOLS,
   KB_QUERY_WIKI_DENIED, MCP_WRITE_DENIED, REVIEW_DENIED_TOOLS, REVIEW_EXTRA_DENIED, REVIEW_JIRA_ALIAS, REVIEW_JIRA_READ_TOOLS, REVIEW_JIRA_WRITE_TOOLS, REVIEW_MCP_SERVERS, probeCommands,
 } from './constants.js';
-import { makeGate, type GateSpec } from './gate.js';
+import { makeGate, unsafeFilter, unsafeId, type GateSpec } from './gate.js';
 
 export type KbPaths = { wiki: string; querySkill: string; scoutSkill: string; repos: string[] };
 
@@ -137,6 +137,27 @@ export function buildOptions(input: ProfileInput): Options {
         allowedTools: allowed,
         disallowedTools: denied,
         hooks: gate({ allowTools: allowed, denyTools: denied }),
+      } satisfies Options);
+      break;
+    }
+    case 'iam_trace': {
+      Object.assign(options, {
+        tools: [],
+        extraArgs: { restricted: null },
+        permissionMode: 'dontAsk',
+        settingSources: [],
+        strictMcpConfig: true,
+        mcpServers: pickServers('iam_trace', input.mcpServers, [IAM_TRACE_SERVER]),
+        allowedTools: [...IAM_TRACE_TOOLS],
+        hooks: gate({
+          allowTools: [...IAM_TRACE_TOOLS],
+          denyTools: [],
+          argGuard: {
+            [IAM_TRACE_FILTERED_TOOL]: { filter: unsafeFilter },
+            [`mcp__${IAM_TRACE_SERVER}__trace_key`]: { key: unsafeId },
+            [`mcp__${IAM_TRACE_SERVER}__trace_identity`]: { userId: unsafeId, roleId: unsafeId, gameId: unsafeId, serverId: unsafeId },
+          },
+        }),
       } satisfies Options);
       break;
     }

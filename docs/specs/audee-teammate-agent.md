@@ -1,7 +1,7 @@
 ---
 title: audee teammate agent
 status: completed
-last_verified: 2026-10-21
+last_verified: 2026-10-26
 claude_code_version: 2.1.302
 ---
 # audee teammate agent
@@ -67,6 +67,92 @@ Event and owner reasons are fixed strings (`renderer failed`, `answer mode misma
 the job folder. `audee doctor` checks `render-answer` and that the KB contract equals the pinned copy, only when
 `default_mode` is `product`.
 
+## iam_trace
+Traces one Apollo in-app message (IAM) on prod for given users and sends a timeline page. Opt-in: the capability is
+commented out in `config.example.yaml`; at most one capability may use profile `iam_trace`, under any name (events and
+owner notices carry that name as their kind).
+- Trigger: the word is fixed, `iam_trace <campaignId|journeyId> <userId|roleId>[,...] [dd/mm hh:mm]`; users are
+  comma-separated, at most 5, taken only from the token after the id. An mcp_read trigger may not be `iam_trace`. The
+  grant is the capability's name (`iam_trace` in the example config) or `*` in `people[].can`. audee parses the request
+  in code before any session. The datetime may stand anywhere after the users, with words after it (`25/10 9:30 nhé`):
+  `h:mm` or `hh:mm`, seconds ignored, optionally `dd/mm/yyyy`. Each of these gets a Vietnamese need_input reply and no
+  session runs: a missing or malformed id; more than 5 users; an id-like word (one holding a digit) right after the
+  users, taken for a user missing its comma; a date or time that cannot be read as `dd/mm hh:mm` (a date without a time,
+  a time without a date, `9h30`, impossible values), which never falls back to the last 24 hours; a time later today or
+  a future `dd/mm/yyyy`; a datetime outside the last 165 hours (log retention is 7 days). Any other future `dd/mm` is
+  read as last year's. A bare `iam_trace` gets the usage line.
+- Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by two sessions are the defaults of every
+  capability on profile `iam_trace`, whatever its name; values set in config win. The example config uses lane `kb`. The trace gets 65%
+  of each; the verifier gets the budget left after the trace's actual cost and the time left, and is skipped below $0.30
+  or 2 minutes. Lane contention: two traces fill both `kb` slots for up to 20 minutes, so kb_query and mcp_read jobs
+  wait behind them.
+- Window: without a datetime every tool call passes `since 24h` (the tools default to 1h). With a datetime the window
+  runs from 30 minutes before to 3 hours after it (clipped to now) as `_time:(<start>Z, <end>Z)` with parentheses, and
+  `since` reaches back to the window start; the prompt keeps that filter on every `search_logs` call (slices of at most
+  6 hours) and uses `trace_identity`/`trace_key` only to resolve ids. The `_time` filter is not verified against the log
+  store; the page says so.
+- Gate: whatever the server accepts, the gate ports the MCP's hardened filter validator (`unsafeFilter`), because the
+  MCP composes `<scope> (<filter>)` and a filter that leaves its group would drop the scope. It refuses a `search_logs`
+  filter that is missing, not a string or blank; holds a comment (`#`), a line break, unbalanced parentheses, an
+  unterminated string, a malformed escape inside double quotes or a backslash inside single quotes; or holds `[ ] { } |`
+  or a backslash outside a string. `"`, `'` and backtick all delimit strings, so any character inside one is allowed. It
+  also guards the ids that land in a LogsQL phrase (`unsafeId`): `trace_key` `key` and `trace_identity` `userId`,
+  `roleId`, `gameId` and `serverId` must be at most 128 characters matching `^[A-Za-z0-9_.:@|-]+$`; an empty or null id
+  counts as absent (the MCP treats it so) and is the MCP's to refuse.
+- Reduced fidelity (owner decision 2026-10-26): the iam-trace MCP drops structured log fields on purpose, so only a
+  line's message text and its store time reach the model. Times are the store time, marked "≈" on the page, unless the
+  message prints a time; audee converts to ICT itself. A condition outcome or an SDK event name is `seen` only when the
+  message prints it, otherwise the point is inferred (from what ran next) or "không ghi nhận" (never "không xảy ra").
+  Nine point kinds: server row trigger, wait_end, check_call, condition, frequency, send, delivered; client row
+  sdk_event, inbox. Temporal rows and external business points are out of scope; the page says "Temporal không kiểm
+  tra".
+- Verification: a second session on the same fence gets at most 15 points (seen first) with evidence clipped to 160
+  characters and must re-query them with `trace_identity`, `trace_key` or `search_logs`. Only a call that returned
+  without error counts as a re-query: `list_services`, denied calls and calls whose result was an error (an MCP refusal,
+  a store error, a timeout) do not; the runner reports error results per tool (`RunResult.toolErrors`) and counts a
+  denied call once. It returns CONFIRMED or CORRECTED per point; audee merges in code (`mergeVerification`). The page
+  counts as verified when at least one point was confirmed or corrected and at least one re-query returned without
+  error; when more than half of the checked points are corrected, no correction is applied and the page is unverified.
+  The points reach the verifier as JSON with `<` and `>` escaped, so evidence cannot close the data block. An unverified
+  page (verifier skipped, failed, broke the contract, re-queried nothing or changed most points) is still delivered,
+  with "chưa kiểm chứng độc lập" on the page and in the notice; the owner is notified and the job folder is kept.
+- Output: a page built by audee (`src/render/iam-trace-page.ts`), sent as `iam-trace-<message
+  id>-<yyyymmdd-hhmmss>.html` through the outbox file flow with a short Vietnamese notice. It must pass
+  `checkAnswerPage` (the product-answer CSP and markup rules). Evidence is redacted first: the values of token, key,
+  secret and password pairs, of `registration_id`/`registrationId`/`regId` and the plural list forms (`registration_ids`, `fcm_tokens`,
+  `device_tokens`; every item of the list), `fcm_token`, `device_token`, `deviceToken`, `device_id`/`deviceId`, and a bare
+  FCM registration token, and `Bearer`/`Basic` credentials of at least 16 token characters
+  holding a digit or `=` (a placeholder like `YOUR_ACCESS_TOKEN` is left alone). Escaped quotes are undone
+  first, any number of backslashes deep, so JSON-escaped and double-escaped pairs are caught; the leak check reads each
+  text both as given and unescaped, and a `<redacted>` value is not flagged again. Secret checks then run on the trace,
+  on the merged trace and on the page's visible text. When the trace names fewer of the requested users than asked, the
+  page notes how many are missing, never which. Known secrets are the keychain_env values plus the iam-trace server's
+  env values whose name holds TOKEN, SECRET, KEY or PASSWORD. A leak withholds the whole page.
+- Events: status (`done`, `need_input`, `withheld`, `failed`, `unverified`), a fixed reason, cost, duration, turns and
+  tool names only; never traced ids, message text or log lines. The job folder `iamtrace/<message id>` is deleted after
+  a verified page is delivered, kept otherwise, and expires with the other scratch folders; a rerun or retry wipes a
+  kept folder. A kept folder holds redacted data only: `output.json` (trace) and `result.json` (verifier) keep the
+  session's metadata and its structured result with every string redacted as above, never the free text, and drop the
+  structured result too when it still trips the secret check. A withheld job keeps only its event fields (status, fixed
+  reason, cost, turns, tool names) in `output.json` and no `result.json`; `page.html` is written only for a delivered
+  page.
+- Server prerequisite: `iam-trace` must be defined at user scope with an absolute `command` path; `doctor` fails `mcp
+  servers` when it is missing and fails `iam-trace command` unless the command is an absolute path that exists on disk.
+  The binary configured today (built 2026-09-18) predates the MCP's scope-escape hardening, which is why audee's gate
+  enforces the filter rules itself. Owner follow-up, not done here: rebuild the binary or repoint `command` to a current
+  build.
+- Known gaps: the cost of a timed-out or thrown session is not recorded; a job interrupted by a restart or reload runs
+  again from the start; the page carries raw evidence lines of up to 600 characters to everyone in the chat via
+  OneDrive.
+
+Validation status: unit tested. Post-merge manual checks, none run yet:
+1. `pnpm test:live iam-trace-fence` on VPN passes and logs `offered=4`.
+2. A live `search_logs` with `_time:(<start>Z, <end>Z)` returns only lines inside the window.
+3. In one live trace, count the points whose `source_field` is `_time`; record the share and the time formats seen.
+4. One live Teams trace end to end (queued reply, notice with link, page opens from OneDrive, no traced ids in
+   `events.jsonl`).
+5. The owner adds the grant and deploys.
+
 ## Review status and auto-approve
 The review session ends with `REVIEW_STATUS: ready|blocked|unreviewable: <reason>` on the line right before the final
 `REVIEW_POSTED` line. A status anywhere else, an unknown status, or `ready` with nothing posted counts as
@@ -127,7 +213,7 @@ One daemon, `audee serve`, under launchd (`com.audee.agent`), running `dist/cli.
 Teams chats ──(Power Automate "Ciel Teams Inbox Poller", every minute)──▶ OneDrive /Ciel/inbox/<msg id>-<sender>.json
   ▶ inbox (src/teams/inbox.ts)      claim into ~/.audee/processing, keep in raw/ 3 days, reject bad files to failed/
   ▶ watcher (src/teams/watcher.ts)  chat allowlist → seen-id dedupe → candidate filter → classifier session → person grants
-  ▶ queue (src/queue)               lanes heavy (review, code_mapping) and kb (kb_query, mcp_read); per-person max_inflight
+  ▶ queue (src/queue)               lanes heavy (review, code_mapping) and kb (kb_query, mcp_read, iam_trace); per-person max_inflight
   ▶ capability (src/capability)     builds the profile's SDK options (src/fence/profiles.ts) and runs one Agent SDK session
   ▶ render (src/render)             escape, defang, secret check, HTML reply or HTML/JSON file
   ▶ outbox (src/teams/outbox.ts)    OneDrive /Ciel/outbox/<random>.json ──(flow "Send message when ask for review code")──▶
@@ -154,8 +240,10 @@ allow and deny lists (`src/fence/gate.ts`). Lists are in `src/fence/constants.ts
 | `mapping` | code_mapping | Read, Glob, Grep, Edit, Write, Bash; `--restricted` | none loaded; the GDS data-contract tool is allowed | reads outside the folder; Bash only the exact probe commands; edits to the pinned skill |
 | `kb_read` | kb_query | Read, Glob, Grep, Agent; `--restricted` | kb (read-only tools) | KB writes, `kb_search`, Skill, secret-shaped files, wiki inbox/people, repo config/secret globs |
 | `mcp_read` | opt-in (Grafana) | none built in | configured server, listed read tools only | every write tool of that server |
+| `iam_trace` | iam_trace | none built in; `--restricted` | iam-trace: `trace_identity`, `trace_key`, `search_logs`, `list_services` (fixed in `IAM_TRACE_TOOLS`, never from config or dashboard); the gate also guards the `search_logs` filter and the trace ids | every other tool; Bash, Read, other MCP servers; a `search_logs` filter that is missing or blank, holds a comment, a line break, unbalanced parentheses, an unterminated string or a malformed escape, or holds `[ ] { } \|` or a backslash outside a string (`"`, `'` and backtick delimit strings); a `trace_key` `key` or `trace_identity` `userId`/`roleId`/`gameId`/`serverId` over 128 characters or outside `[A-Za-z0-9_.:@\|-]` (empty or null counts as absent) |
 
-Fences verified live on Claude Code 2.1.302 / Agent SDK 0.3.302 (see Fence baseline). `doctor` fails when the SDK or the bundled Claude Code is a
+Fences verified live on Claude Code 2.1.302 / Agent SDK 0.3.302 (see Fence baseline); the `iam_trace` fence is not
+yet verified live (see iam_trace). `doctor` fails when the SDK or the bundled Claude Code is a
 different version than the fences were verified on (`src/fence/verified.ts`); re-verify before upgrading.
 
 ## Auth and the API key guard

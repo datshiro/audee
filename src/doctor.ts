@@ -4,13 +4,13 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { authSettings } from './authz/people.js';
 import { answerSchemaMatches, printAnswerSchema } from './capability/kb-answer.js';
 import { kbQueryDirs } from './capability/kb-query.js';
 import { expandHome } from './config/load.js';
 import type { Config, ProfileName } from './config/schema.js';
-import { REVIEW_JIRA_SERVER, REVIEW_MCP_SERVERS } from './fence/constants.js';
+import { IAM_TRACE_SERVER, REVIEW_JIRA_SERVER, REVIEW_MCP_SERVERS } from './fence/constants.js';
 import { loadMcpServers } from './fence/mcp-servers.js';
 import { buildOptions, type KbPaths } from './fence/profiles.js';
 import { FENCE_VERIFIED_ON } from './fence/verified.js';
@@ -111,7 +111,7 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
   // 4. seatbelt fails closed
   const optionsFor = deps.optionsFor ?? ((profile, cap) => buildOptions({
     profile, cwd: dataDir, seatbelt: cap.seatbelt, skillDir: '/SKILL',
-    mcpServers: { gitlab: { command: 'x' }, kb: { command: 'x' } }, kbPaths: { wiki: '/W', querySkill: '/Q', scoutSkill: '/S', repos: [] }, mcpTools: {},
+    mcpServers: { gitlab: { command: 'x' }, kb: { command: 'x' }, [IAM_TRACE_SERVER]: { command: 'x' } }, kbPaths: { wiki: '/W', querySkill: '/Q', scoutSkill: '/S', repos: [] }, mcpTools: {},
   }));
   for (const [name, cap] of Object.entries(cfg.capabilities)) {
     if (!cap.seatbelt) continue;
@@ -135,6 +135,7 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     if (cap.profile === 'review') for (const s of REVIEW_MCP_SERVERS) serverNames.add(s);
     if (cap.profile === 'kb_read') serverNames.add('kb');
     if (cap.profile === 'mcp_read') for (const s of cap.mcp ?? []) serverNames.add(s);
+    if (cap.profile === 'iam_trace') serverNames.add(IAM_TRACE_SERVER);
     void name;
   }
   try {
@@ -145,6 +146,13 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
       const text = JSON.stringify(kb);
       const used = Object.keys(cfg.keychain_env).filter((v) => text.includes('${' + v + '}')).sort();
       check('kb server env', used.length === 0, used.length === 0 ? 'reads no keychain_env variable' : `the kb MCP server reads ${used.join(', ')} from keychain_env, which kb_query sessions do not get`);
+    }
+    // A fixed detail: the definition carries the Grafana token in its env.
+    const trace = servers[IAM_TRACE_SERVER];
+    if (trace !== undefined) {
+      const command = 'command' in trace && typeof trace.command === 'string' ? trace.command : undefined;
+      const ok = command !== undefined && isAbsolute(command) && existsSync(command);
+      check(`${IAM_TRACE_SERVER} command`, ok, ok ? `the ${IAM_TRACE_SERVER} MCP server command exists` : `the ${IAM_TRACE_SERVER} MCP server has no command, or its command is not an absolute path on disk`);
     }
   } catch (e) {
     check('mcp servers', false, `${(e as Error).message} (read ${userConfigPath})`);

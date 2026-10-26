@@ -24,6 +24,8 @@ export type RunResult = {
   sessionId?: string;
   denials: string[];
   toolUses: string[];
+  // Tools whose call returned an error result, other than the calls already listed in denials. Always set by runAgent.
+  toolErrors?: string[];
   durationMs: number;
 };
 
@@ -69,9 +71,22 @@ export function redactMcpSecrets(message: string, options: Options): string {
   return out;
 }
 
-function collectToolUses(message: SDKMessage, toolUses: string[]): void {
-  if (message.type !== 'assistant') return;
-  for (const block of message.message.content) if (block.type === 'tool_use') toolUses.push(block.name);
+type ToolCalls = { uses: string[]; names: Map<string, string>; errors: Array<{ id: string; name: string }> };
+
+function collectToolCalls(message: SDKMessage, calls: ToolCalls): void {
+  if (message.type === 'assistant') {
+    for (const block of message.message.content) {
+      if (block.type !== 'tool_use') continue;
+      calls.uses.push(block.name);
+      calls.names.set(block.id, block.name);
+    }
+  }
+  if (message.type !== 'user' || !Array.isArray(message.message.content)) return;
+  for (const block of message.message.content) {
+    if (block.type !== 'tool_result' || block.is_error !== true) continue;
+    const name = calls.names.get(block.tool_use_id);
+    if (name !== undefined) calls.errors.push({ id: block.tool_use_id, name });
+  }
 }
 
 // The session's input stays open while background work runs, so its completion notice still gets a turn.
@@ -110,7 +125,7 @@ export async function runAgent(input: RunInput): Promise<RunResult> {
   if (input.signal?.aborted === true) controller.abort();
   else input.signal?.addEventListener('abort', onAbort, { once: true });
 
-  const toolUses: string[] = [];
+  const calls: ToolCalls = { uses: [], names: new Map(), errors: [] };
   let result: SDKResultMessage | undefined;
   const turnInput = input.followUp === undefined ? undefined : turns(input.prompt);
   let background = 0;
@@ -120,7 +135,7 @@ export async function runAgent(input: RunInput): Promise<RunResult> {
     const env = { ...sessionEnv({ tmpdir: input.tmpdir }), ...gateway, ...(input.extraEnv ?? {}) };
     const executable = input.auth === 'subscription' ? { pathToClaudeCodeExecutable: CLAUDE_HACK } : {};
     for await (const message of query({ prompt: turnInput?.messages ?? input.prompt, options: { ...executable, ...options, env, abortController: controller } })) {
-      collectToolUses(message, toolUses);
+      collectToolCalls(message, calls);
       if (message.type === 'system' && message.subtype === 'background_tasks_changed') background = message.tasks.filter((t) => t.ambient !== true).length;
       if (message.type !== 'result') continue;
       result = message;
@@ -141,6 +156,8 @@ export async function runAgent(input: RunInput): Promise<RunResult> {
   if (input.signal?.aborted === true) throw new InterruptedError();
   if (timedOut) throw new Error(`timed out after ${input.timeoutMs} ms`);
   if (result === undefined) throw new Error('session failed: no result message');
+  // A denied call also comes back as an error result; it is counted once, as a denial.
+  const deniedIds = new Set(result.permission_denials.map((d) => d.tool_use_id));
   return {
     isError: result.is_error,
     text: result.subtype === 'success' ? result.result : result.errors.join('\n'),
@@ -149,7 +166,8 @@ export async function runAgent(input: RunInput): Promise<RunResult> {
     turns: result.num_turns,
     sessionId: result.session_id,
     denials: result.permission_denials.map((d) => d.tool_name),
-    toolUses,
+    toolUses: calls.uses,
+    toolErrors: calls.errors.filter((e) => !deniedIds.has(e.id)).map((e) => e.name),
     durationMs: Date.now() - started,
   };
 }

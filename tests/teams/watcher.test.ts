@@ -8,7 +8,7 @@ import { eventsPath } from '../../src/events.js';
 import { setNotify } from '../../src/notify.js';
 import type { Job } from '../../src/queue/job.js';
 import { reviewCooldownMs } from '../../src/queue/queue.js';
-import { busyText, deniedText, failedReply, kbQueryEmptyReply, kbQueryPendingReply, kbQueryQueuedReply, mappingQueuedReply, pendingText, queuedReply, recentReply, replyHTML, unavailableText } from '../../src/render/html.js';
+import { busyText, deniedText, failedReply, iamTraceQueuedReply, iamTraceUsageReply, kbQueryEmptyReply, kbQueryPendingReply, kbQueryQueuedReply, mappingQueuedReply, pendingText, queuedReply, recentReply, replyHTML, unavailableText } from '../../src/render/html.js';
 import { InterruptedError, type RunInput, type RunResult } from '../../src/runner/run.js';
 import { loadState, outcomeFailed, outcomeSkipped } from '../../src/state/state.js';
 import { giveUpAfterMs, Inbox, type InboxFile, parseInboxFile, trailReason } from '../../src/teams/inbox.js';
@@ -35,7 +35,7 @@ const replies = (outbox: Outbox): Array<{ chatId: string; mentionUserId: string;
 const saying = (outbox: Outbox, text: string): number => replies(outbox).filter((r) => r.html.includes(text)).length;
 const events = (dataDir: string): Array<Record<string, unknown>> => (existsSync(eventsPath(dataDir)) ? readFileSync(eventsPath(dataDir), 'utf8').split('\n').filter((l) => l !== '').map((l) => JSON.parse(l) as Record<string, unknown>) : []);
 
-type HarnessOptions = { result?: RunResult | Error; capabilities?: Partial<Record<'review' | 'mapping' | 'kb_read' | 'mcp_read', Capability>> } & TestConfigOptions;
+type HarnessOptions = { result?: RunResult | Error; capabilities?: Partial<Record<'review' | 'mapping' | 'kb_read' | 'mcp_read' | 'iam_trace', Capability>> } & TestConfigOptions;
 
 function harness(o: HarnessOptions = {}) {
   const { result, capabilities, ...cfgOpts } = o;
@@ -113,6 +113,63 @@ describe('watcher', () => {
     await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat kb_query')), none);
     expect(state.pendingJobs()).toEqual([]);
     expect(replies(outbox).map((r) => r.html)).toEqual([kbQueryEmptyReply]);
+  });
+
+  it('TestHandleIamTraceQueues', async () => {
+    const { watcher, state, outbox, inputs } = harness({ result: new Error('must not classify'), iamTrace: {} });
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'anh Dat iam_trace C1 u1,u2')), none);
+    expect(state.pendingJobs()).toHaveLength(1);
+    expect(state.pendingJobs()[0]).toMatchObject({ kind: 'iam_trace', input: 'C1 u1,u2', principal: 'teams:linh' });
+    expect(watcher.queue.snapshot().find((l) => l.name === 'kb')?.queued).toEqual([expect.objectContaining({ kind: 'iam_trace' })]);
+    expect(replies(outbox).map((r) => r.html)).toEqual([iamTraceQueuedReply]);
+    expect(inputs).toHaveLength(0);
+  });
+
+  it('TestHandleIamTraceRenamedCapability', async () => {
+    const { cfg, watcher, state, outbox } = harness({ iamTrace: {} });
+    cfg.capabilities['trace_alias'] = cfg.capabilities['iam_trace']!;
+    delete cfg.capabilities['iam_trace'];
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat iam_trace')), none);
+    await watcher.handle(file(inboxJSON('1791513774215', 'linh', new Date(), 'anh Dat iam_trace C1 u1')), none);
+    expect(state.pendingJobs()).toHaveLength(1);
+    expect(state.pendingJobs()[0]).toMatchObject({ kind: 'trace_alias' });
+    expect(replies(outbox).map((r) => r.html).sort()).toEqual([iamTraceUsageReply, iamTraceQueuedReply].sort());
+  });
+
+  it('TestHandleIamTraceNameOnAnotherProfile', async () => {
+    const { cfg, watcher, outbox } = harness({ iamTrace: {} });
+    const cap = cfg.capabilities['iam_trace']!;
+    cap.profile = 'mcp_read';
+    cap.trigger = 'iam_look';
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat iam_look')), none);
+    expect(replies(outbox).map((r) => r.html)).not.toContain(iamTraceUsageReply);
+  });
+
+  it('TestHandleIamTraceWithoutArgs', async () => {
+    const { watcher, state, outbox } = harness({ iamTrace: {} });
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat iam_trace')), none);
+    expect(state.pendingJobs()).toEqual([]);
+    expect(replies(outbox).map((r) => r.html)).toEqual([iamTraceUsageReply]);
+  });
+
+  it('TestHandleIamTraceDenied', async () => {
+    const { watcher, state, outbox } = harness({ iamTrace: {}, grants: { linh: ['kb_query'] } });
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat iam_trace C1 u1')), none);
+    expect(state.pendingJobs()).toEqual([]);
+    expect(replies(outbox).map((r) => r.html)).toEqual([deniedText('iam_trace')]);
+  });
+
+  it('TestHandleIamTraceGrantedExplicitly', async () => {
+    const { watcher, state } = harness({ iamTrace: {}, grants: { linh: ['iam_trace'] } });
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat iam_trace C1 u1')), none);
+    expect(state.pendingJobs()).toEqual([expect.objectContaining({ kind: 'iam_trace', input: 'C1 u1' })]);
+  });
+
+  it('TestHandleIamTraceDisabled', async () => {
+    const { watcher, state, outbox } = harness({ iamTrace: { enabled: false } });
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat iam_trace C1 u1')), none);
+    expect(state.pendingJobs()).toEqual([]);
+    expect(replies(outbox).map((r) => r.html)).toEqual([unavailableText('iam_trace')]);
   });
 
   // ciel/kbquery_test.go:456

@@ -193,6 +193,14 @@ capabilities:
     expect(next.capabilities['review']?.enabled).toBe(true);
   });
 
+  it('refuses tools on iam_trace and the iam-trace server on mcp_read', async () => {
+    const cfg = testConfig({ mcpRead: { name: 'grafana', trigger: 'grafana_query', mcp: ['grafana'], tools: ['query_prometheus'] }, iamTrace: {} });
+    const text = readFileSync(join(cfg.data_dir, 'config.yaml'), 'utf8');
+    const ok = async () => [{ name: 'node', ok: true, detail: '' }];
+    await expect(checkCandidate(applyOps(text, [{ path: ['capabilities', 'iam_trace', 'tools'], value: ['trace_identity'] }]), cfg, [], ok)).rejects.toThrow(/only allowed on profile mcp_read/u);
+    await expect(checkCandidate(applyOps(text, [{ path: ['capabilities', 'grafana', 'mcp'], value: ['iam-trace'] }]), cfg, [], ok)).rejects.toMatchObject({ problems: expect.arrayContaining([expect.stringMatching(/mcp server "iam-trace" is not a read-only server/u)]) });
+  });
+
   it('backs up before writing', () => {
     const dir = tmp();
     const path = join(dir, 'config.yaml');

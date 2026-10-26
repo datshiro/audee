@@ -114,7 +114,7 @@ export const probeTmpDir = (dir: string): string => dir + '.tmp';
 
 // mapping.go:334-357: scratch folders older than cutoff hold colleagues' pasted text and go.
 export function expireScratchDirs(dataDir: string, cutoff: Date): void {
-  for (const kind of ['mapping', 'kbquery', 'mcpread']) expireDirs(join(dataDir, kind), cutoff);
+  for (const kind of ['mapping', 'kbquery', 'mcpread', 'iamtrace']) expireDirs(join(dataDir, kind), cutoff);
 }
 
 export function expireDirs(root: string, cutoff: Date): void {
