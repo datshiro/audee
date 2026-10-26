@@ -12,7 +12,11 @@ import {
   parseTraceOutput,
   parseTraceRequest,
   parseVerifyOutput,
+  JOURNEY_MISSING_WHY,
+  JOURNEY_UNPROVEN_WHY,
   pointProblem,
+  proveJourneys,
+  rowOf,
   type TracePoint,
   type TraceResult,
   type Verdict,
@@ -23,10 +27,11 @@ import type { RunResult } from '../../src/runner/run.js';
 
 const res = (structured: unknown, extra: Partial<RunResult> = {}): RunResult => ({ isError: false, text: '', structured, denials: [], toolUses: [], durationMs: 1, ...extra });
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', window: '24 giờ gần nhất' };
-const point = (over: Partial<TracePoint> = {}): TracePoint => ({ kind: 'trigger', label: 'trigger', time: '1761354123456', source_field: '_time', evidence: 'journey workflow executed', state: 'seen', why: '', ...over });
+const point = (over: Partial<TracePoint> = {}): TracePoint => ({ kind: 'trigger', label: 'trigger', journey: 'J1', outcome: 'info', time: '1761354123456', source_field: '_time', evidence: 'journey workflow executed J1', state: 'seen', why: '', ...over });
 const GOOD: TraceResult = {
   status: 'done',
   finding: 'IAM đã gửi.',
+  conclusion: ['IAM đã gửi.'],
   users: [
     {
       id: 'u1',
@@ -280,12 +285,12 @@ describe('parseTraceOutput', () => {
     expect(t.missing).toEqual(['không rõ IAM']);
   });
 
-  it('cuts a user to 40 points with one note', () => {
+  it('cuts a user to 60 points with one note', () => {
     const many = clone(GOOD);
-    many.users[0]!.points = Array.from({ length: 45 }, () => point());
+    many.users[0]!.points = Array.from({ length: 65 }, () => point());
     const t = parseTraceOutput(res(many), { ...REQ, users: ['u1'] });
-    expect(t.users[0]?.points).toHaveLength(40);
-    expect(t.notes).toEqual(['Chỉ hiển thị 40 mốc đầu cho mỗi user.']);
+    expect(t.users[0]?.points).toHaveLength(60);
+    expect(t.notes).toEqual(['Chỉ hiển thị 60 mốc đầu cho mỗi user.']);
   });
 
   it('drops users that were not requested or repeat, with one note', () => {
@@ -322,7 +327,7 @@ describe('parseTraceOutput', () => {
       expect(p.state).toBe('inferred');
       expect(p.why).toBe('bằng chứng không hợp lệ');
     }
-    expect(t.users[0]!.points[2]?.evidence).toBe('journey workflow executed');
+    expect(t.users[0]!.points[2]?.evidence).toBe('journey workflow executed J1');
   });
 });
 
@@ -345,13 +350,13 @@ describe('parseVerifyOutput', () => {
   });
 
   it('exposes both schemas as objects with required fields', () => {
-    expect(IAM_TRACE_SCHEMA['required']).toEqual(['status', 'finding', 'users', 'missing', 'notes']);
+    expect(IAM_TRACE_SCHEMA['required']).toEqual(['status', 'finding', 'conclusion', 'users', 'missing', 'notes']);
     expect(IAM_VERIFY_SCHEMA['required']).toEqual(['status', 'verdicts', 'notes']);
   });
 });
 
 describe('mergeVerification', () => {
-  const corrected: Verdict = { ref: 'u1-p2', verdict: 'CORRECTED', time: '1761354999000', source_field: 'ts', evidence: 'new line', state: 'seen', why: '' };
+  const corrected: Verdict = { ref: 'u1-p2', verdict: 'CORRECTED', time: '1761354999000', source_field: 'ts', evidence: 'new line J1', state: 'seen', why: '' };
   const traced = (ref: string): TracePoint => {
     const [u, p] = ref.slice(1).split('-p').map(Number) as [number, number];
     return GOOD.users[u - 1]!.points[p - 1]!;
@@ -381,7 +386,7 @@ describe('mergeVerification', () => {
     const m = mergeVerification(GOOD, verdicts);
     const [p1, p2, p3] = m.users[0]!.points;
     expect(p1).toEqual({ ...traced('u1-p1'), ref: 'u1-p1', check: 'confirmed' });
-    expect(p2).toEqual({ ...traced('u1-p2'), time: '1761354999000', source_field: 'ts', evidence: 'new line', state: 'seen', why: '', ref: 'u1-p2', check: 'corrected' });
+    expect(p2).toEqual({ ...traced('u1-p2'), time: '1761354999000', source_field: 'ts', evidence: 'new line J1', state: 'seen', why: '', ref: 'u1-p2', check: 'corrected' });
     expect(p3).toEqual({ ...traced('u1-p3'), ref: 'u1-p3', check: 'unverified' });
     expect(m.counts).toEqual({ confirmed: 1, corrected: 1, unverified: 1 });
     expect(m.verified).toBe(true);
@@ -441,5 +446,95 @@ describe('mergeVerification', () => {
     expect(m.counts).toEqual({ confirmed: 15, corrected: 0, unverified: 5 });
     expect(m.users[0]!.points.slice(15).every((p) => p.check === 'unverified')).toBe(true);
     expect(m.verified).toBe(true);
+  });
+});
+
+describe('journey proof', () => {
+  const line = (over: Partial<TracePoint>): TracePoint => point({ kind: 'check_call', journey: 'J1', evidence: 'journey J1 call', ...over });
+
+  it('keeps a seen point whose own line carries the journey id, as a whole token', () => {
+    expect(proveJourneys([line({})])[0]?.state).toBe('seen');
+    const near = proveJourneys([line({ evidence: 'journey J10 call' })])[0];
+    expect(near).toMatchObject({ state: 'inferred', why: JOURNEY_UNPROVEN_WHY });
+  });
+
+  it('accepts a line that shares a traceId with a line carrying the journey id', () => {
+    const [a, b, c] = proveJourneys([
+      line({ evidence: 'journey J1 start traceId=abc12345' }),
+      line({ kind: 'condition', evidence: 'condition result "traceId":"abc12345"' }),
+      line({ kind: 'frequency', evidence: 'frequency traceId=zzz99999' }),
+    ]);
+    expect([a?.state, b?.state, c?.state]).toEqual(['seen', 'seen', 'inferred']);
+    expect(c?.why).toBe(JOURNEY_UNPROVEN_WHY);
+  });
+
+  it('does not let a traceId prove a different journey', () => {
+    const [a, b] = proveJourneys([line({ evidence: 'journey J1 traceId=abc12345' }), line({ journey: 'J2', evidence: 'no id traceId=abc12345' })]);
+    expect(a?.state).toBe('seen');
+    expect(b?.state).toBe('inferred');
+  });
+
+  it('infers a seen server point with no journey, and leaves client, inferred and not_recorded points alone', () => {
+    const out = proveJourneys([
+      line({ journey: '' }),
+      line({ kind: 'sdk_event', journey: '', evidence: 'event open' }),
+      line({ journey: 'J2', state: 'inferred', why: 'node sau', evidence: '' }),
+      line({ journey: 'J2', state: 'not_recorded', time: '', source_field: '', evidence: '' }),
+    ]);
+    expect(out[0]).toMatchObject({ state: 'inferred', why: JOURNEY_MISSING_WHY });
+    expect(out.slice(1).map((p) => p.state)).toEqual(['seen', 'inferred', 'not_recorded']);
+    expect(proveJourneys(out)).toEqual(out);
+  });
+
+  it('accepts a traceId whose quotes are backslash-escaped in the evidence', () => {
+    const [a, b] = proveJourneys([line({ evidence: 'journey J1 {\\"trace_id\\":\\"abc12345\\"}' }), line({ kind: 'condition', evidence: 'no id {\\"trace_id\\":\\"abc12345\\"}' })]);
+    expect([a?.state, b?.state]).toEqual(['seen', 'seen']);
+  });
+
+  it('finds an id next to an underscore', () => {
+    expect(proveJourneys([line({ evidence: 'journey_J1_start' })])[0]?.state).toBe('seen');
+  });
+
+  it('is applied after verification, on the verifier\'s own evidence, and never changes how many points were checked', () => {
+    const traced = clone(GOOD);
+    traced.users[0]!.points = [point({ evidence: 'no journey here' }), point({ label: 'ok' }), point({ label: 'third' })];
+    const parsed = parseTraceOutput(res(traced), { ...REQ, users: ['u1'] });
+    expect(parsed.users[0]?.points.map((p) => p.state)).toEqual(['seen', 'seen', 'seen']);
+    const merged = mergeVerification(parsed, [
+      { ref: 'u1-p1', verdict: 'CONFIRMED' },
+      { ref: 'u1-p2', verdict: 'CORRECTED', time: '1761354999000', source_field: 'ts', evidence: 'line without the id', state: 'seen', why: '' },
+      { ref: 'u1-p3', verdict: 'CONFIRMED' },
+    ]);
+    expect(merged.users[0]?.points.map((p) => [p.state, p.check])).toEqual([['inferred', 'confirmed'], ['inferred', 'corrected'], ['seen', 'confirmed']]);
+    expect(merged.users[0]?.points[0]?.why).toBe(JOURNEY_UNPROVEN_WHY);
+    expect(merged.counts).toEqual({ confirmed: 2, corrected: 1, unverified: 0 });
+    expect(merged.verified).toBe(true);
+    expect(mergeVerification(parsed, undefined).users[0]?.points.map((p) => p.state)).toEqual(['inferred', 'seen', 'seen']);
+  });
+
+  it('drops an unsafe journey tag and caps the conclusion', () => {
+    const traced = clone(GOOD);
+    traced.conclusion = ['a', '  ', 'b', 'c', 'd', 'e'];
+    traced.users[0]!.points = [point({ journey: 'a b<script>' })];
+    const parsed = parseTraceOutput(res(traced), { ...REQ, users: ['u1'] });
+    expect(parsed.conclusion).toEqual(['a', 'b', 'c', 'd']);
+    expect(parsed.users[0]?.points[0]?.journey).toBe('');
+    expect(mergeVerification(parsed, undefined).users[0]?.points[0]).toMatchObject({ state: 'inferred', why: JOURNEY_MISSING_WHY });
+  });
+
+  it('puts delivered on the client row', () => {
+    expect(['delivered', 'sdk_event', 'inbox'].map((k) => rowOf(k as TracePoint['kind']))).toEqual(['client', 'client', 'client']);
+    expect(rowOf('send')).toBe('server');
+  });
+
+  it('requires journey, outcome and conclusion in the trace contract', () => {
+    const noJourney = clone(GOOD) as unknown as { users: Array<{ points: Array<Record<string, unknown>> }> };
+    delete noJourney.users[0]!.points[0]!['journey'];
+    expect(() => parseTraceOutput(res(noJourney), REQ)).toThrow('trace result does not match the contract');
+    const badOutcome = clone(GOOD) as unknown as { users: Array<{ points: Array<Record<string, unknown>> }> };
+    badOutcome.users[0]!.points[0]!['outcome'] = 'maybe';
+    expect(() => parseTraceOutput(res(badOutcome), REQ)).toThrow('trace result does not match the contract');
+    const { conclusion: _dropped, ...noConclusion } = GOOD;
+    expect(() => parseTraceOutput(res(noConclusion), REQ)).toThrow('trace result does not match the contract');
   });
 });

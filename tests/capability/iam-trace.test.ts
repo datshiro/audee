@@ -45,18 +45,19 @@ function harness(o: HarnessOptions) {
   return { ctx, inputs, dir };
 }
 
-const pt = (kind: TracePoint['kind'], state: TracePoint['state'], time: string, evidence: string, label: string, why = ''): TracePoint => ({ kind, label, time, source_field: '_time', evidence, state, why });
+const pt = (kind: TracePoint['kind'], state: TracePoint['state'], time: string, evidence: string, label: string, why = ''): TracePoint => ({ kind, label, journey: 'J1', outcome: 'info', time, source_field: '_time', evidence, state, why });
 
 function traceOf(ids: string[], over: { finding?: string; evidence?: string } = {}): TraceResult {
   return {
     status: 'done',
     finding: over.finding ?? 'IAM đã được gửi và client đã nhận.',
+    conclusion: ['Journey J1 đã gửi IAM.'],
     users: ids.map((id) => ({
       id,
       user_id: id,
       role_id: `role-of-${id}`,
       points: [
-        pt('trigger', 'seen', '2026-10-26T01:00:00Z', over.evidence ?? `journey workflow executed for ${id}`, 'journey workflow executed'),
+        pt('trigger', 'seen', '2026-10-26T01:00:00Z', over.evidence ?? `journey workflow executed J1 for ${id}`, 'journey workflow executed'),
         pt('check_call', 'inferred', '', '', 'CheckEligibility', 'lệnh gửi chạy ngay sau đó'),
         pt('sdk_event', 'seen', '2026-10-26T01:00:10Z', `tracking received ${id}`, 'received'),
       ],
@@ -71,7 +72,7 @@ const traceRun = (structured: unknown, over: Partial<RunResult> = {}): RunResult
 const VERDICTS_OK = [
   { ref: 'u1-p1', verdict: 'CONFIRMED' },
   { ref: 'u1-p3', verdict: 'CONFIRMED' },
-  { ref: 'u1-p2', verdict: 'CORRECTED', time: '2026-10-26T01:00:05Z', source_field: '_time', evidence: '[TRACE] CheckEligibility call request', state: 'seen', why: '' },
+  { ref: 'u1-p2', verdict: 'CORRECTED', time: '2026-10-26T01:00:05Z', source_field: '_time', evidence: '[TRACE] CheckEligibility call request J1', state: 'seen', why: '' },
 ];
 
 const verifyRun = (verdicts: unknown[] = VERDICTS_OK, over: Partial<RunResult> = {}, extra: Record<string, unknown> = {}): RunResult => ({
@@ -271,7 +272,7 @@ describe('iam_trace capability', () => {
   });
 
   it('TestIamTraceSessionNeedInput', async () => {
-    const structured = { status: 'need_input', finding: '', users: [], missing: ['không rõ <b>IAM</b>'], notes: [] };
+    const structured = { status: 'need_input', finding: '', conclusion: [], users: [], missing: ['không rõ <b>IAM</b>'], notes: [] };
     const { ctx, inputs, dir } = harness({ trace: traceRun(structured), verify: VERIFY_OK });
     const outcome = await iamTrace(ctx);
     expect(inputs).toHaveLength(1);
@@ -297,10 +298,10 @@ describe('iam_trace capability', () => {
     const late = await iamTrace(harness({ trace: TRACE_OK, verify: verifyRun(corrected) }).ctx);
     expect(late.reply?.html).toBe(iamTraceWithheldReply);
     // The page shows no why for a seen point, so only the merged JSON check sees this one.
-    const hidden = [{ ref: 'u1-p2', verdict: 'CORRECTED', time: '2026-10-26T01:00:05Z', source_field: '_time', evidence: 'ok', state: 'seen', why: `token ${SERVER_TOKEN}` }, { ref: 'u1-p1', verdict: 'CONFIRMED' }, { ref: 'u1-p3', verdict: 'CONFIRMED' }];
+    const hidden = [{ ref: 'u1-p2', verdict: 'CORRECTED', time: '2026-10-26T01:00:05Z', source_field: '_time', evidence: 'ok J1', state: 'seen', why: `token ${SERVER_TOKEN}` }, { ref: 'u1-p1', verdict: 'CONFIRMED' }, { ref: 'u1-p3', verdict: 'CONFIRMED' }];
     const unseen = await iamTrace(harness({ trace: TRACE_OK, verify: verifyRun(hidden) }).ctx);
     expect(unseen.reply?.html).toBe(iamTraceWithheldReply);
-    const missing = { status: 'need_input', finding: '', users: [], missing: [`token ${SERVER_TOKEN}`], notes: [] };
+    const missing = { status: 'need_input', finding: '', conclusion: [], users: [], missing: [`token ${SERVER_TOKEN}`], notes: [] };
     const needInput = await iamTrace(harness({ trace: traceRun(missing), verify: VERIFY_OK }).ctx);
     expect(needInput.reply?.html).toBe(iamTraceWithheldReply);
   });
@@ -392,7 +393,7 @@ describe('iam_trace capability', () => {
       { name: 'trace throws', o: { trace: sentinelError, verify: VERIFY_OK }, replyClean: true },
       { name: 'trace contract', o: { trace: traceRun({ ...traceOf(ids), extra: 'USER-SENTINEL-2' }), verify: VERIFY_OK }, replyClean: true },
       { name: 'withheld', o: { trace: traceRun(traceOf(ids, { evidence: 'USER-SENTINEL-2 glsa_abcdefghijklmnopqrstuvwxyz' })), verify: VERIFY_OK }, replyClean: true },
-      { name: 'session need_input', o: { trace: traceRun({ status: 'need_input', finding: 'CAMP-SENTINEL-1', users: [], missing: ['USER-SENTINEL-2?'], notes: [] }), verify: VERIFY_OK }, replyClean: false },
+      { name: 'session need_input', o: { trace: traceRun({ status: 'need_input', finding: 'CAMP-SENTINEL-1', conclusion: [], users: [], missing: ['USER-SENTINEL-2?'], notes: [] }), verify: VERIFY_OK }, replyClean: false },
       { name: 'request incomplete', o: { trace: ok, verify: VERIFY_OK, input: 'CAMP-SENTINEL-1' }, replyClean: false },
       { name: 'setup failed', o: { trace: ok, verify: VERIFY_OK, userConfigPath: missingConfig }, replyClean: true },
       { name: 'render failed', o: { trace: ok, verify: (dir: string) => { mkdirSync(join(dir, 'page.html')); return VERIFY_OK; } }, replyClean: true },
@@ -403,6 +404,17 @@ describe('iam_trace capability', () => {
       expect(outcome.notifyOwner ?? '', c.name).not.toContain('SENTINEL');
       if (c.replyClean) expect(JSON.stringify(outcome.reply), c.name).not.toContain('SENTINEL');
     }
+  });
+
+  it('TestIamTraceBannerOnlyForTheDefaultWindow', async () => {
+    const banner = 'Đã tra 24 giờ gần nhất; thêm dd/mm hh:mm để tra ngày khác';
+    const open = await iamTrace(harness({ trace: TRACE_OK, verify: VERIFY_OK }).ctx);
+    expect(open.reply?.html).toContain(banner);
+    expect(open.reply?.file?.content).toContain(`<p class="banner">${banner}</p>`);
+    expect(JSON.stringify(open.event)).not.toContain('24 giờ');
+    const dated = await iamTrace(harness({ trace: TRACE_OK, verify: VERIFY_OK, input: `C1 u1 ${ictInput(2 * 3600_000)}` }).ctx);
+    expect(dated.reply?.html).not.toContain(banner);
+    expect(dated.reply?.file?.content).not.toContain('class="banner"');
   });
 
   it('TestIamTracePromptWindow', async () => {
@@ -442,6 +454,12 @@ describe('iam_trace capability', () => {
     expect(prompt).toContain('"_time"');
     expect(prompt).toContain('ALWAYS send a filter');
     expect(prompt).toContain('double quotes');
+    expect(prompt).toContain('"journey"');
+    expect(prompt).toContain('traceId');
+    expect(prompt).toContain('Outcome: "block"');
+    expect(prompt).toContain('"conclusion": 2-4 Vietnamese bullets');
+    expect(prompt).toContain('at most 60 points');
+    expect(prompt).toContain('one timeline lane per journey id');
 
     const long = 'x'.repeat(300);
     const trace = traceOf(['u1'], { evidence: long });
@@ -455,6 +473,7 @@ describe('iam_trace capability', () => {
     expect(verify).toContain('x'.repeat(160));
     expect(verify).not.toContain('x'.repeat(161));
     expect(verify).toContain('"ref":"u1-p2"');
+    expect(verify).toContain('"journey":"J1","outcome":"info"');
     expect(numberPoints(trace)).toHaveLength(3);
 
     // Evidence cannot close the data block or open another one.
