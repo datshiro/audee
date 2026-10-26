@@ -125,6 +125,18 @@ owner notices carry that name as their kind).
   `seen` points only: the published channel is among the subscribed ones; or no subscribed game is the published game
   ("Lệch game"); or the same game with another channel; or the logs show no publish or no subscribe, which is said as
   such and never read as "did not subscribe". The model copies names and never states the verdict in a point.
+  Below the table the page draws the three ways a message can reach the SDK (popup realtime, replay on reconnect, App
+  Inbox), as an SVG figure plus a table: left the message (publish time, game from the published channel, game from the
+  subscribe channels), then each way, then what the logs say. audee computes only what the logs show: the popup is
+  published once, so it reaches the SDK only if a subscribe to the same channel came before the publish (`Có thể nhận`
+  or `Không ai nhận`, `chưa kiểm tra` when times or lines are missing); App Inbox is blocked when the published game
+  differs from the subscribed games (the game of the session is read from its subscribe channels, said as such);
+  replay is always `chưa kiểm tra` because whether the message is App Inbox is not in the logs. A game mismatch adds
+  the question for the game/SDK team. The way each path works, and the list of other causes (inbox called without
+  roleId/serverId, `category` parameter, `status=read` or a later page, a modifier error that still returns 200, a 403
+  from a zone mismatch, `expiresAt`), are fixed text taken from the reference doc and the message-delivery code at
+  origin/main 333014b; audee does not re-read that code, so the text can go stale and the page says where it comes
+  from (owner decision 2026-10-26: include it, scope was widened from "look and structure only" for this part).
 - Verification: a second session on the same fence gets at most 15 points (seen first) with evidence clipped to 160
   characters and must re-query them with `trace_identity`, `trace_key` or `search_logs`. Only a call that returned
   without error counts as a re-query: `list_services`, denied calls and calls whose result was an error (an MCP refusal,

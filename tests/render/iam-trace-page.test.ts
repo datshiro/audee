@@ -96,7 +96,7 @@ describe('iam trace page', () => {
   });
 
   it('draws one lane per journey and a client lane per player, as SVG', () => {
-    const timeline = between(page, '<h2>Timeline</h2>', '<h2>Suy luận');
+    const timeline = between(page, '<h2>Timeline</h2>', '<h2>Kiểm tra kênh');
     expect(timeline.match(/<svg /g)).toHaveLength(3); // u1: journey + client, r2: client (its journey lane has no points)
     expect(timeline).toContain('Journey J1');
     expect(timeline).toContain('<strong>Client</strong>');
@@ -111,7 +111,7 @@ describe('iam trace page', () => {
   });
 
   it('shows times in ICT with one footnote for store time and a mark only where the time came from the message', () => {
-    const timeline = between(page, '<h2>Timeline</h2>', '<h2>Suy luận');
+    const timeline = between(page, '<h2>Timeline</h2>', '<h2>Kiểm tra kênh');
     expect(timeline).toContain('>08:00:00<');
     expect(timeline).not.toContain('≈');
     expect(page).toContain('Giờ là giờ kho log (_time)');
@@ -136,7 +136,7 @@ describe('iam trace page', () => {
   });
 
   it('puts the evidence in one table with the journey and outcome beside each point', () => {
-    const table = between(page, '<table>', '</table>');
+    const table = between(page, '<h2>Bằng chứng</h2>', '</table>');
     expect(table.match(/<tr>/g)).toHaveLength(7);
     expect(table).toContain('Gửi IAM: push sent<small>· u1 · Journey J1 · kết quả: đạt</small>');
     expect(table).toContain('SDK tracking: open<small>· u1 · kết quả: thông tin</small>');
@@ -200,7 +200,7 @@ describe('iam trace page', () => {
   it('merges users that are one player into one section', () => {
     const merged = iamTracePage(REQ, { ...TRACE, users: [{ ...TRACE.users[0]!, role_id: 'R9' }, { id: 'R9', user_id: 'u1', role_id: 'R9', points: TRACE.users[0]!.points }] });
     expect(merged.match(/<h3>u1 \/ R9 /g)).toHaveLength(1);
-    expect(between(merged, '<table>', '</table>').match(/<tr>/g)).toHaveLength(6);
+    expect(between(merged, '<h2>Bằng chứng</h2>', '</table>').match(/<tr>/g)).toHaveLength(6);
   });
 
   it('fits a lane of many nodes: its viewBox grows and the lane scrolls', () => {
@@ -258,7 +258,7 @@ describe('iam trace sample page', () => {
   it('renders a trace shaped like a real one through the unchanged page check', () => {
     expect(checkAnswerPage(page)).toBeUndefined();
     expect(leaksSecret(answerPageVisibleTexts(page), [])).toBe(false);
-    expect(page.match(/<svg /g)).toHaveLength(3);
+    expect(page.match(/<svg /g)).toHaveLength(4); // three lanes and the delivery paths figure
     expect(page).toContain('Journey …2368 / campaign …2800');
     expect(page).toContain('Journey …7184');
     expect(page).toContain('x3 đến 12:22:09');
@@ -273,8 +273,31 @@ describe('iam trace sample page', () => {
     expect(section).toContain('Lệch game: message được publish lên game gamea nhưng các phiên SDK của user chỉ subscribe game gameb');
     expect(section).toContain(`<td>Publish kênh</td><td>${PUBLISHED}</td><td>gamea</td>`);
     expect(section).toContain(`<td>SDK subscribe</td><td>${SUBSCRIBED_ROLE}</td><td>gameb</td>`);
-    expect(section.match(/<tr>/g)).toHaveLength(4);
+    expect(section.match(/<tr>/g)).toHaveLength(8); // header + 3 channel points, header + 3 paths
     expect(page).toContain(`kênh ${PUBLISHED}`);
+  });
+
+  it('draws the three ways a message reaches the SDK with what the logs say about each', () => {
+    const section = between(page, '<h2>Kiểm tra kênh subscribe</h2>', '<h2>Suy luận');
+    expect(section.match(/<svg class="wp"/g)).toHaveLength(1);
+    expect(section).toContain('class="ob-block"');
+    expect(section).toContain('class="ob-unknown"');
+    expect(section).not.toContain('class="ob-ok"');
+    expect(section).toContain('<td>1. Popup realtime<small>publish 1 lần lên role:gamea:…</small></td><td>Không ai nhận</td><td>SDK chỉ subscribe game gameb</td>');
+    expect(section).toContain('<td>2. Replay khi kết nối lại<small>chỉ message không phải App Inbox</small></td><td>Chưa kiểm tra được</td>');
+    expect(section).toContain('<td>Không khớp gameId</td><td>Game SDK gameb ≠ game message gamea (suy từ kênh subscribe)</td>');
+    expect(section).toContain('Câu cần hỏi team game/SDK: vì sao role đã được publish lên game gamea lại init SDK bằng game gameb?');
+    expect(section).toContain('Inbox gọi thiếu hoặc sai roleId/serverId.');
+    expect(section).toContain('Quá expiresAt của message.');
+    expect(section).toContain('audee không kiểm lại code');
+    expect(section).toContain('Message đã tạo');
+  });
+
+  it('keeps every figure text readable: the sample figure has no overlapping text boxes by construction', () => {
+    const fig = between(page, '<svg class="wp"', '</svg>');
+    expect(fig).toContain('25/10 10:28:16 ICT');
+    expect(fig).toContain('gameId gamea');
+    expect(fig).toContain('SDK user: gameb');
   });
 
   it('says the check cannot be made when the logs show neither channel', () => {
@@ -282,7 +305,9 @@ describe('iam trace sample page', () => {
     const bare: MergedTrace = { ...trace, users: trace.users.map((u) => ({ ...u, points: u.points.filter((p) => p.kind !== 'publish' && p.kind !== 'subscribe') })) };
     const section = between(iamTracePage(SAMPLE_REQUEST, bare), '<h2>Kiểm tra kênh subscribe</h2>', '<h2>Suy luận');
     expect(section).toContain('Không ghi nhận dòng message-delivery publish');
-    expect(section).not.toContain('<table>');
+    expect(section).not.toContain('Câu cần hỏi');
+    expect(section).not.toContain('ob-block');
+    expect(section.match(/Chưa kiểm tra được/g)).toHaveLength(3 + 3); // figure and table, three paths each
   });
 
   // IAM_TRACE_SAMPLE_DIR=<dir> pnpm vitest run --project unit tests/render/iam-trace-page.test.ts writes the page for a visual check.

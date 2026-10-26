@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CheckedPoint } from '../../src/capability/iam-trace-schema.js';
-import { channelVerdictText, checkChannels, gameOf } from '../../src/render/iam-trace-channels.js';
+import { channelVerdictText, checkChannels, deliveryPaths, gameOf } from '../../src/render/iam-trace-channels.js';
 
 const pt = (kind: 'publish' | 'subscribe', channel: string, state: CheckedPoint['state'] = 'seen'): CheckedPoint => ({
   kind, label: kind, journey: '', outcome: 'info', channel, time: '', source_field: '_time', evidence: state === 'seen' ? 'line' : '', why: state === 'inferred' ? 'w' : '', state, ref: 'r', check: 'unverified',
@@ -49,5 +49,38 @@ describe('checkChannels', () => {
   it('ignores points that were only inferred', () => {
     expect(checkChannels([pt('publish', 'role:gamea:U1:R1:env', 'inferred'), pt('subscribe', 'user:gamea:U1')]).verdict).toBe('no_publish');
     expect(checkChannels([pt('publish', 'role:gamea:U1:R1:env'), pt('subscribe', 'role:gamea:U1:R1:env', 'inferred')]).verdict).toBe('no_subscribe');
+  });
+});
+
+describe('deliveryPaths', () => {
+  const at = (p: CheckedPoint, time: string): CheckedPoint => ({ ...p, time });
+  const paths = (points: CheckedPoint[]) => deliveryPaths(points, checkChannels(points));
+
+  it('blocks popup and inbox on a game mismatch and asks the game team why', () => {
+    const d = paths([at(pt('publish', 'role:gamea:U1:R1:env'), '2026-10-25T03:28:15.500Z'), pt('subscribe', 'role:gameb:U1:R1:env')]);
+    expect(d.message).toEqual(['Message đã tạo', '25/10 10:28:15 ICT', 'gameId gamea', 'SDK user: gameb']);
+    expect(d.paths.map((p) => [p.name, p.outcome])).toEqual([['1. Popup realtime', 'block'], ['2. Replay khi kết nối lại', 'unknown'], ['3. App Inbox', 'block']]);
+    expect(d.paths[2]?.resultDetail).toBe('Game SDK gameb ≠ game message gamea (suy từ kênh subscribe)');
+    expect(d.question).toBe('Câu cần hỏi team game/SDK: vì sao role đã được publish lên game gamea lại init SDK bằng game gameb?');
+  });
+
+  it('lets the popup through only when a matching subscribe came before the publish', () => {
+    const channel = 'role:gamea:U1:R1:env';
+    const before = paths([at(pt('publish', channel), '2026-10-25T03:00:10Z'), at(pt('subscribe', channel), '2026-10-25T03:00:00Z')]);
+    expect(before.paths[0]).toMatchObject({ outcome: 'ok', result: 'Có thể nhận' });
+    expect(before.paths[2]?.outcome).toBe('unknown');
+    expect(before.question).toBeUndefined();
+    const after = paths([at(pt('publish', channel), '2026-10-25T03:00:10Z'), at(pt('subscribe', channel), '2026-10-25T04:00:00Z')]);
+    expect(after.paths[0]).toMatchObject({ outcome: 'block', resultDetail: 'Chỉ subscribe đúng kênh sau khi publish; popup chỉ publish 1 lần' });
+    const noTimes = paths([pt('publish', channel), pt('subscribe', channel)]);
+    expect(noTimes.paths[0]?.outcome).toBe('unknown');
+  });
+
+  it('is all unknown when the logs lack a publish or a subscribe line', () => {
+    for (const d of [paths([]), paths([pt('subscribe', 'user:gamea:U1')]), paths([pt('publish', 'role:gamea:U1:R1:env')])]) {
+      expect(d.paths.map((p) => p.outcome)).toEqual(['unknown', 'unknown', 'unknown']);
+      expect(d.question).toBeUndefined();
+    }
+    expect(paths([]).message).toEqual(['Message đã tạo', 'giờ publish chưa ghi nhận', 'gameId chưa ghi nhận', 'SDK user: chưa ghi nhận']);
   });
 });
