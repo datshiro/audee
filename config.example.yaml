@@ -39,7 +39,7 @@ capabilities:
     budget_usd: 8
     timeout: 45m
     workdir: ~/.claude/kb
-    prompt: "/apo-review-mr {url}"
+    prompt: "/apo-review-mr {url} --security"
     post_findings: true
     auto_approve: false        # approve a clean MR as the owner through glab-mcp >= 1.6.0; needs people[].gitlab (owner and requester)
     routes: []                 # [{match: <regex>, prompt: <template>}], first match wins

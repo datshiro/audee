@@ -38,7 +38,7 @@ function RoutesEditor({ routes, onChange, changed }: { routes: Array<{ match: st
         {routes.map((r, i) => (
           <li key={i} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] sm:items-end">
             <TextField label={`Route ${i + 1} match (regex)`} mono value={r.match} onChange={(v) => update(i, { match: v })} />
-            <TextField label="Prompt" mono value={r.prompt} onChange={(v) => update(i, { prompt: v })} placeholder="/apo-review-mr {url}" />
+            <TextField label="Prompt" mono value={r.prompt} onChange={(v) => update(i, { prompt: v })} placeholder="/apo-review-mr {url} --security" />
             <button type="button" className="btn btn-ghost btn-icon" aria-label={`Remove route ${i + 1}`} onClick={() => onChange(routes.filter((_, j) => j !== i))}>
               <Trash2 className="size-4" />
             </button>
