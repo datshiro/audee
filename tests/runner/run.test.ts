@@ -158,6 +158,16 @@ describe('runner', () => {
       expect(inputs).toEqual(['review it', 'finish it']);
     }, 20_000);
 
+    it('records the tools whose result was an error, once per call', async () => {
+      const use = (id: string, name: string): unknown => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input: {} }] }, parent_tool_use_id: null, session_id: 's', uuid: `a-${id}` });
+      const done = (id: string, isError: boolean): unknown => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: isError, content: 'x' }] }, parent_tool_use_id: null, session_id: 's', uuid: `r-${id}` });
+      const denied = { result: 'done', denials: [{ tool_name: 'mcp__s__denied', tool_use_id: 't4', tool_input: {} }] };
+      const { res } = await stream([[use('t1', 'mcp__s__ok'), done('t1', false), use('t2', 'mcp__s__broken'), done('t2', true), use('t3', 'mcp__s__ok'), done('t3', true), use('t4', 'mcp__s__denied'), done('t4', true), denied]]);
+      expect(res.toolUses).toEqual(['mcp__s__ok', 'mcp__s__broken', 'mcp__s__ok', 'mcp__s__denied']);
+      expect(res.denials).toEqual(['mcp__s__denied']);
+      expect(res.toolErrors).toEqual(['mcp__s__broken', 'mcp__s__ok']); // the denied call is counted in denials only
+    }, 20_000);
+
     it('keeps the plain prompt without a follow-up', async () => {
       const { res, inputs } = await stream([[{ result: 'only' }]]);
       expect(inputs).toEqual(['review it']);

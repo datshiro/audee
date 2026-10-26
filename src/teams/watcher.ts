@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { authSettings, isAllowed, type Person, resolvePerson } from '../authz/people.js';
+import { iamTrace } from '../capability/iam-trace.js';
 import { kbQuery } from '../capability/kb-query.js';
 import { expireScratchDirs, mapping } from '../capability/mapping.js';
 import { mcpRead } from '../capability/mcp-read.js';
@@ -14,7 +15,7 @@ import { appendEvent, type Event } from '../events.js';
 import { notify } from '../notify.js';
 import { type Job, jobKey } from '../queue/job.js';
 import { CancelledError, type CancelResult, type EnqueueResult, Queue, type RunOutcome } from '../queue/queue.js';
-import { busyText, deniedText, failedText, kbQueryEmptyReply, pendingText, queuedReply, queuedText, recentReply, replyHTML, unavailableText } from '../render/html.js';
+import { busyText, deniedText, emptyText, failedText, pendingText, queuedReply, queuedText, recentReply, replyHTML, unavailableText } from '../render/html.js';
 import { InterruptedError, type runAgent } from '../runner/run.js';
 import type { HistoryEntry, MessageRecord, State } from '../state/state.js';
 import { outcomeClassified, outcomeSkipped } from '../state/state.js';
@@ -43,7 +44,7 @@ export type WatcherDeps = {
   handle?: (f: InboxFile, signal: AbortSignal) => Promise<void>; // shadow mode replaces the live handler
 };
 
-const REAL_CAPABILITIES: Partial<Record<ProfileName, Capability>> = { review, mapping, kb_read: kbQuery, mcp_read: mcpRead };
+const REAL_CAPABILITIES: Partial<Record<ProfileName, Capability>> = { review, mapping, kb_read: kbQuery, mcp_read: mcpRead, iam_trace: iamTrace };
 
 const userIdOf = (principal: string): string => principal.replace(/^teams:/u, '');
 
@@ -270,6 +271,11 @@ export class Watcher {
   }
 
   // watcher.go:229-257, generalised to every token-triggered capability.
+  // iam_trace replies are keyed by profile: any capability name may use that profile.
+  private replyKind(kind: string): string {
+    return this.cfg.capabilities[kind]?.profile === 'iam_trace' ? 'iam_trace' : kind;
+  }
+
   askCapability(chatId: string, msg: ChatMessage, person: Person, capability: string, question: string): string {
     const principal = principalOf(msg) ?? '';
     const userId = userIdOf(principal);
@@ -281,7 +287,7 @@ export class Watcher {
     }
     const job: Job = { kind: capability, channel: 'teams', chatId, principal, requesterName: sender(msg)?.displayName ?? '', messageId: msg.id, input: question, requestedAt: this.now().toISOString() };
     if (question === '') {
-      this.outbox.reply(chatId, userId, kbQueryEmptyReply);
+      this.outbox.reply(chatId, userId, emptyText(this.replyKind(capability)));
       return `${capability} without a question`;
     }
     if (this.state.pendingJobs().some((j) => jobKey(j) === jobKey(job) && j.kind === job.kind)) {
@@ -329,7 +335,7 @@ export class Watcher {
     const userId = userIdOf(job.principal);
     switch (result) {
       case 'queued':
-        this.notice(job, queuedText(job.kind));
+        this.notice(job, queuedText(this.replyKind(job.kind)));
         return `${job.kind} queued`;
       case 'duplicate':
         return `${job.kind} already queued`;
@@ -419,7 +425,7 @@ export class Watcher {
   private fail(job: Job, reason: string, status = 'failed'): void {
     appendEvent(this.dataDir, { kind: job.kind, status, reason, ...(job.mrUrl !== undefined ? { mrUrl: job.mrUrl } : {}), ...(job.messageId !== undefined ? { msgId: job.messageId } : {}), principal: job.principal });
     if (job.kind === 'review' && job.mrUrl !== undefined) this.state.forgetReview(job.mrUrl);
-    this.notice(job, failedText(job.kind));
+    this.notice(job, failedText(this.replyKind(job.kind)));
     notify(`audee: ${job.kind} ${status}`, jobKey(job));
   }
 

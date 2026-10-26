@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CLASSIFY_SYSTEM } from '../../src/fence/constants.js';
+import { CLASSIFY_SYSTEM, IAM_TRACE_TOOLS } from '../../src/fence/constants.js';
 import { loadMcpServers } from '../../src/fence/mcp-servers.js';
 import { buildOptions, type ProfileInput } from '../../src/fence/profiles.js';
 import { captureSession, flagValues, hasFlag } from '../helpers/capture-argv.js';
@@ -21,6 +21,7 @@ const INPUTS: Record<string, ProfileInput> = {
   mapping: { ...base, schema: SCHEMA, profile: 'mapping', model: 'MODEL', budgetUsd: 5, skillDir: '/SKILL' },
   kbquery: { ...base, schema: SCHEMA, profile: 'kb_read', model: 'MODEL', budgetUsd: 3, kbPaths: { wiki: '/WIKI', querySkill: '/QUERY_SKILL', scoutSkill: '/SCOUT_SKILL', repos: ['/REPO'] } },
   classifier: { ...base, schema: SCHEMA, profile: 'classifier', model: 'claude-opus-5-5', effort: 'low' },
+  iamtrace: { ...base, schema: SCHEMA, profile: 'iam_trace', model: 'MODEL', budgetUsd: 4, mcpServers: { 'iam-trace': { command: 'iam-trace' } } },
 };
 
 const capture = (name: string) => {
@@ -99,6 +100,14 @@ describe('fence superset of Ciel', () => {
     expect(flagValues(argv, '--allowedTools')).toEqual(tools.map((t) => `mcp__grafana__${t}`));
     expect(flagValues(argv, '--disallowedTools')).toContain('mcp__grafana__update_dashboard');
     expect(mcpKeys(argv)).toEqual(['grafana']);
+  });
+  it('TestIamTraceArgs', async () => {
+    const { argv } = await capture('iamtrace');
+    expect(hasFlag(argv, '--restricted')).toBe(true);
+    expect(hasFlag(argv, '--strict-mcp-config')).toBe(true);
+    expect(flagValues(argv, '--permission-mode')[0]).toBe('dontAsk');
+    expect(flagValues(argv, '--allowedTools')).toEqual(IAM_TRACE_TOOLS);
+    expect(mcpKeys(argv)).toEqual(['iam-trace']);
   });
   it('TestEveryProfileUsesClaudeCodePreset', async () => {
     for (const name of Object.keys(INPUTS)) {

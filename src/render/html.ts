@@ -78,6 +78,19 @@ export const maxKBQuerySourceChar = 200;
 export const readQueuedReply = '👀 <b>Đang tra cứu.</b> Có câu trả lời mình sẽ gửi nhé.';
 export const readFailedReply = '❌ <b>Tra cứu bị lỗi.</b> Mình sẽ xem lại.';
 
+// audee: iam_trace
+export const iamTraceQueuedReply = '👀 <b>Đang trace IAM.</b> Xong mình sẽ gửi timeline nhé.';
+export const iamTraceFailedReply = '❌ <b>Trace IAM bị lỗi.</b> Mình sẽ xem lại.';
+export const iamTraceWithheldReply = '❌ <b>Kết quả trace IAM có thể chứa thông tin bí mật nên mình không gửi.</b> Mình sẽ xem lại.';
+export const iamTraceUsageReply = 'Cú pháp: <b>iam_trace</b> &lt;campaignId|journeyId&gt; &lt;userId|roleId&gt;[,...] [dd/mm hh:mm], nhiều user cách nhau bằng dấu phẩy, ví dụ: iam_trace 1234 u1,u2 25/10 09:30';
+export function iamTraceMissingReply(missing: string[]): string {
+  return '<b>Mình cần thêm thông tin để trace IAM:</b>' + noteList(defangAll(missing)) + iamTraceUsageReply;
+}
+// The reply to a trigger word with nothing after it.
+export function emptyText(kind: string): string {
+  return kind === 'iam_trace' ? iamTraceUsageReply : kbQueryEmptyReply;
+}
+
 // audee additions
 export function deniedText(capability: string): string {
   return `Bạn chưa được cấp quyền dùng <b>${escapeHTML(capability)}</b>. Hãy nhờ Đạt cấp quyền nhé.`;
@@ -103,6 +116,7 @@ export function queuedText(kind: string): string {
   if (kind === 'review') return queuedReply;
   if (kind === 'kb_query') return kbQueryQueuedReply;
   if (kind === 'code_mapping') return mappingQueuedReply;
+  if (kind === 'iam_trace') return iamTraceQueuedReply;
   return readQueuedReply;
 }
 
@@ -110,6 +124,7 @@ export function failedText(kind: string): string {
   if (kind === 'review') return failedReply;
   if (kind === 'kb_query') return kbQueryFailedReply;
   if (kind === 'code_mapping') return mappingFailedReply;
+  if (kind === 'iam_trace') return iamTraceFailedReply;
   return readFailedReply;
 }
 
@@ -295,7 +310,7 @@ export function answerPageVisibleTexts(html: string): string[] {
   return [strip(body, ''), strip(cells, ' '), ...headedCells(body).map((c) => strip(c, ''))];
 }
 
-const answerPageStyle =`:root{color-scheme:light dark;--bg:#fff;--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--code:#f6f8fa}
+export const answerPageStyle =`:root{color-scheme:light dark;--bg:#fff;--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--code:#f6f8fa}
 @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--code:#151b23}}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:860px;margin:0 auto;padding:24px 16px}

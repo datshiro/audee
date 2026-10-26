@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // A stream-json stand-in for the CLI. Each user message plays the next entry of $FAKE_TURNS (a JSON array of turns);
-// a turn lists messages to print, a {"delay": ms} entry waits and {"result": text} prints a success result.
+// a turn lists messages to print, a {"delay": ms} entry waits and {"result": text, "denials"?: [...]} prints a success
+// result.
 // User messages are appended to $FAKE_STREAM_LOG, one text per line.
 import { appendFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
@@ -21,7 +22,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   playing = playing.then(async () => {
     for (const step of turn) {
       if ('delay' in step) await sleep(step.delay);
-      else if ('result' in step) send(result(step.result));
+      else if ('result' in step) send({ ...result(step.result), permission_denials: step.denials ?? [] });
       else send(step);
     }
   });

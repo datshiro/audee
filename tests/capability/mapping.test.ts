@@ -164,6 +164,18 @@ describe('code mapping', () => {
     expect(existsSync(recent)).toBe(true);
   });
 
+  it('TestExpireIamTraceDirs', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'audee-data-'));
+    const old = join(dataDir, 'iamtrace', '1000000000001');
+    const recent = join(dataDir, 'iamtrace', '1000000000002');
+    for (const d of [old, recent]) mkdirSync(d, { recursive: true });
+    const past = new Date(Date.now() - 4 * 24 * 3600_000);
+    utimesSync(old, past, past);
+    expireScratchDirs(dataDir, new Date(Date.now() - rawRetentionMs));
+    expect(existsSync(old)).toBe(false);
+    expect(existsSync(recent)).toBe(true);
+  });
+
   it('TestMappingUsesPinnedRealPath', async () => {
     const real = skillDir();
     const link = join(mkdtempSync(join(tmpdir(), 'audee-link-')), 'es');

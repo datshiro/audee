@@ -17,6 +17,7 @@ export type TestConfigOptions = {
   kbDir?: string;
   kbDefaultMode?: 'tech' | 'product';
   mcpRead?: { name: string; trigger: string; mcp: string[]; tools: string[] };
+  iamTrace?: { enabled?: boolean; seatbelt?: boolean; perPersonLimit?: number };
   review?: { prompt?: string; postFindings?: boolean; workdir?: string; routes?: Array<{ match: string; prompt: string }>; seatbelt?: boolean; autoApprove?: boolean };
   gitlab?: Record<string, string>; // person id (owner, p1, ...) -> GitLab username
   keychainEnv?: Record<string, string>;
@@ -39,6 +40,7 @@ export function testConfig(o: TestConfigOptions = {}): Config {
     ...(o.peopleIds ?? []).map((id) => `  - { name: ${q(id)}, ids: [${q('teams:' + id)}], can: ${can(id)}${gitlab(id)}, max_inflight: ${o.maxInflight ?? 2} }`),
   ].join('\n');
   const mcpRead = o.mcpRead === undefined ? '' : `  ${o.mcpRead.name}: { profile: mcp_read, lane: kb, budget_usd: 2, timeout: 10m, trigger: ${o.mcpRead.trigger}, mcp: [${o.mcpRead.mcp.join(', ')}], tools: [${o.mcpRead.tools.join(', ')}] }\n`;
+  const iamTrace = o.iamTrace === undefined ? '' : `  iam_trace: { profile: iam_trace, lane: kb${o.iamTrace.enabled === false ? ', enabled: false' : ''}${o.iamTrace.seatbelt === true ? ', seatbelt: true' : ''}${o.iamTrace.perPersonLimit !== undefined ? `, per_person_limit: ${o.iamTrace.perPersonLimit}` : ''} }\n`;
   const review = [
     'profile: review', 'lane: heavy',
     o.review?.prompt !== undefined ? `prompt: ${q(o.review.prompt)}` : '',
@@ -80,7 +82,7 @@ capabilities:
   review: { ${review} }
   code_mapping: { ${mapping} }
   kb_query: { profile: kb_read, lane: kb${o.kbPerPersonLimit !== undefined ? `, per_person_limit: ${o.kbPerPersonLimit}` : ''}${o.kbDir !== undefined ? `, kb_dir: ${o.kbDir}` : ''}${o.kbDefaultMode !== undefined ? `, default_mode: ${o.kbDefaultMode}` : ''} }
-${mcpRead}keychain_env: ${JSON.stringify(o.keychainEnv ?? {})}
+${mcpRead}${iamTrace}keychain_env: ${JSON.stringify(o.keychainEnv ?? {})}
 mcp_servers: ${JSON.stringify(o.mcpServers ?? {})}
 `;
   const path = join(dir, 'config.yaml');

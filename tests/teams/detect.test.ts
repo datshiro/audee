@@ -142,4 +142,13 @@ describe('detector', () => {
     expect(d.capabilityToken(triggers, msg('colleague', 'grafana_query not addressed'))).toBeUndefined();
     expect(d.capabilityToken(triggers, msg('colleague', 'Dat kb_query still works'))).toEqual({ capability: 'kb_query', question: 'still works' });
   });
+
+  it('triggers iam_trace on its fixed word', () => {
+    const triggers = triggersOf(testConfig({ teams: { aliases: ['Dat'] }, iamTrace: {} }));
+    expect(triggers).toContainEqual({ capability: 'iam_trace', token: 'iam_trace' });
+    expect(triggersOf(testConfig()).map((t) => t.token)).not.toContain('iam_trace');
+    const d = testDetector();
+    expect(d.capabilityToken(triggers, msg('colleague', 'Dat iam_trace 123 u1, u2 25/10 09:30'))).toEqual({ capability: 'iam_trace', question: '123 u1, u2 25/10 09:30' });
+    expect(d.capabilityToken(triggers, msg('colleague', 'iam_trace 123 u1 not addressed'))).toBeUndefined();
+  });
 });

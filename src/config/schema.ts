@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const PROFILES = ['review', 'mapping', 'kb_read', 'classifier', 'mcp_read'] as const;
+export const PROFILES = ['review', 'mapping', 'kb_read', 'classifier', 'mcp_read', 'iam_trace'] as const;
 export type ProfileName = (typeof PROFILES)[number];
 
 const DURATION = /^(\d+)(s|m|h)$/;
@@ -46,7 +46,8 @@ const Capability = z.strictObject({
   default_mode: z.enum(['tech', 'product']).optional(), // kb_query: the answer style when the question has no --tech
 });
 
-// Ciel's per-capability defaults (config.go loadConfig), keyed by capability name.
+// Ciel's per-capability defaults (config.go loadConfig), keyed by capability name; iam_trace's also go to any capability
+// on its profile, whatever its name.
 const CAPABILITY_DEFAULTS: Record<string, Record<string, unknown>> = {
   review: { timeout: '45m', budget_usd: 8, prompt: '/apo-review-mr {url}', workdir: '~/.claude/kb' },
   code_mapping: {
@@ -54,6 +55,7 @@ const CAPABILITY_DEFAULTS: Record<string, Record<string, unknown>> = {
     prompt: 'Read {skill}/SKILL.md and {skill}/references/author-eventsource.md and follow them.', // ciel config.go:128
   },
   kb_query: { timeout: '15m', budget_usd: 3, kb_dir: '~/.claude/kb' },
+  iam_trace: { timeout: '20m', budget_usd: 4, per_person_limit: 1 },
 };
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -61,7 +63,9 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v ===
 const Capabilities = z.preprocess((raw) => {
   if (!isPlainObject(raw)) return raw;
   const out: Record<string, unknown> = {};
-  for (const [name, cap] of Object.entries(raw)) out[name] = isPlainObject(cap) ? { ...CAPABILITY_DEFAULTS[name], ...cap } : cap;
+  for (const [name, cap] of Object.entries(raw)) {
+    out[name] = isPlainObject(cap) ? { ...CAPABILITY_DEFAULTS[name], ...(cap['profile'] === 'iam_trace' ? CAPABILITY_DEFAULTS['iam_trace'] : {}), ...cap } : cap;
+  }
   return out;
 }, z.record(z.string(), Capability));
 

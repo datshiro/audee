@@ -50,7 +50,7 @@ const RULES: Rule[] = [
       if (cap.profile === 'mcp_read') {
         if (cap.mcp === undefined || cap.mcp.length === 0) problems.push(`capabilities.${name}: mcp_read needs at least one server in mcp`);
         if (cap.tools === undefined || cap.tools.length === 0) problems.push(`capabilities.${name}: mcp_read needs at least one tool in tools`);
-        if (cap.trigger === undefined || !TRIGGER.test(cap.trigger) || cap.trigger === 'kb_query') problems.push(`capabilities.${name}: trigger must match ^[a-z][a-z0-9_]{2,30}$ and not be kb_query`);
+        if (cap.trigger === undefined || !TRIGGER.test(cap.trigger) || cap.trigger === 'kb_query' || cap.trigger === 'iam_trace') problems.push(`capabilities.${name}: trigger must match ^[a-z][a-z0-9_]{2,30}$ and not be kb_query or iam_trace`);
       } else if (cap.mcp !== undefined || cap.tools !== undefined) {
         problems.push(`capabilities.${name}: mcp and tools are only allowed on profile mcp_read`);
       }
@@ -76,6 +76,10 @@ const RULES: Rule[] = [
       for (const s of servers) if (!(s in READ_ONLY_MCP_TOOLS)) problems.push(`capabilities.${name}: mcp server "${s}" is not a read-only server audee allows (${Object.keys(READ_ONLY_MCP_TOOLS).join(', ')})`);
       for (const t of cap.tools ?? []) if (!servers.some((s) => READ_ONLY_MCP_TOOLS[s]?.includes(t))) problems.push(`capabilities.${name}: tool "${t}" is not a read-only tool of ${servers.join(', ') || 'any listed server'}`);
     }
+  },
+  function iamTrace(cfg, problems) {
+    const n = Object.values(cfg.capabilities).filter((c) => c.profile === 'iam_trace').length;
+    if (n > 1) problems.push(`capabilities: at most one capability may use profile iam_trace (found ${n})`);
   },
 ];
 
