@@ -120,7 +120,7 @@ describe('watcher', () => {
     await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'anh Dat iam_trace C1 u1,u2')), none);
     expect(state.pendingJobs()).toHaveLength(1);
     expect(state.pendingJobs()[0]).toMatchObject({ kind: 'iam_trace', input: 'C1 u1,u2', principal: 'teams:linh' });
-    expect(watcher.queue.snapshot().find((l) => l.name === 'kb')?.queued).toEqual([expect.objectContaining({ kind: 'iam_trace' })]);
+    expect(watcher.queue.snapshot().find((l) => l.name === 'iam_trace')?.queued).toEqual([expect.objectContaining({ kind: 'iam_trace' })]);
     expect(replies(outbox).map((r) => r.html)).toEqual([iamTraceQueuedReply]);
     expect(inputs).toHaveLength(0);
   });

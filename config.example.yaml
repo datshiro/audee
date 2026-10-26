@@ -13,6 +13,7 @@ concurrency:
   lanes:
     heavy: { concurrency: 1, buffer: 32 }   # review, code_mapping
     kb:    { concurrency: 2, buffer: 32 }   # kb_query, mcp_read capabilities (read-only, so parallel)
+    iam_trace: { concurrency: 1, buffer: 8 }   # iam_trace alone: one trace holds a slot for up to its timeout, so it must not queue kb_query
 
 people:                        # max_inflight: queued + running jobs of any kind (default 2)
   - { name: dat, owner: true, ids: ["teams:<your-sender-id>"], can: ["*"], max_inflight: 4 }
@@ -74,7 +75,7 @@ capabilities:
   #   per_person_limit: 1
   # iam_trace:                # opt-in IAM trace on prod, triggered by the word iam_trace; needs the iam-trace MCP server
   #   profile: iam_trace      # fixed fence: only the iam-trace MCP's four read tools
-  #   lane: kb
+  #   lane: iam_trace         # its own lane, see concurrency.lanes
   #   model: claude-opus-5-5
   #   budget_usd: 4           # covers the trace and the verifier session
   #   timeout: 20m            # covers both sessions

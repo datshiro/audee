@@ -40,7 +40,7 @@ export function testConfig(o: TestConfigOptions = {}): Config {
     ...(o.peopleIds ?? []).map((id) => `  - { name: ${q(id)}, ids: [${q('teams:' + id)}], can: ${can(id)}${gitlab(id)}, max_inflight: ${o.maxInflight ?? 2} }`),
   ].join('\n');
   const mcpRead = o.mcpRead === undefined ? '' : `  ${o.mcpRead.name}: { profile: mcp_read, lane: kb, budget_usd: 2, timeout: 10m, trigger: ${o.mcpRead.trigger}, mcp: [${o.mcpRead.mcp.join(', ')}], tools: [${o.mcpRead.tools.join(', ')}] }\n`;
-  const iamTrace = o.iamTrace === undefined ? '' : `  iam_trace: { profile: iam_trace, lane: kb${o.iamTrace.enabled === false ? ', enabled: false' : ''}${o.iamTrace.seatbelt === true ? ', seatbelt: true' : ''}${o.iamTrace.perPersonLimit !== undefined ? `, per_person_limit: ${o.iamTrace.perPersonLimit}` : ''} }\n`;
+  const iamTrace = o.iamTrace === undefined ? '' : `  iam_trace: { profile: iam_trace, lane: iam_trace${o.iamTrace.enabled === false ? ', enabled: false' : ''}${o.iamTrace.seatbelt === true ? ', seatbelt: true' : ''}${o.iamTrace.perPersonLimit !== undefined ? `, per_person_limit: ${o.iamTrace.perPersonLimit}` : ''} }\n`;
   const review = [
     'profile: review', 'lane: heavy',
     o.review?.prompt !== undefined ? `prompt: ${q(o.review.prompt)}` : '',
@@ -73,6 +73,7 @@ concurrency:
   lanes:
     heavy: { concurrency: ${o.heavy ?? 1}, buffer: ${o.buffer ?? 32} }
     kb: { concurrency: ${o.kb ?? 2}, buffer: ${o.buffer ?? 32} }
+    iam_trace: { concurrency: 1, buffer: ${o.buffer ?? 32} }
 people:
   - { name: dat, owner: true, ids: ["teams:owner"], can: ["*"]${gitlab('owner')}, max_inflight: ${o.maxInflight ?? 2} }
 ${people}

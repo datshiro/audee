@@ -82,10 +82,10 @@ owner notices carry that name as their kind).
   a future `dd/mm/yyyy`; a datetime outside the last 165 hours (log retention is 7 days). Any other future `dd/mm` is
   read as last year's. A bare `iam_trace` gets the usage line.
 - Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by two sessions are the defaults of every
-  capability on profile `iam_trace`, whatever its name; values set in config win. The example config uses lane `kb`. The trace gets 65%
+  capability on profile `iam_trace`, whatever its name; values set in config win. The example config gives it its own lane, `iam_trace` with concurrency 1. The trace gets 65%
   of each; the verifier gets the budget left after the trace's actual cost and the time left, and is skipped below $0.30
-  or 2 minutes. Lane contention: two traces fill both `kb` slots for up to 20 minutes, so kb_query and mcp_read jobs
-  wait behind them.
+  or 2 minutes. Lane: a trace can hold its slot for up to 20 minutes, so it runs in its own lane (concurrency 1) and never queues
+  kb_query or mcp_read jobs; it still counts against `max_concurrent`, so a running trace leaves one fewer global slot.
 - Window: without a datetime every tool call passes `since 24h` (the tools default to 1h). With a datetime the window
   runs from 30 minutes before to 3 hours after it (clipped to now) as `_time:(<start>Z, <end>Z)` with parentheses, and
   `since` reaches back to the window start; the prompt keeps that filter on every `search_logs` call (slices of at most
@@ -213,7 +213,7 @@ One daemon, `audee serve`, under launchd (`com.audee.agent`), running `dist/cli.
 Teams chats ──(Power Automate "Ciel Teams Inbox Poller", every minute)──▶ OneDrive /Ciel/inbox/<msg id>-<sender>.json
   ▶ inbox (src/teams/inbox.ts)      claim into ~/.audee/processing, keep in raw/ 3 days, reject bad files to failed/
   ▶ watcher (src/teams/watcher.ts)  chat allowlist → seen-id dedupe → candidate filter → classifier session → person grants
-  ▶ queue (src/queue)               lanes heavy (review, code_mapping) and kb (kb_query, mcp_read, iam_trace); per-person max_inflight
+  ▶ queue (src/queue)               lanes heavy (review, code_mapping) kb (kb_query, mcp_read) and iam_trace (iam_trace alone); per-person max_inflight
   ▶ capability (src/capability)     builds the profile's SDK options (src/fence/profiles.ts) and runs one Agent SDK session
   ▶ render (src/render)             escape, defang, secret check, HTML reply or HTML/JSON file
   ▶ outbox (src/teams/outbox.ts)    OneDrive /Ciel/outbox/<random>.json ──(flow "Send message when ask for review code")──▶
