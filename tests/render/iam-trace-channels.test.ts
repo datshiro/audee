@@ -106,6 +106,6 @@ describe('deliveryPaths', () => {
       expect(d.paths.map((p) => p.outcome)).toEqual(['unknown', 'unknown', 'unknown']);
       expect(d.question).toBeUndefined();
     }
-    expect(paths([]).message).toEqual(['Message đã tạo', 'giờ publish chưa ghi nhận', 'gameId chưa ghi nhận', 'SDK user: chưa ghi nhận']);
+    expect(paths([]).message).toEqual(['Message đã tạo', 'chưa rõ giờ publish', 'gameId chưa rõ', 'SDK user: chưa rõ']);
   });
 });
