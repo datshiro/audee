@@ -107,7 +107,8 @@ owner notices carry that name as their kind).
   `roleId`, `gameId` and `serverId` must be at most 128 characters matching `^[A-Za-z0-9_.:@|-]+$`; an empty or null id
   counts as absent (the MCP treats it so) and is the MCP's to refuse.
 - Reduced fidelity (owner decision 2026-10-26): the iam-trace MCP drops structured log fields on purpose, so only a
-  line's message text and its store time reach the model. Times are the store time unless the message prints a time;
+  line's message text and its store time reach the model; since apollo/kb MR !25 (2026-10-26) the MCP also returns the
+  parsed Centrifugo `channel` of a subscribe or publish line, and only when it parses as a channel. Times are the store time unless the message prints a time;
   audee converts to ICT itself, and the page says once that times are store time and marks (†) only a point whose time
   came from the message. A condition outcome or an SDK event name is `seen` only when the
   message prints it, otherwise the point is inferred (from what ran next) or "không ghi nhận" (never "không xảy ra").
@@ -116,7 +117,8 @@ owner notices carry that name as their kind).
   "Temporal không kiểm tra".
 - Subscription check (added 2026-10-26 after the owner compared the page with the reference doc): a `publish` point is
   message-delivery publishing the message to a channel, a `subscribe` point is one SDK session subscribing (at most 8,
-  or one not_recorded point when no subscribe line exists); both carry the channel name verbatim in `channel` (empty
+  or one not_recorded point when no subscribe line exists); both carry the channel copied from the entry's `channel` field (the evidence is the message text plus
+  ` channel=<channel>`, so the channel proof below holds) (empty
   on every other kind; a name is any run of at most 300 characters without whitespace, `<`, `>`, `"` or a backslash;
   an unusable channel, or a publish/subscribe point without one, is shown as inferred). After verification a
   publish/subscribe point counts as seen only when its own evidence names the channel (as a whole token), otherwise it
