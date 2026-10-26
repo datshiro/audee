@@ -61,7 +61,7 @@ describe('deliveryPaths', () => {
     expect(d.message).toEqual(['Message đã tạo', '25/10 10:28:15 ICT', 'gameId gamea', 'SDK user: gameb']);
     expect(d.paths.map((p) => [p.name, p.outcome])).toEqual([['1. Popup realtime', 'block'], ['2. Replay khi kết nối lại', 'unknown'], ['3. App Inbox', 'block']]);
     expect(d.paths[2]?.resultDetail).toBe('Game SDK gameb ≠ game message gamea (suy từ kênh subscribe)');
-    expect(d.question).toBe('Câu cần hỏi team game/SDK: vì sao role đã được publish lên game gamea lại init SDK bằng game gameb?');
+    expect(d.question).toBe('Câu cần hỏi team game/SDK: vì sao message được publish lên game gamea nhưng SDK của user lại init bằng game gameb?');
   });
 
   it('lets the popup through only when a matching subscribe came before the publish', () => {
@@ -71,9 +71,34 @@ describe('deliveryPaths', () => {
     expect(before.paths[2]?.outcome).toBe('unknown');
     expect(before.question).toBeUndefined();
     const after = paths([at(pt('publish', channel), '2026-10-25T03:00:10Z'), at(pt('subscribe', channel), '2026-10-25T04:00:00Z')]);
-    expect(after.paths[0]).toMatchObject({ outcome: 'block', resultDetail: 'Chỉ subscribe đúng kênh sau khi publish; popup chỉ publish 1 lần' });
+    expect(after.paths[0]).toMatchObject({ outcome: 'block', resultDetail: 'Không thấy subscribe đúng kênh trước khi publish trong các dòng đã ghi nhận; popup chỉ publish 1 lần' });
     const noTimes = paths([pt('publish', channel), pt('subscribe', channel)]);
     expect(noTimes.paths[0]?.outcome).toBe('unknown');
+  });
+
+  it('pairs publish and subscribe per channel, so a later republish cannot hide an earlier subscribe', () => {
+    const r = 'role:gamea:U1:R1:env';
+    const twice = paths([at(pt('publish', r), '2026-10-25T03:00:00.100Z'), at(pt('subscribe', r), '2026-10-25T03:05:00.200Z'), at(pt('publish', r), '2026-10-25T03:10:00.300Z')]);
+    expect(twice.paths[0]?.outcome).toBe('ok');
+    const other = paths([at(pt('publish', 'user:gamea:U1'), '2026-10-25T03:00:00.100Z'), at(pt('publish', r), '2026-10-25T03:10:00.300Z'), at(pt('subscribe', r), '2026-10-25T03:05:00.200Z')]);
+    expect(other.paths[0]?.outcome).toBe('ok');
+  });
+
+  it('leaves the popup unknown when a relevant publish has no time or two times are too close to order', () => {
+    const r = 'role:gamea:U1:R1:env';
+    expect(paths([at(pt('publish', r), '2026-10-25T03:00:00.100Z'), pt('publish', r), at(pt('subscribe', r), '2026-10-25T03:05:00.200Z')]).paths[0]?.outcome).toBe('unknown');
+    expect(paths([at(pt('publish', r), '2026-10-25T03:00:00Z'), at(pt('subscribe', r), '2026-10-25T03:00:00.400Z')]).paths[0]?.outcome).toBe('unknown');
+    expect(paths([at(pt('publish', r), '1761363495'), at(pt('subscribe', r), '1761363495500')]).paths[0]?.outcome).toBe('unknown');
+    expect(paths([at(pt('publish', r), '2026-10-25T03:00:00.100Z'), at(pt('subscribe', r), '2026-10-25T03:00:00.400Z')]).paths[0]?.outcome).toBe('block');
+  });
+
+  it('does not say the game is the same when no game can be read from the channel names', () => {
+    const d = paths([pt('publish', 'msgchan'), pt('subscribe', 'role:gameb:U1:R1:env')]);
+    expect(d.paths[2]?.resultDetail).toBe('Chưa xác định được game từ tên kênh; chưa kiểm tra lời gọi inbox');
+    expect(d.paths[0]?.detail).toBe('publish 1 lần lên msgchan');
+    const same = paths([pt('publish', 'role:gamea:U1:R1:env'), pt('subscribe', 'role:gamea:U1:R2:env')]);
+    expect(same.paths[2]?.resultDetail).toBe('Cùng game; chưa kiểm tra lời gọi inbox');
+    expect(same.paths[0]?.detail).toBe('publish 1 lần lên role:gamea …');
   });
 
   it('is all unknown when the logs lack a publish or a subscribe line', () => {

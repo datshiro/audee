@@ -110,7 +110,7 @@ describe('wrapText and pathsSvg', () => {
     const svg = pathsSvg({
       message: ['Message đã tạo', '25/10 10:28:15 ICT', 'gameId gamea', 'SDK user: gameb'],
       paths: [
-        { name: '1. Popup realtime', detail: 'publish 1 lần lên role:gamea:…', outcome: 'block', result: 'Không ai nhận', resultDetail: 'SDK chỉ subscribe game gameb' },
+        { name: '1. Popup realtime', detail: 'publish 1 lần lên role:gamea …', outcome: 'block', result: 'Không ai nhận', resultDetail: 'SDK chỉ subscribe game gameb' },
         { name: '2. Replay', detail: 'chỉ message không phải App Inbox', outcome: 'unknown', result: 'Chưa kiểm tra được', resultDetail: '<b>x</b> https://evil.example' },
         { name: '3. App Inbox', detail: 'lọc theo gameId', outcome: 'ok', result: 'Có thể nhận', resultDetail: 'ok' },
       ],

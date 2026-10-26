@@ -128,8 +128,9 @@ owner notices carry that name as their kind).
   Below the table the page draws the three ways a message can reach the SDK (popup realtime, replay on reconnect, App
   Inbox), as an SVG figure plus a table: left the message (publish time, game from the published channel, game from the
   subscribe channels), then each way, then what the logs say. audee computes only what the logs show: the popup is
-  published once, so it reaches the SDK only if a subscribe to the same channel came before the publish (`Có thể nhận`
-  or `Không ai nhận`, `chưa kiểm tra` when times or lines are missing); App Inbox is blocked when the published game
+  published once per send, so it reaches the SDK only if a subscribe to the same channel came before a publish to it
+  (pairs are per channel; `Có thể nhận` or `Không ai nhận`, `chưa kiểm tra` when a time or line is missing or two
+  times are within a second and one has no sub-second part); App Inbox is blocked when the published game
   differs from the subscribed games (the game of the session is read from its subscribe channels, said as such);
   replay is always `chưa kiểm tra` because whether the message is App Inbox is not in the logs. A game mismatch adds
   the question for the game/SDK team. The way each path works, and the list of other causes (inbox called without

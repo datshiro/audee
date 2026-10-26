@@ -283,17 +283,17 @@ describe('iam trace sample page', () => {
     expect(section).toContain('class="ob-block"');
     expect(section).toContain('class="ob-unknown"');
     expect(section).not.toContain('class="ob-ok"');
-    expect(section).toContain('<td>1. Popup realtime<small>publish 1 lần lên role:gamea:…</small></td><td>Không ai nhận</td><td>SDK chỉ subscribe game gameb</td>');
+    expect(section).toContain('<td>1. Popup realtime<small>publish 1 lần lên role:gamea …</small></td><td>Không ai nhận</td><td>SDK chỉ subscribe game gameb</td>');
     expect(section).toContain('<td>2. Replay khi kết nối lại<small>chỉ message không phải App Inbox</small></td><td>Chưa kiểm tra được</td>');
     expect(section).toContain('<td>Không khớp gameId</td><td>Game SDK gameb ≠ game message gamea (suy từ kênh subscribe)</td>');
-    expect(section).toContain('Câu cần hỏi team game/SDK: vì sao role đã được publish lên game gamea lại init SDK bằng game gameb?');
+    expect(section).toContain('Câu cần hỏi team game/SDK: vì sao message được publish lên game gamea nhưng SDK của user lại init bằng game gameb?');
     expect(section).toContain('Inbox gọi thiếu hoặc sai roleId/serverId.');
     expect(section).toContain('Quá expiresAt của message.');
     expect(section).toContain('audee không kiểm lại code');
     expect(section).toContain('Message đã tạo');
   });
 
-  it('keeps every figure text readable: the sample figure has no overlapping text boxes by construction', () => {
+  it('puts the message facts in the figure', () => {
     const fig = between(page, '<svg class="wp"', '</svg>');
     expect(fig).toContain('25/10 10:28:16 ICT');
     expect(fig).toContain('gameId gamea');

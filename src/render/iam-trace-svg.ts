@@ -94,17 +94,17 @@ export function pathsSvg(model: DeliveryPaths): string {
   const top = (ROWS[0] as number) - BOX_H / 2;
   const bottom = (ROWS[2] as number) + BOX_H / 2;
   const parts: string[] = [`<rect class="mb" x="${mx}" y="${top}" width="${mw}" height="${bottom - top}" rx="8"/>`];
-  model.message.forEach((line, i) => parts.push(text(i === 0 ? 'ls lb' : 'ls dt', mx + 12, top + 24 + i * 22, clip(defang(line), 24))));
+  model.message.forEach((line, i) => parts.push(text(i === 0 ? 'ls lb' : 'ls dt', mx + 12, top + 24 + i * 22, clip(defang(line), 20))));
   model.paths.forEach((path, i) => {
     const cy = ROWS[i] as number;
     const arrow = (from: number, to: number): string => `<path class="arw" d="M${from} ${cy} L${to - 7} ${cy}"/><polygon class="arh" points="${to - 8},${cy - 4} ${to},${cy} ${to - 8},${cy + 4}"/>`;
     parts.push(arrow(mx + mw, px), arrow(px + pw, ox));
     parts.push(`<rect class="pb" x="${px}" y="${cy - BOX_H / 2}" width="${pw}" height="${BOX_H}" rx="8"/>`);
     parts.push(`<rect class="ob-${path.outcome}" x="${ox}" y="${cy - BOX_H / 2}" width="${ow}" height="${BOX_H}" rx="8"/>`);
-    parts.push(text('ls lb', px + 12, cy - 8, clip(defang(path.name), 30)));
-    wrapText(path.detail, 30, 2).forEach((line, j) => parts.push(text('ls dt mu', px + 12, cy + 8 + j * 14, line)));
-    parts.push(text('ls lb', ox + 12, cy - 8, clip(defang(path.result), 30)));
-    wrapText(path.resultDetail, 30, 2).forEach((line, j) => parts.push(text('ls dt', ox + 12, cy + 8 + j * 14, line)));
+    parts.push(text('ls lb', px + 12, cy - 8, clip(defang(path.name), 26)));
+    wrapText(path.detail, 26, 2).forEach((line, j) => parts.push(text('ls dt mu', px + 12, cy + 8 + j * 14, line)));
+    parts.push(text('ls lb', ox + 12, cy - 8, clip(defang(path.result), 26)));
+    wrapText(path.resultDetail, 26, 2).forEach((line, j) => parts.push(text('ls dt', ox + 12, cy + 8 + j * 14, line)));
   });
   const height = bottom + 12;
   return `<svg class="wp" viewBox="0 0 ${PATHS_WIDTH} ${height}" width="${PATHS_WIDTH}" height="${height}" aria-hidden="true"><g>${parts.join('')}</g></svg>`;

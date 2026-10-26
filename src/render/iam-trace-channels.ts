@@ -55,20 +55,32 @@ const NO_LINES = 'Thiếu dòng log publish hoặc subscribe';
 const UNKNOWN_LABEL = 'Chưa kiểm tra được';
 
 const msOf = (p: CheckedPoint): number | undefined => ictTime(p.time)?.ms;
-const channelPrefix = (channel: string): string => `${channel.split(':').slice(0, 2).join(':')}:…`;
+// The game and role stay readable; a name with no ":" is shown whole. The space before the ellipsis keeps the cut text
+// apart from the next text in the page's plain-text reading.
+const channelPrefix = (channel: string): string => (channel.includes(':') ? `${channel.split(':').slice(0, 2).join(':')} …` : channel);
 
+// A time with no sub-second part may be off by up to a second; a pair closer than that is not ordered.
+function order(sub: number, pub: number): 'before' | 'after' | 'unsure' {
+  const slack = sub % 1000 !== 0 && pub % 1000 !== 0 ? 0 : 1000;
+  if (sub < pub - slack) return 'before';
+  return sub > pub + slack ? 'after' : 'unsure';
+}
+
+// The popup is published once per send, so it reaches the SDK only through a subscribe to the same channel made before
+// that publish. Pairs are per channel; any point without a time, or a pair too close to order, leaves it unknown.
 function popupPath(points: CheckedPoint[], c: ChannelCheck): DeliveryPath {
   const base = { name: '1. Popup realtime', detail: c.published[0] !== undefined ? `publish 1 lần lên ${channelPrefix(c.published[0])}` : 'publish 1 lần lên kênh của message' };
   if (c.verdict === 'game') return { ...base, outcome: 'block', result: 'Không ai nhận', resultDetail: `SDK chỉ subscribe game ${c.subscribedGames.join(', ')}` };
   if (c.verdict === 'mismatch') return { ...base, outcome: 'block', result: 'Không ai nhận', resultDetail: 'Không phiên nào subscribe đúng kênh' };
   if (c.verdict !== 'match') return { ...base, outcome: 'unknown', result: UNKNOWN_LABEL, resultDetail: NO_LINES };
-  const seen = (kind: string): CheckedPoint[] => points.filter((p) => p.kind === kind && p.state === 'seen');
-  const published = seen('publish').map(msOf).filter((ms): ms is number => ms !== undefined);
-  const subscribed = seen('subscribe').filter((p) => c.published.includes(p.channel)).map(msOf);
-  if (published.length === 0 || subscribed.length === 0 || subscribed.some((ms) => ms === undefined)) return { ...base, outcome: 'unknown', result: UNKNOWN_LABEL, resultDetail: 'Chưa rõ thứ tự giờ publish và subscribe' };
-  const firstPublish = Math.min(...published);
-  if ((subscribed as number[]).some((ms) => ms <= firstPublish)) return { ...base, outcome: 'ok', result: 'Có thể nhận', resultDetail: 'Có phiên subscribe đúng kênh trước khi publish' };
-  return { ...base, outcome: 'block', result: 'Không ai nhận', resultDetail: 'Chỉ subscribe đúng kênh sau khi publish; popup chỉ publish 1 lần' };
+  const shared = c.published.filter((ch) => c.subscribed.includes(ch));
+  const seen = (kind: string, ch: string): CheckedPoint[] => points.filter((p) => p.kind === kind && p.state === 'seen' && p.channel === ch);
+  const pairs = shared.flatMap((ch) => seen('publish', ch).flatMap((pub) => seen('subscribe', ch).map((sub) => [msOf(sub), msOf(pub)] as const)));
+  if (pairs.some(([sub, pub]) => sub === undefined || pub === undefined)) return { ...base, outcome: 'unknown', result: UNKNOWN_LABEL, resultDetail: 'Chưa rõ thứ tự giờ publish và subscribe' };
+  const orders = (pairs as Array<readonly [number, number]>).map(([sub, pub]) => order(sub, pub));
+  if (orders.includes('before')) return { ...base, outcome: 'ok', result: 'Có thể nhận', resultDetail: 'Có phiên subscribe đúng kênh trước khi publish' };
+  if (orders.includes('unsure')) return { ...base, outcome: 'unknown', result: UNKNOWN_LABEL, resultDetail: 'Giờ subscribe và publish quá gần nhau để xếp thứ tự' };
+  return { ...base, outcome: 'block', result: 'Không ai nhận', resultDetail: 'Không thấy subscribe đúng kênh trước khi publish trong các dòng đã ghi nhận; popup chỉ publish 1 lần' };
 }
 
 export function deliveryPaths(points: CheckedPoint[], c: ChannelCheck): DeliveryPaths {
@@ -83,8 +95,8 @@ export function deliveryPaths(points: CheckedPoint[], c: ChannelCheck): Delivery
   const inbox: DeliveryPath =
     c.verdict === 'game'
       ? { name: '3. App Inbox', detail: 'lọc theo gameId của phiên SDK', outcome: 'block', result: 'Không khớp gameId', resultDetail: `Game SDK ${c.subscribedGames.join(', ')} ≠ game message ${c.publishedGames.join(', ')} (suy từ kênh subscribe)` }
-      : { name: '3. App Inbox', detail: 'lọc theo gameId của phiên SDK', outcome: 'unknown', result: UNKNOWN_LABEL, resultDetail: c.verdict === 'match' || c.verdict === 'mismatch' ? 'Cùng game; chưa kiểm tra lời gọi inbox' : NO_LINES };
-  const question = c.verdict === 'game' ? `Câu cần hỏi team game/SDK: vì sao role đã được publish lên game ${c.publishedGames.join(', ')} lại init SDK bằng game ${c.subscribedGames.join(', ')}?` : undefined;
+      : { name: '3. App Inbox', detail: 'lọc theo gameId của phiên SDK', outcome: 'unknown', result: UNKNOWN_LABEL, resultDetail: c.verdict === 'no_publish' || c.verdict === 'no_subscribe' ? NO_LINES : c.publishedGames.length > 0 && c.subscribedGames.length > 0 ? 'Cùng game; chưa kiểm tra lời gọi inbox' : 'Chưa xác định được game từ tên kênh; chưa kiểm tra lời gọi inbox' };
+  const question = c.verdict === 'game' ? `Câu cần hỏi team game/SDK: vì sao message được publish lên game ${c.publishedGames.join(', ')} nhưng SDK của user lại init bằng game ${c.subscribedGames.join(', ')}?` : undefined;
   return { message, paths: [popupPath(points, c), replay, inbox], ...(question !== undefined ? { question } : {}) };
 }
 
