@@ -33,6 +33,8 @@ export const UNKNOWN_JOURNEY = 'Journey chưa rõ';
 export const CLIENT_LANE = 'Client';
 
 const STATE_RANK = { seen: 0, inferred: 1, not_recorded: 2 } as const;
+const CHECK_RANK = { confirmed: 0, corrected: 1, unverified: 2 } as const;
+const rank = (p: CheckedPoint): number => STATE_RANK[p.state] * 3 + CHECK_RANK[p.check];
 const CHECK_KINDS = new Set<PointKind>(['check_call', 'condition', 'frequency']);
 const two = (n: number): string => String(n).padStart(2, '0');
 
@@ -80,7 +82,7 @@ function samePlayer(a: MergedTrace['users'][number], b: MergedTrace['users'][num
   return !(a.user_id === b.user_id && differ(a.role_id, b.role_id)) && !(a.role_id === b.role_id && differ(a.user_id, b.user_id));
 }
 
-// Users that are one player become one entry. A point seen under both ids is kept once (the better state wins); points
+// Users that are one player become one entry. A point seen under both ids is kept once (the better state, then the better check, wins); points
 // of a single user are never merged with each other.
 export function mergePlayers(users: MergedTrace['users']): Array<{ ids: string[]; userId: string; roleId: string; points: CheckedPoint[] }> {
   const group = users.map((_, i) => i);
@@ -99,7 +101,7 @@ export function mergePlayers(users: MergedTrace['users']): Array<{ ids: string[]
     for (const c of u.points) {
       const i = p.points.slice(0, earlier).findIndex((x) => key(x) === key(c));
       if (i < 0) p.points.push(c);
-      else if (STATE_RANK[c.state] < STATE_RANK[(p.points[i] as CheckedPoint).state]) p.points[i] = c;
+      else if (rank(c) < rank(p.points[i] as CheckedPoint)) p.points[i] = c;
     }
   });
   return out.map(({ ids, userId, roleId, points }) => ({ ids, userId, roleId, points }));

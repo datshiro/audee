@@ -118,6 +118,7 @@ function tally(players: LayoutPlayer[]): MergedTrace['counts'] {
 }
 
 function verifyLine(trace: MergedTrace, c: MergedTrace['counts']): string {
+  trace = { ...trace, verified: trace.verified && c.confirmed + c.corrected > 0 };
   if (trace.verified) return ` Đã kiểm chứng độc lập bằng một phiên truy vấn lại: ${c.confirmed} mốc khớp, ${c.corrected} mốc đã sửa, ${c.unverified} mốc chưa kiểm chứng.`;
   return ` Chưa kiểm chứng độc lập${trace.reason !== undefined ? `: ${reasonText(trace.reason)}` : ''}.`;
 }

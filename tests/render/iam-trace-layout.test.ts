@@ -183,6 +183,12 @@ describe('mergePlayers', () => {
     expect(other[0]?.points.map((p) => p.state)).toEqual(['seen']);
   });
 
+  it('keeps the checked copy when only one id\'s copy was verified', () => {
+    const line = (check: CheckedPoint['check']): CheckedPoint => pt({ kind: 'send', label: 'same', time: T('03:00:00'), evidence: 'one line', check });
+    expect(mergePlayers([user('a', [line('unverified')], { user_id: 'U' }), user('b', [line('confirmed')], { user_id: 'U' })])[0]?.points[0]?.check).toBe('confirmed');
+    expect(mergePlayers([user('a', [line('corrected')], { user_id: 'U' }), user('b', [line('confirmed')], { user_id: 'U' }), user('c', [line('unverified')], { user_id: 'U' })])[0]?.points[0]?.check).toBe('confirmed');
+  });
+
   it('keeps points that differ in evidence', () => {
     const merged = mergePlayers([user('a', [pt({ kind: 'send', evidence: 'one' })], { user_id: 'U' }), user('b', [pt({ kind: 'send', evidence: 'two' })], { user_id: 'U' })]);
     expect(merged[0]?.points).toHaveLength(2);

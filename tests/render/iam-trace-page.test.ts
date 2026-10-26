@@ -176,6 +176,11 @@ describe('iam trace page', () => {
     expect(iamTraceNotice(REQ, both)).toContain('1 user · 1 mốc ghi nhận · 0 mốc suy ra · 1 mốc không ghi nhận · 1 mốc chưa kiểm chứng');
   });
 
+  it('never says verified when no shown point was checked', () => {
+    const none: MergedTrace = { ...TRACE, verified: true, users: TRACE.users.map((u) => ({ ...u, points: u.points.map((p) => ({ ...p, check: 'unverified' as const })) })) };
+    expect(iamTracePage(REQ, none)).toContain('Chưa kiểm chứng độc lập');
+  });
+
   it('does not withhold a page because a label ends in a secret-looking key before a time, a gap or an id', () => {
     const many = (id: string, role: string): MergedTrace['users'][number] => ({ id, user_id: '', role_id: role, points: [point({ kind: 'send', state: 'seen', label: 'Nhận push token:', evidence: 'J1 line', time: '1792890123123' }), point({ kind: 'trigger', state: 'seen', label: 'Gửi lại', evidence: 'J1 line', time: '1792890124123' })] });
     const p = iamTracePage(REQ, { ...TRACE, users: [many('RID-TEST-01', ''), many('RID-TEST-02', '')] });
