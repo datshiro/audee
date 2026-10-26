@@ -461,6 +461,7 @@ describe('iam_trace capability', () => {
     expect(prompt).toContain('[publish]');
     expect(prompt).toContain('[subscribe]');
     expect(prompt).toContain('Channel: set "channel" only on publish and subscribe points');
+    expect(prompt).toContain('under the same player entry');
     expect(prompt).toContain('Outcome: "block"');
     expect(prompt).toContain('"conclusion": 2-4 Vietnamese bullets');
     expect(prompt).toContain('at most 60 points');

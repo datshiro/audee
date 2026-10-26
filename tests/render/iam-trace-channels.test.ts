@@ -31,6 +31,13 @@ describe('checkChannels', () => {
     expect(checkChannels([pt('publish', 'role:gamea:U1:R1:env'), pt('subscribe', 'role:gamea:U1:R2:env')]).verdict).toBe('mismatch');
   });
 
+  it('does not claim the same game when a game cannot be read from a channel name', () => {
+    const c = checkChannels([pt('publish', 'broadcast'), pt('subscribe', 'role:gameb:U1:R1:env')]);
+    expect(c.verdict).toBe('mismatch');
+    expect(channelVerdictText(c)).toContain('không xác định được game');
+    expect(channelVerdictText(c)).not.toContain('cùng game');
+  });
+
   it('says what is missing and never turns silence into a verdict', () => {
     expect(checkChannels([pt('subscribe', 'user:gamea:U1')]).verdict).toBe('no_publish');
     expect(checkChannels([]).verdict).toBe('no_publish');

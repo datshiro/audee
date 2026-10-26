@@ -267,7 +267,7 @@ export const INVALID_POINT_WHY = 'bằng chứng không hợp lệ';
 
 // The shape rules every point must meet, traced or corrected. Whether the time parses is the renderer's concern.
 export const CHANNEL_KINDS: readonly PointKind[] = ['publish', 'subscribe'];
-const CHANNEL_RE = /^[A-Za-z0-9][A-Za-z0-9_.:@|-]{0,199}$/u;
+const CHANNEL_RE = /^[^\s<>"\\]{1,300}$/u;
 
 export function pointProblem(p: TracePoint): string | undefined {
   if (p.channel !== '' && (!CHANNEL_KINDS.includes(p.kind) || !CHANNEL_RE.test(p.channel))) return 'point has an unusable channel';
@@ -310,6 +310,12 @@ function journeyTagOk(journey: string, u: TraceUser, request: IamTraceRequest): 
   if (!ID_RE.test(journey)) return false;
   if (request.journey !== undefined && journey === request.target) return false;
   return ![...request.users, u.id, u.user_id, u.role_id].includes(journey);
+}
+
+// Same idea for channels: a publish or subscribe point counts as seen only when its own evidence line names the channel.
+export const CHANNEL_UNPROVEN_WHY = 'dòng log không ghi kênh này';
+export function proveChannels<P extends TracePoint>(points: P[]): P[] {
+  return points.map((p) => (p.state === 'seen' && CHANNEL_KINDS.includes(p.kind) && (p.channel === '' || !mentions(p.evidence, p.channel)) ? { ...p, state: 'inferred', why: CHANNEL_UNPROVEN_WHY } : p));
 }
 
 export function parseTraceOutput(result: RunResult, request: IamTraceRequest): TraceResult {
@@ -382,7 +388,7 @@ export function verifierPoints(points: NumberedPoint[]): NumberedPoint[] {
 function corrected(p: TracePoint, v: Verdict): TracePoint | undefined {
   const { time, source_field, evidence, state, why } = v;
   if (time === undefined || source_field === undefined || evidence === undefined || state === undefined || why === undefined) return undefined;
-  const c: TracePoint = { ...p, time, source_field, evidence, state, why };
+  const c: TracePoint = { ...p, time, source_field, evidence, state, why, ...(state === 'not_recorded' ? { channel: '' } : {}) };
   return pointProblem(c) === undefined ? c : undefined;
 }
 
@@ -393,7 +399,7 @@ export function mergeVerification(trace: TraceResult, verdicts: Verdict[] | unde
   const merge = (apply: boolean): MergedTrace['users'] =>
     trace.users.map((u, i) => ({
       ...u,
-      points: proveJourneys(
+      points: proveChannels(proveJourneys(
         u.points.map((p, j): CheckedPoint => {
           const ref = refOf(i, j);
           const v = apply ? byRef.get(ref) : undefined;
@@ -401,7 +407,7 @@ export function mergeVerification(trace: TraceResult, verdicts: Verdict[] | unde
           const c = v?.verdict === 'CORRECTED' ? corrected(p, v) : undefined;
           return c ? { ...c, ref, check: 'corrected' } : { ...p, ref, check: 'unverified' };
         }),
-      ),
+      )),
     }));
   const tally = (users: MergedTrace['users']): MergedTrace['counts'] => {
     const counts = { confirmed: 0, corrected: 0, unverified: 0 };

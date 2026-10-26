@@ -35,7 +35,9 @@ export function channelVerdictText(c: ChannelCheck): string {
     case 'game':
       return `Lệch game: message được publish lên game ${c.publishedGames.join(', ')} nhưng các phiên SDK của user chỉ subscribe game ${c.subscribedGames.join(', ')}; không phiên nào subscribe kênh đã publish.`;
     case 'mismatch':
-      return 'Không phiên SDK nào subscribe đúng kênh mà message được publish (cùng game nhưng khác kênh).';
+      return c.publishedGames.length > 0 && c.subscribedGames.length > 0
+        ? 'Không phiên SDK nào subscribe đúng kênh mà message được publish (cùng game nhưng khác kênh).'
+        : 'Không phiên SDK nào subscribe đúng kênh mà message được publish; không xác định được game từ tên kênh.';
     case 'no_publish':
       return 'Không ghi nhận dòng message-delivery publish message lên kênh nào, nên chưa so được với các kênh SDK subscribe.';
     case 'no_subscribe':
