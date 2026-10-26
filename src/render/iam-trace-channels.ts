@@ -87,9 +87,9 @@ export function deliveryPaths(points: CheckedPoint[], c: ChannelCheck): Delivery
   const firstPublish = points.filter((p) => p.kind === 'publish' && p.state === 'seen').map((p) => ({ p, ms: msOf(p) })).filter((x): x is { p: CheckedPoint; ms: number } => x.ms !== undefined).sort((a, b) => a.ms - b.ms)[0];
   const message = [
     'Message đã tạo',
-    firstPublish !== undefined ? `${ictTime(firstPublish.p.time)?.text.replace(/\.\d+$/u, '') ?? ''} ICT` : 'giờ publish chưa ghi nhận',
-    c.publishedGames.length > 0 ? `gameId ${c.publishedGames.join(', ')}` : 'gameId chưa ghi nhận',
-    c.subscribedGames.length > 0 ? `SDK user: ${c.subscribedGames.join(', ')}` : 'SDK user: chưa ghi nhận',
+    firstPublish !== undefined ? `${ictTime(firstPublish.p.time)?.text.replace(/\.\d+$/u, '') ?? ''} ICT` : 'chưa rõ giờ publish',
+    c.publishedGames.length > 0 ? `gameId ${c.publishedGames.join(', ')}` : 'gameId chưa rõ',
+    c.subscribedGames.length > 0 ? `SDK user: ${c.subscribedGames.join(', ')}` : 'SDK user: chưa rõ',
   ];
   const replay: DeliveryPath = { name: '2. Replay khi kết nối lại', detail: 'chỉ message không phải App Inbox', outcome: 'unknown', result: UNKNOWN_LABEL, resultDetail: 'Chưa biết message có phải App Inbox không' };
   const inbox: DeliveryPath =
