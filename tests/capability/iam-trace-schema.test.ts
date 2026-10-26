@@ -29,7 +29,7 @@ import type { RunResult } from '../../src/runner/run.js';
 
 const res = (structured: unknown, extra: Partial<RunResult> = {}): RunResult => ({ isError: false, text: '', structured, denials: [], toolUses: [], durationMs: 1, ...extra });
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', window: '24 giờ gần nhất' };
-const point = (over: Partial<TracePoint> = {}): TracePoint => ({ kind: 'trigger', label: 'trigger', journey: 'J1', outcome: 'info', channel: '', time: '1761354123456', source_field: '_time', evidence: 'journey workflow executed J1', state: 'seen', why: '', ...over });
+const point = (over: Partial<TracePoint> = {}): TracePoint => ({ kind: 'trigger', label: 'trigger', journey: 'J1', outcome: 'info', channel: '', result: '', time: '1761354123456', source_field: '_time', evidence: 'journey workflow executed J1', state: 'seen', why: '', ...over });
 const GOOD: TraceResult = {
   status: 'done',
   finding: 'IAM đã gửi.',

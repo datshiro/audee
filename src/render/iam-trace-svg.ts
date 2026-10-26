@@ -7,7 +7,7 @@ import type { LayoutNode } from './iam-trace-layout.js';
 
 export const PITCH = 156;
 export const PAD = 8;
-export const LANE_HEIGHT = 134;
+export const LANE_HEIGHT = 150;
 export const LABEL_COLUMNS = 18;
 export const SUB_COLUMNS = 20;
 const SHRINK_LIMIT = 0.85;
@@ -51,13 +51,14 @@ export function laneSvg(nodes: LayoutNode[]): string {
   const cx = (i: number): number => PAD + PITCH / 2 + i * PITCH;
   const parts: string[] = [];
   if (nodes.length > 1) parts.push(`<path class="axis" d="M${cx(0)} ${AXIS_Y} L${cx(nodes.length - 1)} ${AXIS_Y}"/>`);
-  // Times, sub-labels and gaps come before the labels in the markup (placement is by x/y): the secret check reads the
+  // Times, results, notes and gaps come before the labels in the markup (placement is by x/y): the secret check reads the
   // page text with no separator between texts, and a label ending in "token:" must not run into a time.
   nodes.forEach((n, i) => {
     const x = cx(i);
     parts.push(text('tm', x, 88, `${n.time}${n.marked ? ' †' : ''}`));
-    if (n.sub !== undefined) parts.push(text('sb', x, 106, clip(defang(n.sub), SUB_COLUMNS)));
-    if (n.gap !== undefined) parts.push(text('gp', x + PITCH / 2, 126, n.gap));
+    if (n.result !== undefined) parts.push(text('sb', x, 106, clip(defang(n.result), SUB_COLUMNS)));
+    if (n.note !== undefined) parts.push(text('nt', x, 122, clip(defang(n.note), SUB_COLUMNS)));
+    if (n.gap !== undefined) parts.push(text('gp', x + PITCH / 2, 142, n.gap));
   });
   nodes.forEach((n, i) => {
     const x = cx(i);

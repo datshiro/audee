@@ -60,7 +60,8 @@ function windowRule(req: IamTraceRequest, since: string): string {
 
 const TIME_RULE = 'Time: copy the entry time exactly as the tool shows it into "time" and set "source_field" to "_time". Only when the message text itself prints a time, copy that printed value instead and name it as printed in "source_field". Never convert time zones; audee converts.';
 const JOURNEY_RULE = 'Journey: every server point carries "journey", the id of the journey it belongs to, copied from its own log line (the workflow id journey-<journeyId>-<userId>|<time>, a journeyId or journeyInfo id, an API path /journeys/<id>). A line that prints no journey id but shares a traceId with a line that does belongs to that journey: keep the traceId text in the evidence. audee shows a point as inferred unless its own evidence or a same-traceId evidence of another point carries the journey id; if you can only guess the journey, tag the guess and say so in "why". Leave "journey" empty for delivered, publish, subscribe, sdk_event and inbox points.';
-const LABEL_RULE = 'Label: a short name of at most 24 characters that the timeline prints under each node (for example "Điều kiện", "Tần suất", "Gửi IAM", "GameAPI"). Never put a URL, path, id or sentence in the label: those belong in the evidence. Name the same step the same way every time, so repeats collapse.';
+const LABEL_RULE = 'Label: a short name of at most 24 characters that says what the step does in the data flow, not which service ran it: "Event trigger", "Evaluate điều kiện", "Enrichment: role" or "Enrichment: user" (loading player data), "Validation: country" (a gate or eligibility check), "CDP: <what>" (a CDP or external API call), "Frequency check", "Gửi IAM". Never a service name, URL, path, id or sentence: those belong in the evidence. Name the same step the same way every time, so repeats collapse.';
+const RESULT_RULE = 'Result: at most 20 characters, what the step returned or decided, copied from what the line prints ("đạt", "> 175 ✓", "country OT", "lần đầu ✓", "đã gửi rồi", "HTTP 200"). When the line prints no result, leave it empty and never guess one; the page then says "không in kết quả". Empty on not_recorded points.';
 const CHANNEL_RULE = 'Channel: set "channel" only on publish and subscribe points (the exact channel name from the line, no quotes, ids included); leave it empty on every other point. audee compares the published channel with the subscribed ones itself: the evidence of a publish or subscribe point must be the line that names the channel. Put the publish and subscribe points under the same player entry, with both "user_id" and "role_id" filled. Do not state the verdict in a point; say it in the conclusion only when the lines show both.';
 const OUTCOME_RULE = 'Outcome: "block" when the point stops the user there (condition false, frequency rejected, excluded by a gate), "pass" when a check passed or an action succeeded (send accepted), "info" otherwise.';
 const EVIDENCE_RULE = 'Evidence: one line verbatim, at most 600 characters. Replace the value of every token, key, secret or password field with <redacted>. Never quote push tokens or credentials.';
@@ -77,7 +78,7 @@ ${windowRule(req, req.since)}
 Points, one line each, with the kind in brackets. You see only a log line's message text and its entry time, so match a point only on text that appears in the message or its detail.
 - [trigger] "journey workflow executed"; the workflow id journey-<journeyId>-<userId>|<event time> also carries it.
 - [wait_end] "wait operation completed".
-- [check_call] "[TRACE] <API name> call request" and "receive response done": one point each; the label names the API.
+- [check_call] "[TRACE] <API name> call request" with its "receive response done": ONE point per call, at the request time; "result" is what the response line prints (status, value, country); the evidence is the request line, then " || ", then the response line. Label it by purpose (enrichment, validation, CDP), not by the API name.
 - [condition] "condition evaluation result". When the message prints a target node, that is the NEXT node, so a result whose target is B is the outcome of node A's condition.
 - [frequency] "condition into frequency_check_*" (pass) or "frequency check rejected".
 - [send] "[TRACE] SendInAppMessage call request" and the message-delivery "/api/v1/message/send" for this campaign.
@@ -94,6 +95,7 @@ Reading rules:
 - ${EVIDENCE_RULE}
 - ${JOURNEY_RULE}
 - ${LABEL_RULE}
+- ${RESULT_RULE}
 - ${CHANNEL_RULE}
 - ${OUTCOME_RULE}
 - States: seen = a line you retrieved shows it in its message text. inferred = no line shows it, but what ran next proves it (for example, worker lines lost after a wait: the next node's call or the message-delivery send proves the check passed); say why in "why". not_recorded = no line found; time and evidence empty.
@@ -114,7 +116,7 @@ Output rules:
 // evidence cannot close the data block.
 export function iamVerifyPrompt(req: IamTraceRequest, trace: TraceResult, since: string): string {
   const points = verifierPoints(numberPoints(trace)).map((p) => ({
-    ref: p.ref, user: p.user, kind: p.kind, label: p.label, journey: p.journey, outcome: p.outcome, channel: p.channel, time: p.time, source_field: p.source_field, state: p.state, evidence: clip(p.evidence, VERIFY_EVIDENCE_CHARS), why: p.why,
+    ref: p.ref, user: p.user, kind: p.kind, label: p.label, journey: p.journey, outcome: p.outcome, channel: p.channel, result: p.result, time: p.time, source_field: p.source_field, state: p.state, evidence: clip(p.evidence, VERIFY_EVIDENCE_CHARS), why: p.why,
   }));
   return `You are an independent verifier, running unattended; nobody can answer questions. Use only your tools: trace_identity, trace_key, search_logs, list_services.
 Another session traced an Apollo in-app message (IAM) for the request below and produced the points below.

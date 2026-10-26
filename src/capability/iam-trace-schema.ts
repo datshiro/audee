@@ -183,6 +183,7 @@ const EVIDENCE_DESC = 'one log line verbatim, at most 600 characters, token/key/
 const WHY_DESC = 'inferred only: why, at most 300 characters; else empty';
 const JOURNEY_DESC = 'the id of the journey this point belongs to, as printed in the log line or in a line with the same traceId; empty for delivered, sdk_event and inbox points and when no journey id is known';
 const CHANNEL_DESC = 'publish and subscribe points: the channel name copied verbatim from the log line (for example role:<game>:<userId>:<roleId>:<env>); empty for every other kind and for a not_recorded subscribe';
+const RESULT_DESC = 'at most 20 characters: what the step returned or decided, only as the line prints it (for example "đạt", "> 175 ✓", "country OT", "lần đầu ✓", "HTTP 200"); empty when the line prints nothing; never guessed';
 const OUTCOME_DESC = 'block = the user stops at this point (condition false, frequency rejected, excluded); pass = a check passed or an action succeeded; info = neutral';
 const stringItem = { type: 'string' };
 const states = { type: 'string', enum: [...POINT_STATES] };
@@ -190,13 +191,14 @@ const states = { type: 'string', enum: [...POINT_STATES] };
 const POINT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
-  required: ['kind', 'label', 'journey', 'outcome', 'channel', 'time', 'source_field', 'evidence', 'state', 'why'],
+  required: ['kind', 'label', 'result', 'journey', 'outcome', 'channel', 'time', 'source_field', 'evidence', 'state', 'why'],
   properties: {
     kind: { type: 'string', enum: [...POINT_KINDS] },
     journey: { type: 'string', description: JOURNEY_DESC },
     outcome: { type: 'string', enum: [...POINT_OUTCOMES], description: OUTCOME_DESC },
     channel: { type: 'string', description: CHANNEL_DESC },
-    label: { type: 'string', description: 'a short name of at most 24 characters (for example "Điều kiện", "Gửi IAM"); URLs, ids and log details belong in the evidence' },
+    result: { type: 'string', description: RESULT_DESC },
+    label: { type: 'string', description: 'a short name of at most 24 characters saying what the step does in the data flow (for example "Evaluate điều kiện", "Enrichment: role", "Gửi IAM"); URLs, ids and log details belong in the evidence' },
     time: { type: 'string', description: TIME_DESC },
     source_field: { type: 'string', description: SOURCE_DESC },
     evidence: { type: 'string', description: EVIDENCE_DESC },
@@ -258,7 +260,7 @@ export const IAM_VERIFY_SCHEMA: Record<string, unknown> = {
   },
 };
 
-export type TracePoint = { kind: PointKind; label: string; journey: string; outcome: PointOutcome; channel: string; time: string; source_field: string; evidence: string; state: PointState; why: string };
+export type TracePoint = { kind: PointKind; label: string; result: string; journey: string; outcome: PointOutcome; channel: string; time: string; source_field: string; evidence: string; state: PointState; why: string };
 export type TraceUser = { id: string; user_id: string; role_id: string; points: TracePoint[] };
 export type TraceResult = { status: 'done' | 'need_input'; finding: string; conclusion: string[]; users: TraceUser[]; missing: string[]; notes: string[] };
 export type Verdict = { ref: string; verdict: 'CONFIRMED' | 'CORRECTED'; time?: string; source_field?: string; evidence?: string; state?: PointState; why?: string };
@@ -274,7 +276,7 @@ export function pointProblem(p: TracePoint): string | undefined {
   if (CHANNEL_KINDS.includes(p.kind) && p.state !== 'not_recorded' && p.channel === '') return 'publish or subscribe point has no channel';
   if (p.state === 'seen' && p.evidence.trim() === '') return 'seen point has no evidence';
   if (p.state === 'inferred' && p.why.trim() === '') return 'inferred point has no why';
-  if (p.state === 'not_recorded' && (p.time.trim() !== '' || p.evidence.trim() !== '' || p.channel !== '')) return 'not_recorded point has a time or evidence';
+  if (p.state === 'not_recorded' && (p.time.trim() !== '' || p.evidence.trim() !== '' || p.channel !== '' || p.result.trim() !== '')) return 'not_recorded point has a time or evidence';
   return undefined;
 }
 
@@ -388,7 +390,7 @@ export function verifierPoints(points: NumberedPoint[]): NumberedPoint[] {
 function corrected(p: TracePoint, v: Verdict): TracePoint | undefined {
   const { time, source_field, evidence, state, why } = v;
   if (time === undefined || source_field === undefined || evidence === undefined || state === undefined || why === undefined) return undefined;
-  const c: TracePoint = { ...p, time, source_field, evidence, state, why, ...(state === 'not_recorded' ? { channel: '' } : {}) };
+  const c: TracePoint = { ...p, time, source_field, evidence, state, why, ...(state === 'not_recorded' ? { channel: '', result: '' } : {}) };
   return pointProblem(c) === undefined ? c : undefined;
 }
 

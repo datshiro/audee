@@ -24,7 +24,8 @@ export type LayoutNode = {
   inferred: boolean;
   time: string; // hh:mm:ss, with dd/mm in front when the day differs from the previous node; — or ? without a usable time
   marked: boolean; // the time was printed inside the message, not the log-store time
-  sub?: string;
+  result?: string; // what the step returned or decided, as the log printed it
+  note?: string; // xN đến <last time>, không ghi nhận, suy ra, không in kết quả
   gap?: string; // time from this node to the next one
   count: number;
 };
@@ -91,7 +92,7 @@ export function mergePlayers(users: MergedTrace['users']): Array<{ ids: string[]
   const root = (i: number): number => (group[i] === i ? i : (group[i] = root(group[i] as number)));
   users.forEach((a, i) => users.slice(0, i).forEach((b, j) => samePlayer(a, b) && (group[root(i)] = root(j))));
   const out: Array<{ ids: string[]; userId: string; roleId: string; points: CheckedPoint[]; at: number }> = [];
-  const key = (c: CheckedPoint): string => [c.kind, c.journey, c.label, c.outcome, c.channel, c.time, c.evidence].join('\u0000');
+  const key = (c: CheckedPoint): string => [c.kind, c.journey, c.label, c.outcome, c.channel, c.result, c.time, c.evidence].join('\u0000');
   users.forEach((u, i) => {
     const at = root(i);
     let p = out.find((x) => x.at === at);
@@ -135,7 +136,7 @@ function classOf(p: CheckedPoint): NodeClass {
 }
 
 const labelOf = (p: CheckedPoint): string => (p.label.trim() === '' ? KIND_VI[p.kind] : p.label.trim());
-const sameNode = (a: CheckedPoint, b: CheckedPoint): boolean => a.kind === b.kind && labelOf(a) === labelOf(b) && a.outcome === b.outcome && a.state === b.state && a.channel === b.channel;
+const sameNode = (a: CheckedPoint, b: CheckedPoint): boolean => a.kind === b.kind && labelOf(a) === labelOf(b) && a.outcome === b.outcome && a.state === b.state && a.channel === b.channel && a.result === b.result;
 
 // Adjacent identical points become one node with a count; the gap to the next node runs from the last of them.
 export function buildNodes(points: CheckedPoint[]): LayoutNode[] {
@@ -157,18 +158,20 @@ export function buildNodes(points: CheckedPoint[]): LayoutNode[] {
       time = day !== undefined && start.date !== day ? `${start.date} ${start.clock}` : start.clock;
       day = start.date;
     }
-    let sub: string | undefined;
+    let note: string | undefined;
     if (run.length > 1) {
-      sub = `x${run.length}`;
+      note = `x${run.length}`;
       if (start !== undefined && lastRun.ms !== undefined) {
         const end = ictParts(lastRun.ms);
-        if (end.date !== start.date) sub += ` đến ${end.date} ${end.clock.slice(0, 5)}`;
-        else if (end.clock !== start.clock) sub += ` đến ${end.clock}`;
+        if (end.date !== start.date) note += ` đến ${end.date} ${end.clock.slice(0, 5)}`;
+        else if (end.clock !== start.clock) note += ` đến ${end.clock}`;
         day = end.date;
       }
-    } else if (cls === 'missing') sub = 'không ghi nhận';
-    else if (p.state === 'inferred' && start === undefined) sub = 'suy ra';
-    return { cls, label: labelOf(p), inferred: p.state === 'inferred', time, marked: start !== undefined && p.source_field.trim() !== '' && p.source_field.trim() !== '_time', ...(sub !== undefined ? { sub } : {}), count: run.length };
+    } else if (cls === 'missing') note = 'không ghi nhận';
+    else if (p.state === 'inferred' && start === undefined) note = 'suy ra';
+    else if (p.state === 'seen' && p.result.trim() === '' && CHECK_KINDS.has(p.kind)) note = 'không in kết quả';
+    const result = p.result.trim();
+    return { cls, label: labelOf(p), inferred: p.state === 'inferred', time, marked: start !== undefined && p.source_field.trim() !== '' && p.source_field.trim() !== '_time', ...(result !== '' ? { result } : {}), ...(note !== undefined ? { note } : {}), count: run.length };
   });
   runs.forEach((run, i) => {
     const next = runs[i + 1]?.[0];

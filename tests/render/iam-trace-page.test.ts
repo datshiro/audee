@@ -8,7 +8,7 @@ import { leaksSecret } from '../../src/render/secrets.js';
 import { PUBLISHED, SAMPLE_REQUEST, SUBSCRIBED_ROLE, sampleTrace } from '../fixtures/iam-trace-sample.js';
 
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', window: '24 giờ gần nhất' };
-const point = (over: Partial<CheckedPoint> & Pick<CheckedPoint, 'kind' | 'state'>): CheckedPoint => ({ label: '', journey: 'J1', outcome: 'info', channel: '', time: '', source_field: '', evidence: '', why: '', ref: 'u1-p1', check: 'unverified', ...over });
+const point = (over: Partial<CheckedPoint> & Pick<CheckedPoint, 'kind' | 'state'>): CheckedPoint => ({ label: '', journey: 'J1', outcome: 'info', channel: '', result: '', time: '', source_field: '', evidence: '', why: '', ref: 'u1-p1', check: 'unverified', ...over });
 // send comes before check_call so the time sort is exercised; trigger and check_call share an instant and keep their order.
 const TRACE: MergedTrace = {
   finding: 'IAM đã gửi cho u1 <b>ok</b>.',
@@ -207,7 +207,7 @@ describe('iam trace page', () => {
     const many: MergedTrace = { ...TRACE, users: [{ id: 'u1', user_id: 'u1', role_id: '', points: Array.from({ length: 30 }, (_, i) => point({ kind: 'condition', state: 'seen', label: `step ${i}`, evidence: 'J1', time: String(1792890000000 + i * 1000) })) }] };
     const p = iamTracePage(REQ, many);
     expect(checkAnswerPage(p)).toBeUndefined();
-    expect(p).toContain(`viewBox="0 0 ${30 * 156 + 16} 134"`);
+    expect(p).toContain(`viewBox="0 0 ${30 * 156 + 16} 150"`);
     expect(p).toContain('.scroll{overflow-x:auto');
     expect(p).toContain(`.w30{max-width:${30 * 156 + 16}px`);
   });
@@ -223,7 +223,7 @@ describe('iam trace page', () => {
     expect(texts).toContain('push sent: push accepted');
     expect(texts).toContain('kết luận hai');
     expect(texts).toContain(TRACE.finding);
-    const raw: TraceResult = { status: 'done', finding: 'f', conclusion: [], missing: [], notes: [], users: [{ id: 'u1', user_id: 'u1', role_id: '', points: [{ kind: 'send', label: 'token', journey: '', outcome: 'info', channel: '', time: '', source_field: '', evidence: 'abcdefghijkl12', state: 'seen', why: '' }] }] };
+    const raw: TraceResult = { status: 'done', finding: 'f', conclusion: [], missing: [], notes: [], users: [{ id: 'u1', user_id: 'u1', role_id: '', points: [{ kind: 'send', label: 'token', journey: '', outcome: 'info', channel: '', result: '', time: '', source_field: '', evidence: 'abcdefghijkl12', state: 'seen', why: '' }] }] };
     expect(iamTraceTexts(raw)).toContain('token: abcdefghijkl12');
     expect(leaksSecret(iamTraceTexts(raw))).toBe(true);
   });
