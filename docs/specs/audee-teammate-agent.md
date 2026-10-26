@@ -125,7 +125,7 @@ owner notices carry that name as their kind).
   page (verifier skipped, failed, broke the contract, re-queried nothing or changed most points) is still delivered,
   with "chưa kiểm chứng độc lập" on the page and in the notice; the owner is notified and the job folder is kept.
 - Tags (2026-10-26, timeline redesign): the trace tags each point with `journey` (an id, empty for client kinds) and
-  `outcome` (`pass`, `block`, `info`) and returns a short `conclusion` (2-4 bullets); the verifier schema is unchanged
+  `outcome` (`pass`, `block`, `info`) and returns a short `conclusion` (2-4 bullets); a point's `label` is a short name of at most 24 characters, since the graph prints it under the node (URLs, ids and log details stay in the evidence); the verifier schema is unchanged
   and never touches them. audee validates the tags: an unsafe journey id becomes empty, the conclusion is capped at 4
   bullets, a journey tag equal to the campaign (when the request names the journey too), a requested user or a role id becomes empty, a trace holds at most 60 points per user (several journeys per user). After verification a server point's
   journey counts as seen only when its own evidence carries the journey id (as a whole token) or shares a `traceId`
