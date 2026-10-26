@@ -28,7 +28,7 @@ describe('wrapLabel', () => {
 
 describe('laneSvg', () => {
   it('sizes the viewBox from the node count and uses only allowed elements', () => {
-    const svg = laneSvg([node(), node({ label: 'Gửi IAM', cls: 'sent', gap: '+1s' }), node({ cls: 'missing', time: '—', sub: 'không ghi nhận' })]);
+    const svg = laneSvg([node(), node({ label: 'Gửi IAM', cls: 'sent', gap: '+1s' }), node({ cls: 'missing', time: '—', note: 'không ghi nhận' })]);
     const w = laneWidth(3);
     expect(svg).toContain(`viewBox="0 0 ${w} ${LANE_HEIGHT}"`);
     expect(svg).toContain(`width="${w}" height="${LANE_HEIGHT}"`);
@@ -54,12 +54,14 @@ describe('laneSvg', () => {
   });
 
   it('puts the label above, the time and sub-label below and the gap between nodes', () => {
-    const svg = laneSvg([node({ label: 'A', sub: 'x3 đến 10:05:00', marked: true, gap: '+1.1s' }), node({ label: 'B' })]);
+    const svg = laneSvg([node({ label: 'A', result: 'isSatisfied=true', note: 'x3 đến 10:05:00', marked: true, gap: '+1.1s' }), node({ label: 'B' })]);
     const y = (cls: string): number => Number(new RegExp(`class="${cls}" x="[\\d.]+" y="(\\d+)"`).exec(svg)?.[1]);
     expect(y('lb')).toBeLessThan(56);
     expect(y('tm')).toBeGreaterThan(56);
     expect(y('sb')).toBeGreaterThan(y('tm'));
-    expect(y('gp')).toBeGreaterThan(y('sb'));
+    expect(y('nt')).toBeGreaterThan(y('sb'));
+    expect(y('gp')).toBeGreaterThan(y('nt'));
+    expect(svg).toContain('isSatisfied=true');
     expect(svg).toContain('10:00:00 †');
     expect(svg).toContain('x3 đến 10:05:00');
     const gapX = Number(/class="gp" x="([\d.]+)"/.exec(svg)?.[1]);
@@ -73,7 +75,7 @@ describe('laneSvg', () => {
   });
 
   it('keeps the repeat sub-label whole when ten or more repeats cross a day', () => {
-    expect(laneSvg([node({ sub: 'x12 đến 26/10 04:00' })])).toContain('x12 đến 26/10 04:00<');
+    expect(laneSvg([node({ note: 'x12 đến 26/10 04:00' })])).toContain('x12 đến 26/10 04:00<');
   });
 
   it('writes times before labels so a label never runs into a time in the page text', () => {
@@ -82,7 +84,7 @@ describe('laneSvg', () => {
   });
 
   it('escapes and defangs model text', () => {
-    const svg = laneSvg([node({ label: '<script>alert(1)</script> https://evil.example', sub: '"><b>' })]);
+    const svg = laneSvg([node({ label: '<script>alert(1)</script> https://evil.example', result: '"><b>' })]);
     expect(svg).not.toContain('<script');
     expect(svg).toContain('&lt;script&gt;');
     expect(svg).not.toContain('https://');

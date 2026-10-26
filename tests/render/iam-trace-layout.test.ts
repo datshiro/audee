@@ -5,7 +5,7 @@ import { CAMPAIGN, JOURNEY, OTHER_JOURNEY, ROLE_ID, SAMPLE_REQUEST, sampleTrace,
 
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1'], since: '24h', window: '24 giờ gần nhất' };
 const pt = (over: Partial<CheckedPoint> & Pick<CheckedPoint, 'kind'>): CheckedPoint => ({
-  label: 'x', journey: 'J1', outcome: 'info', channel: '', time: '', source_field: '_time', evidence: 'e', state: 'seen', why: '', ref: 'r', check: 'unverified', ...over,
+  label: 'x', journey: 'J1', outcome: 'info', channel: '', result: '', time: '', source_field: '_time', evidence: 'e', state: 'seen', why: '', ref: 'r', check: 'unverified', ...over,
 });
 const user = (id: string, points: CheckedPoint[], ids: Partial<{ user_id: string; role_id: string }> = {}): MergedTrace['users'][number] => ({ id, user_id: ids.user_id ?? '', role_id: ids.role_id ?? '', points });
 const trace = (users: MergedTrace['users']): MergedTrace => ({ finding: 'f', conclusion: [], notes: [], verified: true, counts: { confirmed: 0, corrected: 0, unverified: 0 }, users });
@@ -65,7 +65,7 @@ describe('buildNodes', () => {
   it('collapses adjacent identical points into one node with the first time and the last time', () => {
     const rejected = (time: string): CheckedPoint => pt({ kind: 'frequency', label: 'Chặn', outcome: 'block', time });
     const nodes = buildNodes([pt({ kind: 'trigger', label: 'a', time: T('03:00:00') }), rejected(T('03:05:00')), rejected(T('03:05:30')), rejected(T('03:09:00')), pt({ kind: 'send', label: 'z', time: T('04:00:00') })]);
-    expect(nodes.map((n) => [n.label, n.count, n.time, n.sub, n.gap])).toEqual([
+    expect(nodes.map((n) => [n.label, n.count, n.time, n.note, n.gap])).toEqual([
       ['a', 1, '10:00:00', undefined, '+5m'],
       ['Chặn', 3, '10:05:00', 'x3 đến 10:09:00', '+51m'],
       ['z', 1, '11:00:00', undefined, undefined],
@@ -75,9 +75,9 @@ describe('buildNodes', () => {
   it('puts the end date in the sub-label when a run crosses midnight, and writes only xN for one instant', () => {
     const b = (time: string): CheckedPoint => pt({ kind: 'frequency', label: 'B', outcome: 'block', time });
     const [cross] = buildNodes([b('2026-10-25T16:00:00Z'), b('2026-10-26T03:00:00Z')]);
-    expect(cross?.sub).toBe('x2 đến 26/10 10:00');
+    expect(cross?.note).toBe('x2 đến 26/10 10:00');
     const [same] = buildNodes([b(T('03:00:00.100')), b(T('03:00:00.900'))]);
-    expect(same?.sub).toBe('x2');
+    expect(same?.note).toBe('x2');
   });
 
   it('does not collapse points that differ in kind, label, outcome or state, nor merge non-adjacent repeats', () => {
@@ -88,8 +88,9 @@ describe('buildNodes', () => {
       pt({ ...base, kind: 'condition', outcome: 'block', time: T('03:00:02'), state: 'inferred', why: 'w' }),
       pt({ ...base, kind: 'frequency', outcome: 'block', time: T('03:00:03') }),
       pt({ ...base, kind: 'condition', outcome: 'pass', time: T('03:00:04') }),
+      pt({ ...base, kind: 'condition', outcome: 'pass', time: T('03:00:05'), result: 'country OT' }),
     ]);
-    expect(nodes).toHaveLength(5);
+    expect(nodes).toHaveLength(6);
     expect(nodes.every((n) => n.count === 1)).toBe(true);
   });
 
@@ -115,7 +116,7 @@ describe('buildNodes', () => {
       pt({ kind: 'send', label: 'early', time: T('03:00:00') }),
       pt({ kind: 'inbox', label: 'bad', time: 'soon' }),
     ]);
-    expect(nodes.map((n) => [n.label, n.time, n.sub, n.gap])).toEqual([
+    expect(nodes.map((n) => [n.label, n.time, n.note, n.gap])).toEqual([
       ['early', '10:00:00', undefined, undefined],
       ['bad', '?', undefined, undefined],
       ['late', '12:00:00', undefined, undefined],
@@ -126,7 +127,7 @@ describe('buildNodes', () => {
 
   it('puts an untimed point that leads the model order first and labels an inferred point with no time', () => {
     const nodes = buildNodes([pt({ kind: 'condition', label: 'guess', state: 'inferred', why: 'y' }), pt({ kind: 'send', label: 'real', time: T('03:00:00') })]);
-    expect(nodes.map((n) => [n.label, n.time, n.sub])).toEqual([['guess', '—', 'suy ra'], ['real', '10:00:00', undefined]]);
+    expect(nodes.map((n) => [n.label, n.time, n.note])).toEqual([['guess', '—', 'suy ra'], ['real', '10:00:00', undefined]]);
   });
 
   it('marks a point only when its time was printed inside the message', () => {
@@ -215,15 +216,15 @@ describe('layoutTrace', () => {
     const [first, second] = players[0]?.journeys ?? [];
     expect(first?.nodes.map((n) => [n.label, n.count, n.time])).toEqual([
       ['Run bắt đầu', 1, '10:28:15'],
-      ['GameAPI role enrich', 1, '10:28:15'],
-      ['Điều kiện', 1, '10:28:16'],
-      ['Tần suất', 1, '10:28:16'],
+      ['Enrichment: role', 1, '10:28:15'],
+      ['Evaluate điều kiện', 1, '10:28:16'],
+      ['Frequency check', 1, '10:28:16'],
       ['Gửi IAM', 1, '10:28:16'],
       ['Chặn tần suất', 3, '12:22:00'],
       ['Hết wait', 1, '26/10 13:26:00'],
     ]);
     expect(first?.nodes.map((n) => n.gap)).toEqual(['+0.4s', '+1.1s', '+0.1s', '+0.1s', '+1h53m', '+1d1h', undefined]);
-    expect(first?.nodes[5]?.sub).toBe('x3 đến 12:22:09');
+    expect(first?.nodes[5]?.note).toBe('x3 đến 12:22:09');
     expect(first?.sub).toBe('25–26/10');
     expect(second?.sub).toBe('25/10');
     expect(second?.nodes.map((n) => [n.label, n.count, n.cls, n.inferred])).toEqual([
@@ -233,6 +234,13 @@ describe('layoutTrace', () => {
       ['Loại: event B', 2, 'block', false],
       ['Loại: event C', 1, 'block', false],
     ]);
+  });
+
+  it('prints each step\'s result under its time, and says when a check printed none', () => {
+    const [first] = players[0]?.journeys ?? [];
+    expect(first?.nodes.map((n) => n.result)).toEqual([undefined, undefined, '> 175 ✓', 'lần đầu ✓', 'HTTP 200', undefined, undefined]);
+    expect(first?.nodes[1]?.note).toBe('không in kết quả');
+    expect(first?.nodes[0]?.note).toBeUndefined();
   });
 
   it('puts delivered, SDK and inbox points on the client lane, with a not recorded node', () => {
@@ -245,12 +253,12 @@ describe('layoutTrace', () => {
       ['SDK subscribe', 'other', '11:42:24'],
       ['SDK subscribe', 'other', '11:43:43'],
     ]);
-    expect(players[0]?.client.nodes[0]?.sub).toBe('không ghi nhận');
+    expect(players[0]?.client.nodes[0]?.note).toBe('không ghi nhận');
   });
 
   it('lists the points lane by lane for the evidence table', () => {
     const labels = players[0]?.points.map((p) => p.label) ?? [];
-    expect(labels.slice(0, 2)).toEqual(['Run bắt đầu', 'GameAPI role enrich']);
+    expect(labels.slice(0, 2)).toEqual(['Run bắt đầu', 'Enrichment: role']);
     expect(labels.at(-1)).toBe('SDK subscribe');
   });
 

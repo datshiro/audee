@@ -25,6 +25,7 @@ const point = (spec: Spec): CheckedPoint => {
     journey,
     outcome: 'info',
     channel: '',
+    result: '',
     time: '',
     source_field: state === 'not_recorded' ? '' : '_time',
     evidence: state === 'seen' ? `line ${n} for journey ${journey} traceId=trace-${n}` : '',
@@ -38,10 +39,10 @@ const point = (spec: Spec): CheckedPoint => {
 
 const server = (): CheckedPoint[] => [
   point({ kind: 'trigger', label: 'Run bắt đầu', time: '2026-10-25T03:28:15.000Z', check: 'confirmed' }),
-  point({ kind: 'check_call', label: 'GameAPI role enrich', time: '2026-10-25T03:28:15.400Z' }),
-  point({ kind: 'condition', label: 'Điều kiện', outcome: 'pass', time: '2026-10-25T03:28:16.500Z', source_field: 'ts', check: 'confirmed' }),
-  point({ kind: 'frequency', label: 'Tần suất', outcome: 'pass', time: '2026-10-25T03:28:16.600Z' }),
-  point({ kind: 'send', label: 'Gửi IAM', outcome: 'pass', time: '2026-10-25T03:28:16.700Z', check: 'confirmed' }),
+  point({ kind: 'check_call', label: 'Enrichment: role', time: '2026-10-25T03:28:15.400Z' }),
+  point({ kind: 'condition', label: 'Evaluate điều kiện', result: '> 175 ✓', outcome: 'pass', time: '2026-10-25T03:28:16.500Z', source_field: 'ts', check: 'confirmed' }),
+  point({ kind: 'frequency', label: 'Frequency check', result: 'lần đầu ✓', outcome: 'pass', time: '2026-10-25T03:28:16.600Z' }),
+  point({ kind: 'send', label: 'Gửi IAM', result: 'HTTP 200', outcome: 'pass', time: '2026-10-25T03:28:16.700Z', check: 'confirmed' }),
   point({ kind: 'frequency', label: 'Chặn tần suất', outcome: 'block', time: '2026-10-25T05:22:00.000Z' }),
   point({ kind: 'frequency', label: 'Chặn tần suất', outcome: 'block', time: '2026-10-25T05:22:00.800Z' }),
   point({ kind: 'frequency', label: 'Chặn tần suất', outcome: 'block', time: '2026-10-25T05:22:09.000Z' }),

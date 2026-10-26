@@ -3,7 +3,7 @@ import type { CheckedPoint } from '../../src/capability/iam-trace-schema.js';
 import { channelVerdictText, checkChannels, deliveryPaths, gameOf } from '../../src/render/iam-trace-channels.js';
 
 const pt = (kind: 'publish' | 'subscribe', channel: string, state: CheckedPoint['state'] = 'seen'): CheckedPoint => ({
-  kind, label: kind, journey: '', outcome: 'info', channel, time: '', source_field: '_time', evidence: state === 'seen' ? 'line' : '', why: state === 'inferred' ? 'w' : '', state, ref: 'r', check: 'unverified',
+  kind, label: kind, journey: '', outcome: 'info', channel, result: '', time: '', source_field: '_time', evidence: state === 'seen' ? 'line' : '', why: state === 'inferred' ? 'w' : '', state, ref: 'r', check: 'unverified',
 });
 
 describe('gameOf', () => {

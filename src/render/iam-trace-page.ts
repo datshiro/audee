@@ -70,6 +70,7 @@ text{fill:var(--fg);text-anchor:middle;font:13px/1.2 -apple-system,"Segoe UI",Ro
 .lb{font-weight:600}
 .tm{font-variant-numeric:tabular-nums}
 .sb{font-weight:600}
+.nt{fill:var(--muted);font-size:12px}
 .gp{fill:var(--muted);font-size:12px}
 .ev{white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,Menlo,monospace;font-size:13px}
 td small{display:block;color:var(--muted)}`;
@@ -138,7 +139,7 @@ ${unknown.length > 0 ? `<ul>${unknown.join('')}</ul>` : '<p>Mọi mốc đều t
 }
 
 function tableRow(p: CheckedPoint, player: LayoutPlayer, many: boolean): string {
-  const where = [many ? ids(player) : '', p.channel !== '' ? `kênh ${t(p.channel, 200)}` : '', rowOf(p.kind) === 'server' && p.journey !== '' ? `Journey ${t(idTail(p.journey), 64)}` : '', `kết quả: ${OUTCOME_VI[p.outcome]}`].filter((x) => x !== '').join(' · ');
+  const where = [many ? ids(player) : '', p.channel !== '' ? `kênh ${t(p.channel, 200)}` : '', p.result.trim() !== '' ? `trả về: ${t(p.result, 60)}` : '', rowOf(p.kind) === 'server' && p.journey !== '' ? `Journey ${t(idTail(p.journey), 64)}` : '', `kết quả: ${OUTCOME_VI[p.outcome]}`].filter((x) => x !== '').join(' · ');
   const why = p.state === 'inferred' && p.why.trim() !== '' ? `<small>Suy ra vì: ${t(p.why, 300)}</small>` : '';
   return `<tr><td>${KIND_VI[p.kind]}: ${label(p)}<small>· ${where}</small></td><td>${timeText(p)}</td><td>${t(p.source_field, 60)}</td><td>${status(p)}</td><td><div class="ev">${t(p.evidence, 600)}</div>${why}</td></tr>`;
 }
