@@ -60,6 +60,7 @@ function windowRule(req: IamTraceRequest, since: string): string {
 
 const TIME_RULE = 'Time: copy the entry time exactly as the tool shows it into "time" and set "source_field" to "_time". Only when the message text itself prints a time, copy that printed value instead and name it as printed in "source_field". Never convert time zones; audee converts.';
 const JOURNEY_RULE = 'Journey: every server point carries "journey", the id of the journey it belongs to, copied from its own log line (the workflow id journey-<journeyId>-<userId>|<time>, a journeyId or journeyInfo id, an API path /journeys/<id>). A line that prints no journey id but shares a traceId with a line that does belongs to that journey: keep the traceId text in the evidence. audee shows a point as inferred unless its own evidence or a same-traceId evidence of another point carries the journey id; if you can only guess the journey, tag the guess and say so in "why". Leave "journey" empty for delivered, sdk_event and inbox points.';
+const LABEL_RULE = 'Label: a short name of at most 24 characters that the timeline prints under each node (for example "Điều kiện", "Tần suất", "Gửi IAM", "GameAPI"). Never put a URL, path, id or sentence in the label: those belong in the evidence. Name the same step the same way every time, so repeats collapse.';
 const OUTCOME_RULE = 'Outcome: "block" when the point stops the user there (condition false, frequency rejected, excluded by a gate), "pass" when a check passed or an action succeeded (send accepted), "info" otherwise.';
 const EVIDENCE_RULE = 'Evidence: one line verbatim, at most 600 characters. Replace the value of every token, key, secret or password field with <redacted>. Never quote push tokens or credentials.';
 
@@ -89,6 +90,7 @@ Reading rules:
 - ${TIME_RULE}
 - ${EVIDENCE_RULE}
 - ${JOURNEY_RULE}
+- ${LABEL_RULE}
 - ${OUTCOME_RULE}
 - States: seen = a line you retrieved shows it in its message text. inferred = no line shows it, but what ran next proves it (for example, worker lines lost after a wait: the next node's call or the message-delivery send proves the check passed); say why in "why". not_recorded = no line found; time and evidence empty.
 - A condition outcome or an SDK event name is seen only if the message prints it; otherwise the point is inferred (what ran next proves it; say why) or not_recorded.

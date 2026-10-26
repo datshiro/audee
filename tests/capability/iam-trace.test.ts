@@ -456,6 +456,8 @@ describe('iam_trace capability', () => {
     expect(prompt).toContain('double quotes');
     expect(prompt).toContain('"journey"');
     expect(prompt).toContain('traceId');
+    expect(prompt).toContain('Label: a short name of at most 24 characters');
+    expect(prompt).toContain('Never put a URL, path, id or sentence in the label');
     expect(prompt).toContain('Outcome: "block"');
     expect(prompt).toContain('"conclusion": 2-4 Vietnamese bullets');
     expect(prompt).toContain('at most 60 points');

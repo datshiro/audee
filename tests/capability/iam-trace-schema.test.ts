@@ -536,6 +536,11 @@ describe('journey proof', () => {
     expect(rowOf('send')).toBe('server');
   });
 
+  it('asks the model for a short label in the trace contract', () => {
+    expect(JSON.stringify(IAM_TRACE_SCHEMA)).toContain('a short name of at most 24 characters');
+    expect(JSON.stringify(IAM_TRACE_SCHEMA)).not.toContain('at most 80 characters');
+  });
+
   it('requires journey, outcome and conclusion in the trace contract', () => {
     const noJourney = clone(GOOD) as unknown as { users: Array<{ points: Array<Record<string, unknown>> }> };
     delete noJourney.users[0]!.points[0]!['journey'];

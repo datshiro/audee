@@ -194,7 +194,7 @@ const POINT_SCHEMA: Record<string, unknown> = {
     kind: { type: 'string', enum: [...POINT_KINDS] },
     journey: { type: 'string', description: JOURNEY_DESC },
     outcome: { type: 'string', enum: [...POINT_OUTCOMES], description: OUTCOME_DESC },
-    label: { type: 'string', description: 'at most 80 characters' },
+    label: { type: 'string', description: 'a short name of at most 24 characters (for example "Điều kiện", "Gửi IAM"); URLs, ids and log details belong in the evidence' },
     time: { type: 'string', description: TIME_DESC },
     source_field: { type: 'string', description: SOURCE_DESC },
     evidence: { type: 'string', description: EVIDENCE_DESC },
