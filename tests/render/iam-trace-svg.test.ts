@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { checkAnswerPage } from '../../src/render/html.js';
 import type { LayoutNode } from '../../src/render/iam-trace-layout.js';
-import { LABEL_COLUMNS, laneSvg, laneWidth, LANE_HEIGHT, PITCH, widthRules, wrapLabel } from '../../src/render/iam-trace-svg.js';
+import { LABEL_COLUMNS, laneSvg, laneWidth, LANE_HEIGHT, PITCH, pathsSvg, widthRules, wrapLabel, wrapText } from '../../src/render/iam-trace-svg.js';
 
 const node = (over: Partial<LayoutNode> = {}): LayoutNode => ({ cls: 'other', label: 'Run', inferred: false, time: '10:00:00', marked: false, count: 1, ...over });
 const wrap = (svg: string): string => `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>x{}</style></head><body>${svg}</body></html>`;
@@ -97,5 +97,30 @@ describe('widthRules', () => {
     expect(css).toBe(`.w1{max-width:${laneWidth(1)}px;min-width:${Math.round(laneWidth(1) * 0.85)}px}\n.w3{max-width:${laneWidth(3)}px;min-width:${Math.round(laneWidth(3) * 0.85)}px}`);
     expect(widthRules([0])).toBe('');
     expect(css).not.toMatch(/url\(|\\|<|>/u);
+  });
+});
+
+describe('wrapText and pathsSvg', () => {
+  it('wraps to the given columns and lines', () => {
+    expect(wrapText('một hai ba bốn năm', 10, 2)).toEqual(['một hai ba', 'bốn năm']);
+    expect(wrapText('một hai ba bốn năm sáu bảy tám chín', 10, 2)[1]?.endsWith('…')).toBe(true);
+  });
+
+  it('draws the figure with the allowed elements only and one box per path', () => {
+    const svg = pathsSvg({
+      message: ['Message đã tạo', '25/10 10:28:15 ICT', 'gameId gamea', 'SDK user: gameb'],
+      paths: [
+        { name: '1. Popup realtime', detail: 'publish 1 lần lên role:gamea …', outcome: 'block', result: 'Không ai nhận', resultDetail: 'SDK chỉ subscribe game gameb' },
+        { name: '2. Replay', detail: 'chỉ message không phải App Inbox', outcome: 'unknown', result: 'Chưa kiểm tra được', resultDetail: '<b>x</b> https://evil.example' },
+        { name: '3. App Inbox', detail: 'lọc theo gameId', outcome: 'ok', result: 'Có thể nhận', resultDetail: 'ok' },
+      ],
+    });
+    expect(new Set([...svg.matchAll(/<([a-z]+)/g)].map((m) => m[1]))).toEqual(new Set(['svg', 'g', 'rect', 'path', 'polygon', 'text']));
+    expect(svg.match(/class="ob-(block|unknown|ok)"/g)).toEqual(['class="ob-block"', 'class="ob-unknown"', 'class="ob-ok"']);
+    expect(svg.match(/class="arh"/g)).toHaveLength(6);
+    expect(svg).not.toContain('<b>');
+    expect(svg).not.toContain('https://');
+    expect(svg).toContain('aria-hidden="true"');
+    expect(checkAnswerPage(wrap(svg))).toBeUndefined();
   });
 });

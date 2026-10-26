@@ -5,8 +5,8 @@ import { strings } from '../capability/kb-answer.js';
 import { defang } from './defang.js';
 import { answerPageCSP, answerPageStyle, clip, escapeHTML, maxNoteChars, maxNotes } from './html.js';
 import { idTail, KIND_VI, type LayoutLane, type LayoutPlayer, layoutTrace } from './iam-trace-layout.js';
-import { checkChannels, channelVerdictText, gameOf, isChannelPoint } from './iam-trace-channels.js';
-import { laneSvg, widthRules } from './iam-trace-svg.js';
+import { channelVerdictText, checkChannels, deliveryPaths, gameOf, isChannelPoint, OTHER_CASES, OTHER_CASES_NOTE, PATHS_SOURCE } from './iam-trace-channels.js';
+import { laneSvg, pathsSvg, widthRules } from './iam-trace-svg.js';
 
 const t = (s: string, n: number): string => escapeHTML(clip(defang(s), n));
 
@@ -23,8 +23,8 @@ const REASON_VI = new Map([
 const reasonText = (reason: string): string => REASON_VI.get(reason) ?? 'kết quả kiểm chứng không dùng được';
 
 const STYLE = `${answerPageStyle}
-:root{--blk:#2563eb;--cor:#c2410c;--gry:#6e7781}
-@media (prefers-color-scheme:dark){:root{--blk:#4f86e8;--cor:#e0703a;--gry:#8b949e}}
+:root{--blk:#2563eb;--cor:#c2410c;--gry:#6e7781;--ok:#1a7f37}
+@media (prefers-color-scheme:dark){:root{--blk:#4f86e8;--cor:#e0703a;--gry:#8b949e;--ok:#3fb950}}
 main{max-width:1100px}
 h1{font-size:24px;line-height:1.3;margin:0 0 4px}
 h2{font-size:20px;margin:32px 0 8px}
@@ -34,6 +34,17 @@ h3 small{font-weight:400;color:var(--muted)}
 .banner{margin:12px 0;padding:8px 12px;border-left:4px solid var(--cor);background:var(--code);font-weight:600}
 .finding{font-size:17px;margin:16px 0 4px}
 .verdict{font-weight:600}
+.ls{text-anchor:start}
+.dt{font-size:11.5px;font-weight:400}
+.mu{fill:var(--muted)}
+.arw{fill:none;stroke:var(--gry);stroke-width:1.25}
+.arh{fill:var(--gry)}
+.pb{fill:none;stroke:var(--gry);stroke-width:1.25}
+.mb{fill:var(--cor);fill-opacity:.12;stroke:var(--cor);stroke-width:2}
+.ob-block{fill:var(--blk);fill-opacity:.12;stroke:var(--blk);stroke-width:2}
+.ob-ok{fill:var(--ok);fill-opacity:.12;stroke:var(--ok);stroke-width:2}
+.ob-unknown{fill:none;stroke:var(--gry);stroke-width:1.5;stroke-dasharray:3 3}
+.wp{max-width:760px;min-width:600px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:8px 0 12px;font-size:14px}
 .dot{display:inline-block;box-sizing:border-box;width:12px;height:12px;margin-right:6px;border-radius:50%;vertical-align:-1px}
 .dot.b{background:var(--blk)}
@@ -97,13 +108,21 @@ const legend = `<p class="legend">${LEGEND.map(([k, text]) => `<span><span class
 function channelSection(players: LayoutPlayer[]): string {
   const block = (pl: LayoutPlayer): string => {
     const points = pl.client.points.filter(isChannelPoint);
-    const rows = points.map((p) => `<tr><td>${timeText(p)}</td><td>${KIND_VI[p.kind]}</td><td>${t(p.channel, 200) || '—'}</td><td>${t(gameOf(p.channel), 64) || '—'}</td><td>${status(p)}</td></tr>`);
+    const rows = points.map((p) => `<tr><td>${timeText(p)}</td><td>${KIND_VI[p.kind]}</td><td>${t(p.channel, 300) || '—'}</td><td>${t(gameOf(p.channel), 64) || '—'}</td><td>${status(p)}</td></tr>`);
     const table = rows.length > 0 ? `<table><thead><tr><th>Giờ (ICT)</th><th>Loại</th><th>Kênh</th><th>Game</th><th>Trạng thái</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : '';
-    return `${players.length > 1 ? `<h3>${ids(pl)}</h3>` : ''}<p class="verdict">${t(channelVerdictText(checkChannels(pl.points)), 400)}</p>${table}`;
+    const check = checkChannels(pl.points);
+    const delivery = deliveryPaths(pl.points, check);
+    const paths = `<div class="scroll">${pathsSvg(delivery)}</div><table><thead><tr><th>Đường message tới SDK</th><th>Kết quả</th><th>Chi tiết</th></tr></thead><tbody>${delivery.paths.map((path) => `<tr><td>${t(path.name, 60)}<small>${t(path.detail, 120)}</small></td><td>${t(path.result, 60)}</td><td>${t(path.resultDetail, 200)}</td></tr>`).join('')}</tbody></table>`;
+    const question = delivery.question !== undefined ? `<p><strong>${t(delivery.question, 300)}</strong></p>` : '';
+    return `${players.length > 1 ? `<h3>${ids(pl)}</h3>` : ''}<p class="verdict">${t(channelVerdictText(check), 400)}</p>${table}${paths}${question}`;
   };
   return `<section><h2>Kiểm tra kênh subscribe</h2>
 <p>So kênh message-delivery publish message với các kênh mà SDK của user subscribe; audee tự so từ các dòng log đã ghi nhận.</p>
-${players.map(block).join('\n')}</section>`;
+${players.map(block).join('\n')}
+<h3>Các trường hợp khác làm message đã tạo mà không thấy</h3>
+<ul>${OTHER_CASES.map((c) => `<li>${t(c, 200)}</li>`).join('')}</ul>
+<p>${t(OTHER_CASES_NOTE, 200)}</p>
+<p><small>${t(PATHS_SOURCE, 300)}</small></p></section>`;
 }
 
 function inferredSection(players: LayoutPlayer[]): string {
