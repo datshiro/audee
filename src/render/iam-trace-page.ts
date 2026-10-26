@@ -5,6 +5,7 @@ import { strings } from '../capability/kb-answer.js';
 import { defang } from './defang.js';
 import { answerPageCSP, answerPageStyle, clip, escapeHTML, maxNoteChars, maxNotes } from './html.js';
 import { idTail, KIND_VI, type LayoutLane, type LayoutPlayer, layoutTrace } from './iam-trace-layout.js';
+import { checkChannels, channelVerdictText, gameOf, isChannelPoint } from './iam-trace-channels.js';
 import { laneSvg, widthRules } from './iam-trace-svg.js';
 
 const t = (s: string, n: number): string => escapeHTML(clip(defang(s), n));
@@ -32,6 +33,7 @@ h3 small{font-weight:400;color:var(--muted)}
 .warn{color:var(--fg);font-weight:600}
 .banner{margin:12px 0;padding:8px 12px;border-left:4px solid var(--cor);background:var(--code);font-weight:600}
 .finding{font-size:17px;margin:16px 0 4px}
+.verdict{font-weight:600}
 .legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:8px 0 12px;font-size:14px}
 .dot{display:inline-block;box-sizing:border-box;width:12px;height:12px;margin-right:6px;border-radius:50%;vertical-align:-1px}
 .dot.b{background:var(--blk)}
@@ -92,6 +94,18 @@ const LEGEND = [
 ] as const;
 const legend = `<p class="legend">${LEGEND.map(([k, text]) => `<span><span class="dot ${k}"></span>${text}</span>`).join('')}</p>`;
 
+function channelSection(players: LayoutPlayer[]): string {
+  const block = (pl: LayoutPlayer): string => {
+    const points = pl.client.points.filter(isChannelPoint);
+    const rows = points.map((p) => `<tr><td>${timeText(p)}</td><td>${KIND_VI[p.kind]}</td><td>${t(p.channel, 200) || '—'}</td><td>${t(gameOf(p.channel), 64) || '—'}</td><td>${status(p)}</td></tr>`);
+    const table = rows.length > 0 ? `<table><thead><tr><th>Giờ (ICT)</th><th>Loại</th><th>Kênh</th><th>Game</th><th>Trạng thái</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : '';
+    return `${players.length > 1 ? `<h3>${ids(pl)}</h3>` : ''}<p class="verdict">${t(channelVerdictText(checkChannels(pl.points)), 400)}</p>${table}`;
+  };
+  return `<section><h2>Kiểm tra kênh subscribe</h2>
+<p>So kênh message-delivery publish message với các kênh mà SDK của user subscribe; audee tự so từ các dòng log đã ghi nhận.</p>
+${players.map(block).join('\n')}</section>`;
+}
+
 function inferredSection(players: LayoutPlayer[]): string {
   const who = (player: LayoutPlayer): string => (players.length > 1 ? `${ids(player)}: ` : '');
   const inferred = players.flatMap((pl) => pl.points.filter((p) => p.state === 'inferred').map((p) => `<li>${who(pl)}<strong>${label(p)}</strong>: ${t(p.why, 300)}</li>`));
@@ -105,7 +119,7 @@ ${unknown.length > 0 ? `<ul>${unknown.join('')}</ul>` : '<p>Mọi mốc đều t
 }
 
 function tableRow(p: CheckedPoint, player: LayoutPlayer, many: boolean): string {
-  const where = [many ? ids(player) : '', rowOf(p.kind) === 'server' && p.journey !== '' ? `Journey ${t(idTail(p.journey), 64)}` : '', `kết quả: ${OUTCOME_VI[p.outcome]}`].filter((x) => x !== '').join(' · ');
+  const where = [many ? ids(player) : '', p.channel !== '' ? `kênh ${t(p.channel, 200)}` : '', rowOf(p.kind) === 'server' && p.journey !== '' ? `Journey ${t(idTail(p.journey), 64)}` : '', `kết quả: ${OUTCOME_VI[p.outcome]}`].filter((x) => x !== '').join(' · ');
   const why = p.state === 'inferred' && p.why.trim() !== '' ? `<small>Suy ra vì: ${t(p.why, 300)}</small>` : '';
   return `<tr><td>${KIND_VI[p.kind]}: ${label(p)}<small>· ${where}</small></td><td>${timeText(p)}</td><td>${t(p.source_field, 60)}</td><td>${status(p)}</td><td><div class="ev">${t(p.evidence, 600)}</div>${why}</td></tr>`;
 }
@@ -149,6 +163,7 @@ ${widthRules(counts)}</style>
 <p>Giờ ICT. Mỗi hàng là một journey; khoảng cách giữa các mốc không theo tỷ lệ, nhãn +… là thời gian từ mốc trước, xN là mốc lặp N lần.</p>
 ${legend}
 ${players.map(playerHtml).join('\n')}</section>
+${channelSection(players)}
 ${inferredSection(players)}
 <section><h2>Bằng chứng</h2>
 <table><thead><tr><th>Mốc</th><th>Giờ (ICT)</th><th>Trường</th><th>Trạng thái</th><th>Bằng chứng</th></tr></thead><tbody>${players.flatMap((pl) => pl.points.map((p) => tableRow(p, pl, players.length > 1))).join('')}</tbody></table></section>

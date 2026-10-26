@@ -45,7 +45,7 @@ function harness(o: HarnessOptions) {
   return { ctx, inputs, dir };
 }
 
-const pt = (kind: TracePoint['kind'], state: TracePoint['state'], time: string, evidence: string, label: string, why = ''): TracePoint => ({ kind, label, journey: 'J1', outcome: 'info', time, source_field: '_time', evidence, state, why });
+const pt = (kind: TracePoint['kind'], state: TracePoint['state'], time: string, evidence: string, label: string, why = ''): TracePoint => ({ kind, label, journey: 'J1', outcome: 'info', channel: '', time, source_field: '_time', evidence, state, why });
 
 function traceOf(ids: string[], over: { finding?: string; evidence?: string } = {}): TraceResult {
   return {
@@ -458,6 +458,10 @@ describe('iam_trace capability', () => {
     expect(prompt).toContain('traceId');
     expect(prompt).toContain('Label: a short name of at most 24 characters');
     expect(prompt).toContain('Never put a URL, path, id or sentence in the label');
+    expect(prompt).toContain('[publish]');
+    expect(prompt).toContain('[subscribe]');
+    expect(prompt).toContain('Channel: set "channel" only on publish and subscribe points');
+    expect(prompt).toContain('under the same player entry');
     expect(prompt).toContain('Outcome: "block"');
     expect(prompt).toContain('"conclusion": 2-4 Vietnamese bullets');
     expect(prompt).toContain('at most 60 points');

@@ -15,6 +15,8 @@ import {
   JOURNEY_MISSING_WHY,
   JOURNEY_UNPROVEN_WHY,
   pointProblem,
+  proveChannels,
+  CHANNEL_UNPROVEN_WHY,
   proveJourneys,
   rowOf,
   type TracePoint,
@@ -27,7 +29,7 @@ import type { RunResult } from '../../src/runner/run.js';
 
 const res = (structured: unknown, extra: Partial<RunResult> = {}): RunResult => ({ isError: false, text: '', structured, denials: [], toolUses: [], durationMs: 1, ...extra });
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', window: '24 giờ gần nhất' };
-const point = (over: Partial<TracePoint> = {}): TracePoint => ({ kind: 'trigger', label: 'trigger', journey: 'J1', outcome: 'info', time: '1761354123456', source_field: '_time', evidence: 'journey workflow executed J1', state: 'seen', why: '', ...over });
+const point = (over: Partial<TracePoint> = {}): TracePoint => ({ kind: 'trigger', label: 'trigger', journey: 'J1', outcome: 'info', channel: '', time: '1761354123456', source_field: '_time', evidence: 'journey workflow executed J1', state: 'seen', why: '', ...over });
 const GOOD: TraceResult = {
   status: 'done',
   finding: 'IAM đã gửi.',
@@ -529,6 +531,59 @@ describe('journey proof', () => {
     expect(both.users[0]?.points.map((p) => p.journey)).toEqual(['', '', '', 'J1']);
     const campaignOnly = parseTraceOutput(res(traced), { ...REQ, target: 'CAMP', users: ['u1'] });
     expect(campaignOnly.users[0]?.points[0]?.journey).toBe('CAMP');
+  });
+
+  it('keeps publish and subscribe on the client row and checks their channel', () => {
+    expect(rowOf('publish')).toBe('client');
+    expect(rowOf('subscribe')).toBe('client');
+    const traced = clone(GOOD);
+    traced.users[0]!.points = [
+      point({ kind: 'publish', journey: '', channel: 'role:gamea:U1:R1:env', evidence: 'publish role:gamea:U1:R1:env' }),
+      point({ kind: 'subscribe', journey: '', channel: '', state: 'not_recorded', time: '', source_field: '', evidence: '' }),
+      point({ kind: 'subscribe', journey: '', channel: '' }),
+      point({ kind: 'subscribe', journey: '', channel: 'bad channel<b>' }),
+      point({ kind: 'send', channel: 'role:gamea:U1:R1:env' }),
+    ];
+    const parsed = parseTraceOutput(res(traced), { ...REQ, users: ['u1'] });
+    expect(parsed.users[0]?.points.map((p) => p.state)).toEqual(['seen', 'not_recorded', 'inferred', 'inferred', 'inferred']);
+    const merged = mergeVerification(parsed, undefined);
+    expect(merged.users[0]?.points.map((p) => p.state)).toEqual(['seen', 'not_recorded', 'inferred', 'inferred', 'inferred']);
+  });
+
+  it('demotes a channel point whose evidence does not name the channel, as a whole token', () => {
+    const ch = (over: Partial<TracePoint>): TracePoint => point({ kind: 'subscribe', journey: '', channel: 'role:ga:U1:R1:e', evidence: 'subscribe role:ga:U1:R1:e ok', ...over });
+    const out = proveChannels([ch({}), ch({ evidence: 'subscribed ok' }), ch({ evidence: 'subscribe role:ga:U1:R1:env' }), ch({ channel: '', state: 'seen' }), ch({ state: 'not_recorded', channel: '', time: '', evidence: '', source_field: '' }), point({ evidence: 'no channel here' })]);
+    expect(out.map((p) => p.state)).toEqual(['seen', 'inferred', 'inferred', 'inferred', 'not_recorded', 'seen']);
+    expect(out[1]?.why).toBe(CHANNEL_UNPROVEN_WHY);
+    expect(proveChannels(out)).toEqual(out);
+  });
+
+  it('applies the channel proof after verification and lets a verifier turn a channel point into not_recorded', () => {
+    const traced = clone(GOOD);
+    traced.users[0]!.points = [point({ kind: 'subscribe', journey: '', channel: 'role:ga:U1:R1:e', evidence: 'subscribed ok' }), point({ kind: 'subscribe', journey: '', channel: 'role:ga:U1:R1:e', evidence: 'subscribe role:ga:U1:R1:e' })];
+    const parsed = parseTraceOutput(res(traced), { ...REQ, users: ['u1'] });
+    const merged = mergeVerification(parsed, [
+      { ref: 'u1-p1', verdict: 'CORRECTED', time: '', source_field: '', evidence: '', state: 'not_recorded', why: '' },
+      { ref: 'u1-p2', verdict: 'CONFIRMED' },
+    ]);
+    expect(merged.users[0]?.points[0]).toMatchObject({ state: 'not_recorded', channel: '', check: 'corrected' });
+    expect(merged.users[0]?.points[1]).toMatchObject({ state: 'seen', check: 'confirmed' });
+    const unproven = mergeVerification(parsed, undefined);
+    expect(unproven.users[0]?.points[0]).toMatchObject({ state: 'inferred', why: CHANNEL_UNPROVEN_WHY });
+  });
+
+  it('accepts channel names with Centrifugo characters and refuses whitespace and markup', () => {
+    const traced = clone(GOOD);
+    traced.users[0]!.points = ['$role:ga:U1#R1', 'a/b,c', 'x'.repeat(300)].map((channel) => point({ kind: 'publish', journey: '', channel, evidence: channel }));
+    traced.users[0]!.points.push(point({ kind: 'publish', journey: '', channel: 'a b', evidence: 'a b' }), point({ kind: 'publish', journey: '', channel: 'x'.repeat(301), evidence: 'x' }));
+    const parsed = parseTraceOutput(res(traced), { ...REQ, users: ['u1'] });
+    expect(parsed.users[0]?.points.map((p) => p.state)).toEqual(['seen', 'seen', 'seen', 'inferred', 'inferred']);
+  });
+
+  it('requires the channel field in the trace contract', () => {
+    const noChannel = clone(GOOD) as unknown as { users: Array<{ points: Array<Record<string, unknown>> }> };
+    delete noChannel.users[0]!.points[0]!['channel'];
+    expect(() => parseTraceOutput(res(noChannel), REQ)).toThrow('trace result does not match the contract');
   });
 
   it('puts delivered on the client row', () => {

@@ -3,7 +3,7 @@
 import type { RunResult } from '../runner/run.js';
 import { matches } from './kb-answer.js';
 
-export const POINT_KINDS = ['trigger', 'wait_end', 'check_call', 'condition', 'frequency', 'send', 'delivered', 'sdk_event', 'inbox'] as const;
+export const POINT_KINDS = ['trigger', 'wait_end', 'check_call', 'condition', 'frequency', 'send', 'delivered', 'publish', 'subscribe', 'sdk_event', 'inbox'] as const;
 export type PointKind = (typeof POINT_KINDS)[number];
 export const POINT_STATES = ['seen', 'inferred', 'not_recorded'] as const;
 export type PointState = (typeof POINT_STATES)[number];
@@ -11,7 +11,7 @@ export const POINT_OUTCOMES = ['pass', 'block', 'info'] as const;
 export type PointOutcome = (typeof POINT_OUTCOMES)[number];
 
 export function rowOf(kind: PointKind): 'server' | 'client' {
-  return kind === 'delivered' || kind === 'sdk_event' || kind === 'inbox' ? 'client' : 'server';
+  return kind === 'delivered' || kind === 'publish' || kind === 'subscribe' || kind === 'sdk_event' || kind === 'inbox' ? 'client' : 'server';
 }
 
 export const MAX_USERS = 5;
@@ -182,6 +182,7 @@ const SOURCE_DESC = 'where the time came from: the name printed in the message t
 const EVIDENCE_DESC = 'one log line verbatim, at most 600 characters, token/key/secret/password values replaced by <redacted>; empty when not_recorded';
 const WHY_DESC = 'inferred only: why, at most 300 characters; else empty';
 const JOURNEY_DESC = 'the id of the journey this point belongs to, as printed in the log line or in a line with the same traceId; empty for delivered, sdk_event and inbox points and when no journey id is known';
+const CHANNEL_DESC = 'publish and subscribe points: the channel name copied verbatim from the log line (for example role:<game>:<userId>:<roleId>:<env>); empty for every other kind and for a not_recorded subscribe';
 const OUTCOME_DESC = 'block = the user stops at this point (condition false, frequency rejected, excluded); pass = a check passed or an action succeeded; info = neutral';
 const stringItem = { type: 'string' };
 const states = { type: 'string', enum: [...POINT_STATES] };
@@ -189,11 +190,12 @@ const states = { type: 'string', enum: [...POINT_STATES] };
 const POINT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
-  required: ['kind', 'label', 'journey', 'outcome', 'time', 'source_field', 'evidence', 'state', 'why'],
+  required: ['kind', 'label', 'journey', 'outcome', 'channel', 'time', 'source_field', 'evidence', 'state', 'why'],
   properties: {
     kind: { type: 'string', enum: [...POINT_KINDS] },
     journey: { type: 'string', description: JOURNEY_DESC },
     outcome: { type: 'string', enum: [...POINT_OUTCOMES], description: OUTCOME_DESC },
+    channel: { type: 'string', description: CHANNEL_DESC },
     label: { type: 'string', description: 'a short name of at most 24 characters (for example "Điều kiện", "Gửi IAM"); URLs, ids and log details belong in the evidence' },
     time: { type: 'string', description: TIME_DESC },
     source_field: { type: 'string', description: SOURCE_DESC },
@@ -256,7 +258,7 @@ export const IAM_VERIFY_SCHEMA: Record<string, unknown> = {
   },
 };
 
-export type TracePoint = { kind: PointKind; label: string; journey: string; outcome: PointOutcome; time: string; source_field: string; evidence: string; state: PointState; why: string };
+export type TracePoint = { kind: PointKind; label: string; journey: string; outcome: PointOutcome; channel: string; time: string; source_field: string; evidence: string; state: PointState; why: string };
 export type TraceUser = { id: string; user_id: string; role_id: string; points: TracePoint[] };
 export type TraceResult = { status: 'done' | 'need_input'; finding: string; conclusion: string[]; users: TraceUser[]; missing: string[]; notes: string[] };
 export type Verdict = { ref: string; verdict: 'CONFIRMED' | 'CORRECTED'; time?: string; source_field?: string; evidence?: string; state?: PointState; why?: string };
@@ -264,10 +266,15 @@ export type Verdict = { ref: string; verdict: 'CONFIRMED' | 'CORRECTED'; time?: 
 export const INVALID_POINT_WHY = 'bằng chứng không hợp lệ';
 
 // The shape rules every point must meet, traced or corrected. Whether the time parses is the renderer's concern.
+export const CHANNEL_KINDS: readonly PointKind[] = ['publish', 'subscribe'];
+const CHANNEL_RE = /^[^\s<>"\\]{1,300}$/u;
+
 export function pointProblem(p: TracePoint): string | undefined {
+  if (p.channel !== '' && (!CHANNEL_KINDS.includes(p.kind) || !CHANNEL_RE.test(p.channel))) return 'point has an unusable channel';
+  if (CHANNEL_KINDS.includes(p.kind) && p.state !== 'not_recorded' && p.channel === '') return 'publish or subscribe point has no channel';
   if (p.state === 'seen' && p.evidence.trim() === '') return 'seen point has no evidence';
   if (p.state === 'inferred' && p.why.trim() === '') return 'inferred point has no why';
-  if (p.state === 'not_recorded' && (p.time.trim() !== '' || p.evidence.trim() !== '')) return 'not_recorded point has a time or evidence';
+  if (p.state === 'not_recorded' && (p.time.trim() !== '' || p.evidence.trim() !== '' || p.channel !== '')) return 'not_recorded point has a time or evidence';
   return undefined;
 }
 
@@ -303,6 +310,12 @@ function journeyTagOk(journey: string, u: TraceUser, request: IamTraceRequest): 
   if (!ID_RE.test(journey)) return false;
   if (request.journey !== undefined && journey === request.target) return false;
   return ![...request.users, u.id, u.user_id, u.role_id].includes(journey);
+}
+
+// Same idea for channels: a publish or subscribe point counts as seen only when its own evidence line names the channel.
+export const CHANNEL_UNPROVEN_WHY = 'dòng log không ghi kênh này';
+export function proveChannels<P extends TracePoint>(points: P[]): P[] {
+  return points.map((p) => (p.state === 'seen' && CHANNEL_KINDS.includes(p.kind) && (p.channel === '' || !mentions(p.evidence, p.channel)) ? { ...p, state: 'inferred', why: CHANNEL_UNPROVEN_WHY } : p));
 }
 
 export function parseTraceOutput(result: RunResult, request: IamTraceRequest): TraceResult {
@@ -375,7 +388,7 @@ export function verifierPoints(points: NumberedPoint[]): NumberedPoint[] {
 function corrected(p: TracePoint, v: Verdict): TracePoint | undefined {
   const { time, source_field, evidence, state, why } = v;
   if (time === undefined || source_field === undefined || evidence === undefined || state === undefined || why === undefined) return undefined;
-  const c: TracePoint = { ...p, time, source_field, evidence, state, why };
+  const c: TracePoint = { ...p, time, source_field, evidence, state, why, ...(state === 'not_recorded' ? { channel: '' } : {}) };
   return pointProblem(c) === undefined ? c : undefined;
 }
 
@@ -386,7 +399,7 @@ export function mergeVerification(trace: TraceResult, verdicts: Verdict[] | unde
   const merge = (apply: boolean): MergedTrace['users'] =>
     trace.users.map((u, i) => ({
       ...u,
-      points: proveJourneys(
+      points: proveChannels(proveJourneys(
         u.points.map((p, j): CheckedPoint => {
           const ref = refOf(i, j);
           const v = apply ? byRef.get(ref) : undefined;
@@ -394,7 +407,7 @@ export function mergeVerification(trace: TraceResult, verdicts: Verdict[] | unde
           const c = v?.verdict === 'CORRECTED' ? corrected(p, v) : undefined;
           return c ? { ...c, ref, check: 'corrected' } : { ...p, ref, check: 'unverified' };
         }),
-      ),
+      )),
     }));
   const tally = (users: MergedTrace['users']): MergedTrace['counts'] => {
     const counts = { confirmed: 0, corrected: 0, unverified: 0 };
