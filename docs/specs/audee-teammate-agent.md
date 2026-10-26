@@ -145,13 +145,19 @@ owner notices carry that name as their kind).
   again from the start; the page carries raw evidence lines of up to 600 characters to everyone in the chat via
   OneDrive.
 
-Validation status: unit tested. Post-merge manual checks, none run yet:
-1. `pnpm test:live iam-trace-fence` on VPN passes and logs `offered=4`.
-2. A live `search_logs` with `_time:(<start>Z, <end>Z)` returns only lines inside the window.
-3. In one live trace, count the points whose `source_field` is `_time`; record the share and the time formats seen.
-4. One live Teams trace end to end (queued reply, notice with link, page opens from OneDrive, no traced ids in
-   `events.jsonl`).
-5. The owner adds the grant and deploys.
+Validation status: unit tested. Post-merge manual checks:
+1. Done 2026-10-26: `pnpm test:live iam-trace-fence` on VPN passed against the real `iam-trace` MCP (the 2026-09-18
+   binary): server connected, `offered=4`, no built-in or other-MCP tool attempted, and both the bracket-range filter
+   and the escaped-quote scope-breakout filter were attempted and denied by the gate (Claude Code 2.1.306 through
+   `deploy/claude-hack.sh`; the live helper needed that executable, as `runAgent` uses it).
+2. Done 2026-10-26: a live `search_logs` with `_time:(2026-10-26T05:00:00Z, 2026-10-26T05:20:00Z) AND "journey workflow
+   executed"` was accepted and returned only lines inside the window. The returned message is the bare template
+   (`journey workflow executed`) with no fields, which is the reduced fidelity described above.
+3. Pending: in one live trace, count the points whose `source_field` is `_time`; record the share and the time formats seen.
+4. Pending: one live Teams trace end to end (queued reply, notice with link, page opens from OneDrive, no traced ids in
+   `events.jsonl`). An errored `search_logs` the gate allows (for example `since: "abc"`) should show up in `toolErrors`.
+5. Done 2026-10-26: deployed (main at the `iam_trace` lane merge) with the `iam_trace` lane and capability added to
+   `config.yaml`; only the owner (`*`) can trigger it, no teammate has the grant yet.
 
 ## Review status and auto-approve
 The review session ends with `REVIEW_STATUS: ready|blocked|unreviewable: <reason>` on the line right before the final
