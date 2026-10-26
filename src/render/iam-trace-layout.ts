@@ -70,21 +70,24 @@ export function dateRange(fromMs: number, toMs: number): string {
   return a.slice(3) === b.slice(3) ? `${a.slice(0, 2)}–${b}` : `${a}–${b}`;
 }
 
-// Groups of users that share any of id, userId or roleId: one player asked for by both ids is one section. Points seen
-// twice (the same line under both ids) are kept once.
+const identities = (u: MergedTrace['users'][number]): string[] => [u.id, u.user_id, u.role_id].filter((k) => k !== '');
+const differ = (a: string, b: string): boolean => a !== '' && b !== '' && a !== b;
+
+// One player asked for by both ids: the entries share an id, userId or roleId. Two roles of one account (same userId,
+// different roleIds) are two players.
+function samePlayer(a: MergedTrace['users'][number], b: MergedTrace['users'][number]): boolean {
+  if (!identities(a).some((k) => identities(b).includes(k))) return false;
+  return !(a.user_id === b.user_id && differ(a.role_id, b.role_id)) && !(a.role_id === b.role_id && differ(a.user_id, b.user_id));
+}
+
+// Users that are one player become one entry. A point seen under both ids is kept once (the better state wins); points
+// of a single user are never merged with each other.
 export function mergePlayers(users: MergedTrace['users']): Array<{ ids: string[]; userId: string; roleId: string; points: CheckedPoint[] }> {
   const group = users.map((_, i) => i);
   const root = (i: number): number => (group[i] === i ? i : (group[i] = root(group[i] as number)));
-  const owner = new Map<string, number>();
-  users.forEach((u, i) => {
-    for (const key of [u.id, u.user_id, u.role_id]) {
-      if (key === '') continue;
-      const seen = owner.get(key);
-      if (seen === undefined) owner.set(key, i);
-      else group[root(i)] = root(seen);
-    }
-  });
+  users.forEach((a, i) => users.slice(0, i).forEach((b, j) => samePlayer(a, b) && (group[root(i)] = root(j))));
   const out: Array<{ ids: string[]; userId: string; roleId: string; points: CheckedPoint[]; at: number }> = [];
+  const key = (c: CheckedPoint): string => [c.kind, c.journey, c.label, c.outcome, c.time, c.evidence].join('\u0000');
   users.forEach((u, i) => {
     const at = root(i);
     let p = out.find((x) => x.at === at);
@@ -92,10 +95,9 @@ export function mergePlayers(users: MergedTrace['users']): Array<{ ids: string[]
     if (!p.ids.includes(u.id)) p.ids.push(u.id);
     p.userId = p.userId !== '' ? p.userId : u.user_id;
     p.roleId = p.roleId !== '' ? p.roleId : u.role_id;
-    // The same line seen under both ids is one point, whatever each user's journey proof made of it; the better state wins.
-    const key = (c: CheckedPoint): string => [c.kind, c.journey, c.label, c.outcome, c.time, c.evidence].join('\u0000');
+    const earlier = p.points.length;
     for (const c of u.points) {
-      const i = p.points.findIndex((x) => key(x) === key(c));
+      const i = p.points.slice(0, earlier).findIndex((x) => key(x) === key(c));
       if (i < 0) p.points.push(c);
       else if (STATE_RANK[c.state] < STATE_RANK[(p.points[i] as CheckedPoint).state]) p.points[i] = c;
     }

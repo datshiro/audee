@@ -8,7 +8,7 @@ export const PITCH = 156;
 export const PAD = 8;
 export const LANE_HEIGHT = 134;
 export const LABEL_COLUMNS = 18;
-export const SUB_COLUMNS = 18;
+export const SUB_COLUMNS = 20;
 const SHRINK_LIMIT = 0.85;
 const AXIS_Y = 56;
 const R = 9;
@@ -47,15 +47,22 @@ export function laneSvg(nodes: LayoutNode[]): string {
   const cx = (i: number): number => PAD + PITCH / 2 + i * PITCH;
   const parts: string[] = [];
   if (nodes.length > 1) parts.push(`<path class="axis" d="M${cx(0)} ${AXIS_Y} L${cx(nodes.length - 1)} ${AXIS_Y}"/>`);
+  // Times, sub-labels and gaps come before the labels in the markup (placement is by x/y): the secret check reads the
+  // page text with no separator between texts, and a label ending in "token:" must not run into a time.
   nodes.forEach((n, i) => {
     const x = cx(i);
-    const lines = wrapLabel(n.label + (n.inferred ? ' *' : ''));
-    lines.forEach((line, j) => parts.push(text('lb', x, 36 - (lines.length - 1 - j) * 17, line)));
-    if (n.inferred) parts.push(`<rect class="ring" x="${x - R - 4}" y="${AXIS_Y - R - 4}" width="${2 * R + 8}" height="${2 * R + 8}" rx="${R + 4}"/>`);
-    parts.push(`<rect class="nd n-${n.cls}" x="${x - R}" y="${AXIS_Y - R}" width="${2 * R}" height="${2 * R}" rx="${R}"/>`);
     parts.push(text('tm', x, 88, `${n.time}${n.marked ? ' †' : ''}`));
     if (n.sub !== undefined) parts.push(text('sb', x, 106, clip(defang(n.sub), SUB_COLUMNS)));
     if (n.gap !== undefined) parts.push(text('gp', x + PITCH / 2, 126, n.gap));
+  });
+  nodes.forEach((n, i) => {
+    const x = cx(i);
+    if (n.inferred) parts.push(`<rect class="ring" x="${x - R - 4}" y="${AXIS_Y - R - 4}" width="${2 * R + 8}" height="${2 * R + 8}" rx="${R + 4}"/>`);
+    parts.push(`<rect class="nd n-${n.cls}" x="${x - R}" y="${AXIS_Y - R}" width="${2 * R}" height="${2 * R}" rx="${R}"/>`);
+  });
+  nodes.forEach((n, i) => {
+    const lines = wrapLabel(n.label + (n.inferred ? ' *' : ''));
+    lines.forEach((line, j) => parts.push(text('lb', cx(i), 36 - (lines.length - 1 - j) * 17, line)));
   });
   return `<svg class="w${nodes.length}" viewBox="0 0 ${w} ${LANE_HEIGHT}" width="${w}" height="${LANE_HEIGHT}" aria-hidden="true"><g>${parts.join('')}</g></svg>`;
 }

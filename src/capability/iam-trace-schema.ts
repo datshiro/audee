@@ -297,6 +297,14 @@ export function proveJourneys<P extends TracePoint>(points: P[]): P[] {
   });
 }
 
+// A journey tag is an id of its own: not the campaign (when the request names the journey too) and not a user or role id.
+function journeyTagOk(journey: string, u: TraceUser, request: IamTraceRequest): boolean {
+  if (journey === '') return true;
+  if (!ID_RE.test(journey)) return false;
+  if (request.journey !== undefined && journey === request.target) return false;
+  return ![...request.users, u.id, u.user_id, u.role_id].includes(journey);
+}
+
 export function parseTraceOutput(result: RunResult, request: IamTraceRequest): TraceResult {
   if (result.isError) throw new Error('trace reported an error');
   const s = result.structured;
@@ -318,7 +326,7 @@ export function parseTraceOutput(result: RunResult, request: IamTraceRequest): T
   const out = kept.map((u) => {
     if (u.points.length > MAX_POINTS_PER_USER) cut = true;
     const checked = u.points.slice(0, MAX_POINTS_PER_USER).map((p): TracePoint => {
-      const tagged = p.journey === '' || ID_RE.test(p.journey) ? p : { ...p, journey: '' };
+      const tagged = journeyTagOk(p.journey, u, request) ? p : { ...p, journey: '' };
       return pointProblem(tagged) === undefined ? tagged : { ...tagged, state: 'inferred', why: INVALID_POINT_WHY };
     });
     return { ...u, points: checked };

@@ -138,8 +138,8 @@ describe('iam trace page', () => {
   it('puts the evidence in one table with the journey and outcome beside each point', () => {
     const table = between(page, '<table>', '</table>');
     expect(table.match(/<tr>/g)).toHaveLength(7);
-    expect(table).toContain('Gửi IAM: push sent<small>u1 · Journey J1 · kết quả: đạt</small>');
-    expect(table).toContain('SDK tracking: open<small>u1 · kết quả: thông tin</small>');
+    expect(table).toContain('Gửi IAM: push sent<small>· u1 · Journey J1 · kết quả: đạt</small>');
+    expect(table).toContain('SDK tracking: open<small>· u1 · kết quả: thông tin</small>');
     expect(table).toContain('Suy ra vì: worker lines lost after wait');
     expect(table).toContain('đã sửa khi kiểm chứng');
     expect(page).toContain('ghi chú &lt;i&gt;một&lt;/i&gt;');
@@ -167,6 +167,20 @@ describe('iam trace page', () => {
     const dated = iamTracePage({ ...REQ, at: new Date(), windowStart: new Date(), windowEnd: new Date(), timeFilter: '_time:(a, b)', window: 'quanh 25/10 09:30 ICT' }, TRACE);
     expect(dated).not.toContain('class="banner"');
     expect(dated).not.toContain('Đã tra 24 giờ gần nhất');
+  });
+
+  it('counts verification over the points shown, once per player', () => {
+    const dup = (id: string): MergedTrace['users'][number] => ({ id, user_id: 'U1', role_id: 'R1', points: [point({ kind: 'send', state: 'seen', evidence: 'J1 line', time: '1792890123123', check: 'confirmed' }), point({ kind: 'inbox', state: 'not_recorded', journey: '', label: 'inbox' })] });
+    const both: MergedTrace = { ...TRACE, counts: { confirmed: 2, corrected: 0, unverified: 2 }, users: [dup('R1'), dup('U1')] };
+    expect(iamTracePage(REQ, both)).toContain('1 mốc khớp, 0 mốc đã sửa, 1 mốc chưa kiểm chứng.');
+    expect(iamTraceNotice(REQ, both)).toContain('1 user · 1 mốc ghi nhận · 0 mốc suy ra · 1 mốc không ghi nhận · 1 mốc chưa kiểm chứng');
+  });
+
+  it('does not withhold a page because a label ends in a secret-looking key before a time, a gap or an id', () => {
+    const many = (id: string, role: string): MergedTrace['users'][number] => ({ id, user_id: '', role_id: role, points: [point({ kind: 'send', state: 'seen', label: 'Nhận push token:', evidence: 'J1 line', time: '1792890123123' }), point({ kind: 'trigger', state: 'seen', label: 'Gửi lại', evidence: 'J1 line', time: '1792890124123' })] });
+    const p = iamTracePage(REQ, { ...TRACE, users: [many('RID-TEST-01', ''), many('RID-TEST-02', '')] });
+    expect(checkAnswerPage(p)).toBeUndefined();
+    expect(leaksSecret(answerPageVisibleTexts(p), [])).toBe(false);
   });
 
   it('clips evidence and renders an empty client lane', () => {
@@ -221,7 +235,8 @@ describe('iam trace page', () => {
     expect(notice).toContain('&lt;b&gt;ok&lt;/b&gt;');
     expect(notice).not.toContain('<script');
     expect(notice).not.toContain('chưa kiểm chứng độc lập');
-    const unverified = iamTraceNotice(REQ, { ...TRACE, verified: false, reason: 'verifier checked no point', counts: { confirmed: 0, corrected: 0, unverified: 6 } });
+    const allUnchecked: MergedTrace = { ...TRACE, verified: false, reason: 'verifier checked no point', users: TRACE.users.map((u) => ({ ...u, points: u.points.map((p) => ({ ...p, check: 'unverified' as const })) })) };
+    const unverified = iamTraceNotice(REQ, allUnchecked);
     expect(unverified).toContain('6 mốc chưa kiểm chứng');
     expect(unverified).toContain('chưa kiểm chứng độc lập (phiên kiểm chứng không kiểm lại được mốc nào)');
     expect(unverified).not.toContain('đã sửa');

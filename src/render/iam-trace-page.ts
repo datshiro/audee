@@ -107,11 +107,17 @@ ${unknown.length > 0 ? `<ul>${unknown.join('')}</ul>` : '<p>Mọi mốc đều t
 function tableRow(p: CheckedPoint, player: LayoutPlayer, many: boolean): string {
   const where = [many ? ids(player) : '', rowOf(p.kind) === 'server' && p.journey !== '' ? `Journey ${t(idTail(p.journey), 64)}` : '', `kết quả: ${OUTCOME_VI[p.outcome]}`].filter((x) => x !== '').join(' · ');
   const why = p.state === 'inferred' && p.why.trim() !== '' ? `<small>Suy ra vì: ${t(p.why, 300)}</small>` : '';
-  return `<tr><td>${KIND_VI[p.kind]}: ${label(p)}<small>${where}</small></td><td>${timeText(p)}</td><td>${t(p.source_field, 60)}</td><td>${status(p)}</td><td><div class="ev">${t(p.evidence, 600)}</div>${why}</td></tr>`;
+  return `<tr><td>${KIND_VI[p.kind]}: ${label(p)}<small>· ${where}</small></td><td>${timeText(p)}</td><td>${t(p.source_field, 60)}</td><td>${status(p)}</td><td><div class="ev">${t(p.evidence, 600)}</div>${why}</td></tr>`;
 }
 
-function verifyLine(trace: MergedTrace): string {
-  const c = trace.counts;
+// Counted over the points the page shows: a point seen under both ids of one player counts once.
+function tally(players: LayoutPlayer[]): MergedTrace['counts'] {
+  const counts = { confirmed: 0, corrected: 0, unverified: 0 };
+  for (const pl of players) for (const p of pl.points) counts[p.check] += 1;
+  return counts;
+}
+
+function verifyLine(trace: MergedTrace, c: MergedTrace['counts']): string {
   if (trace.verified) return ` Đã kiểm chứng độc lập bằng một phiên truy vấn lại: ${c.confirmed} mốc khớp, ${c.corrected} mốc đã sửa, ${c.unverified} mốc chưa kiểm chứng.`;
   return ` Chưa kiểm chứng độc lập${trace.reason !== undefined ? `: ${reasonText(trace.reason)}` : ''}.`;
 }
@@ -136,7 +142,7 @@ ${widthRules(counts)}</style>
 </head>
 <body>
 <main>
-<header><h1>Trace IAM</h1><p>IAM ${t(req.target, 64)}${req.journey !== undefined ? ` · journey ${t(req.journey, 64)}` : ''} · ${t(req.window, 120)} · giờ ICT</p>${banner}<p class="warn">Temporal không kiểm tra.${filter}${verifyLine(trace)}</p>
+<header><h1>Trace IAM</h1><p>IAM ${t(req.target, 64)}${req.journey !== undefined ? ` · journey ${t(req.journey, 64)}` : ''} · ${t(req.window, 120)} · giờ ICT</p>${banner}<p class="warn">Temporal không kiểm tra.${filter}${verifyLine(trace, tally(players))}</p>
 <p class="finding">${t(trace.finding, 300) || 'Không có kết luận.'}</p>${conclusion}</header>
 <section><h2>Timeline</h2>
 <p>Giờ ICT. Mỗi hàng là một journey; khoảng cách giữa các mốc không theo tỷ lệ, nhãn +… là thời gian từ mốc trước, xN là mốc lặp N lần.</p>
@@ -156,7 +162,7 @@ export function iamTraceNotice(req: IamTraceRequest, trace: MergedTrace): string
   const players = layoutTrace(req, trace);
   const states: Record<PointState, number> = { seen: 0, inferred: 0, not_recorded: 0 };
   for (const pl of players) for (const p of pl.points) states[p.state] += 1;
-  const { corrected, unverified } = trace.counts;
+  const { corrected, unverified } = tally(players);
   return (
     '🤖 <b>Trace IAM tự động</b>, timeline trong file, bạn kiểm tra lại trước khi dùng nhé:<br>' +
     t(trace.finding, 300) +

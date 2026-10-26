@@ -127,7 +127,7 @@ owner notices carry that name as their kind).
 - Tags (2026-10-26, timeline redesign): the trace tags each point with `journey` (an id, empty for client kinds) and
   `outcome` (`pass`, `block`, `info`) and returns a short `conclusion` (2-4 bullets); the verifier schema is unchanged
   and never touches them. audee validates the tags: an unsafe journey id becomes empty, the conclusion is capped at 4
-  bullets, a trace holds at most 60 points per user (several journeys per user). After verification a server point's
+  bullets, a journey tag equal to the campaign (when the request names the journey too), a requested user or a role id becomes empty, a trace holds at most 60 points per user (several journeys per user). After verification a server point's
   journey counts as seen only when its own evidence carries the journey id (as a whole token) or shares a `traceId`
   (`traceId`, `trace_id`, with or without escaped quotes) with another point whose evidence does; otherwise, or with no
   journey tag, the point is shown as inferred with a fixed Vietnamese reason. On real traces most lines may carry
@@ -144,7 +144,8 @@ owner notices carry that name as their kind).
   blue filled, check coral outlined, IAM sent coral filled, other grey, not recorded dashed hollow; an inferred node has
   a dashed ring and an asterisk. A lane's viewBox width grows with its node count, scales down with the page to 85% and
   scrolls sideways below that. Users whose id, userId or roleId overlap (one player asked for by both ids) merge into
-  one section. A request without a datetime shows a banner on the page and in the notice: "Đã tra 24 giờ gần nhất; thêm
+  one section, a line seen under both ids counts once; two roles of one account stay apart. The verification counts
+  shown are tallied over the points the page shows. A request without a datetime shows a banner on the page and in the notice: "Đã tra 24 giờ gần nhất; thêm
   dd/mm hh:mm để tra ngày khác". The layout is a pure function (`layoutTrace`). The page must pass
   `checkAnswerPage` (the product-answer CSP and markup rules). Evidence is redacted first: the values of token, key,
   secret and password pairs, of `registration_id`/`registrationId`/`regId` and the plural list forms (`registration_ids`, `fcm_tokens`,

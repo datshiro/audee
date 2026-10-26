@@ -157,6 +157,19 @@ describe('mergePlayers', () => {
     expect(merged[0]?.ids).toEqual(['RID1', 'U1']);
   });
 
+  it('keeps two roles of one account apart but merges the same role asked by its userId', () => {
+    expect(mergePlayers([user('r1', [], { user_id: 'U1', role_id: 'r1' }), user('r2', [], { user_id: 'U1', role_id: 'r2' })])).toHaveLength(2);
+    expect(mergePlayers([user('r1', [], { user_id: 'U1', role_id: 'r1' }), user('U1', [], { user_id: 'U1', role_id: 'r1' })])).toHaveLength(1);
+  });
+
+  it('never merges the points of a single user with each other', () => {
+    const ack = (why: string, state: CheckedPoint['state']): CheckedPoint => pt({ kind: 'delivered', label: 'ack', journey: '', state, why, evidence: '', source_field: '' });
+    const merged = mergePlayers([user('a', [ack('', 'not_recorded'), ack('', 'not_recorded'), pt({ kind: 'condition', state: 'inferred', why: 'one', evidence: '' }), pt({ kind: 'condition', state: 'inferred', why: 'two', evidence: '' })], { user_id: 'U' })]);
+    expect(merged[0]?.points).toHaveLength(4);
+    const twice = mergePlayers([user('a', [ack('', 'not_recorded')], { user_id: 'U', role_id: 'R' }), user('b', [ack('', 'not_recorded')], { user_id: 'U', role_id: 'R' })]);
+    expect(twice[0]?.points).toHaveLength(1);
+  });
+
   it('keeps users with no shared id apart, and joins a chain of three', () => {
     expect(mergePlayers([user('a', [], { user_id: 'U1' }), user('b', [], { user_id: 'U2' })])).toHaveLength(2);
     expect(mergePlayers([user('a', [], { user_id: 'U1' }), user('b', [], { user_id: 'U1', role_id: 'R' }), user('c', [], { role_id: 'R' })])).toHaveLength(1);

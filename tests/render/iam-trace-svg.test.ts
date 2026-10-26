@@ -72,6 +72,15 @@ describe('laneSvg', () => {
     expect(ys).toEqual([19, 36]);
   });
 
+  it('keeps the repeat sub-label whole when ten or more repeats cross a day', () => {
+    expect(laneSvg([node({ sub: 'x12 đến 26/10 04:00' })])).toContain('x12 đến 26/10 04:00<');
+  });
+
+  it('writes times before labels so a label never runs into a time in the page text', () => {
+    const svg = laneSvg([node({ label: 'Nhận push token:', time: '10:28:15' })]);
+    expect(svg.indexOf('class="tm"')).toBeLessThan(svg.indexOf('class="lb"'));
+  });
+
   it('escapes and defangs model text', () => {
     const svg = laneSvg([node({ label: '<script>alert(1)</script> https://evil.example', sub: '"><b>' })]);
     expect(svg).not.toContain('<script');

@@ -522,6 +522,15 @@ describe('journey proof', () => {
     expect(mergeVerification(parsed, undefined).users[0]?.points[0]).toMatchObject({ state: 'inferred', why: JOURNEY_MISSING_WHY });
   });
 
+  it('blanks a journey tag that is the campaign, a requested user or a role id', () => {
+    const traced = clone(GOOD);
+    traced.users[0]!.points = [point({ journey: 'CAMP' }), point({ journey: 'u1' }), point({ journey: 'role-1' }), point({ journey: 'J1' })];
+    const both = parseTraceOutput(res(traced), { ...REQ, target: 'CAMP', journey: 'J1', users: ['u1'] });
+    expect(both.users[0]?.points.map((p) => p.journey)).toEqual(['', '', '', 'J1']);
+    const campaignOnly = parseTraceOutput(res(traced), { ...REQ, target: 'CAMP', users: ['u1'] });
+    expect(campaignOnly.users[0]?.points[0]?.journey).toBe('CAMP');
+  });
+
   it('puts delivered on the client row', () => {
     expect(['delivered', 'sdk_event', 'inbox'].map((k) => rowOf(k as TracePoint['kind']))).toEqual(['client', 'client', 'client']);
     expect(rowOf('send')).toBe('server');
