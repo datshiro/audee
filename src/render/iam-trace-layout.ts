@@ -11,6 +11,8 @@ export const KIND_VI: Record<PointKind, string> = {
   frequency: 'Frequency check',
   send: 'Gửi IAM',
   delivered: 'Client ack',
+  publish: 'Publish kênh',
+  subscribe: 'SDK subscribe',
   sdk_event: 'SDK tracking',
   inbox: 'App Inbox',
 };
@@ -89,7 +91,7 @@ export function mergePlayers(users: MergedTrace['users']): Array<{ ids: string[]
   const root = (i: number): number => (group[i] === i ? i : (group[i] = root(group[i] as number)));
   users.forEach((a, i) => users.slice(0, i).forEach((b, j) => samePlayer(a, b) && (group[root(i)] = root(j))));
   const out: Array<{ ids: string[]; userId: string; roleId: string; points: CheckedPoint[]; at: number }> = [];
-  const key = (c: CheckedPoint): string => [c.kind, c.journey, c.label, c.outcome, c.time, c.evidence].join('\u0000');
+  const key = (c: CheckedPoint): string => [c.kind, c.journey, c.label, c.outcome, c.channel, c.time, c.evidence].join('\u0000');
   users.forEach((u, i) => {
     const at = root(i);
     let p = out.find((x) => x.at === at);
@@ -133,7 +135,7 @@ function classOf(p: CheckedPoint): NodeClass {
 }
 
 const labelOf = (p: CheckedPoint): string => (p.label.trim() === '' ? KIND_VI[p.kind] : p.label.trim());
-const sameNode = (a: CheckedPoint, b: CheckedPoint): boolean => a.kind === b.kind && labelOf(a) === labelOf(b) && a.outcome === b.outcome && a.state === b.state;
+const sameNode = (a: CheckedPoint, b: CheckedPoint): boolean => a.kind === b.kind && labelOf(a) === labelOf(b) && a.outcome === b.outcome && a.state === b.state && a.channel === b.channel;
 
 // Adjacent identical points become one node with a count; the gap to the next node runs from the last of them.
 export function buildNodes(points: CheckedPoint[]): LayoutNode[] {

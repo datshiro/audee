@@ -5,10 +5,10 @@ import type { CheckedPoint, IamTraceRequest, MergedTrace, TraceResult } from '..
 import { answerPageVisibleTexts, checkAnswerPage, emptyText, failedText, iamTraceFailedReply, iamTraceMissingReply, iamTraceQueuedReply, iamTraceUsageReply, kbQueryEmptyReply, queuedText } from '../../src/render/html.js';
 import { iamTraceFileName, iamTraceNotice, iamTracePage, iamTraceTexts } from '../../src/render/iam-trace-page.js';
 import { leaksSecret } from '../../src/render/secrets.js';
-import { SAMPLE_REQUEST, sampleTrace } from '../fixtures/iam-trace-sample.js';
+import { PUBLISHED, SAMPLE_REQUEST, SUBSCRIBED_ROLE, sampleTrace } from '../fixtures/iam-trace-sample.js';
 
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', window: '24 giờ gần nhất' };
-const point = (over: Partial<CheckedPoint> & Pick<CheckedPoint, 'kind' | 'state'>): CheckedPoint => ({ label: '', journey: 'J1', outcome: 'info', time: '', source_field: '', evidence: '', why: '', ref: 'u1-p1', check: 'unverified', ...over });
+const point = (over: Partial<CheckedPoint> & Pick<CheckedPoint, 'kind' | 'state'>): CheckedPoint => ({ label: '', journey: 'J1', outcome: 'info', channel: '', time: '', source_field: '', evidence: '', why: '', ref: 'u1-p1', check: 'unverified', ...over });
 // send comes before check_call so the time sort is exercised; trigger and check_call share an instant and keep their order.
 const TRACE: MergedTrace = {
   finding: 'IAM đã gửi cho u1 <b>ok</b>.',
@@ -223,7 +223,7 @@ describe('iam trace page', () => {
     expect(texts).toContain('push sent: push accepted');
     expect(texts).toContain('kết luận hai');
     expect(texts).toContain(TRACE.finding);
-    const raw: TraceResult = { status: 'done', finding: 'f', conclusion: [], missing: [], notes: [], users: [{ id: 'u1', user_id: 'u1', role_id: '', points: [{ kind: 'send', label: 'token', journey: '', outcome: 'info', time: '', source_field: '', evidence: 'abcdefghijkl12', state: 'seen', why: '' }] }] };
+    const raw: TraceResult = { status: 'done', finding: 'f', conclusion: [], missing: [], notes: [], users: [{ id: 'u1', user_id: 'u1', role_id: '', points: [{ kind: 'send', label: 'token', journey: '', outcome: 'info', channel: '', time: '', source_field: '', evidence: 'abcdefghijkl12', state: 'seen', why: '' }] }] };
     expect(iamTraceTexts(raw)).toContain('token: abcdefghijkl12');
     expect(leaksSecret(iamTraceTexts(raw))).toBe(true);
   });
@@ -265,6 +265,24 @@ describe('iam trace sample page', () => {
     expect(page).toContain('26/10 13:26:00');
     expect(page).toContain('+1h53m');
     expect(page.match(/<h3>RID-TEST-01 \/ 1100000000000000001 /g)).toHaveLength(1);
+  });
+
+  it('adds the subscription check: the published channel against the subscribed ones, compared by audee', () => {
+    const section = between(page, '<h2>Kiểm tra kênh subscribe</h2>', '<h2>Suy luận');
+    expect(page.indexOf('<h2>Timeline</h2>')).toBeLessThan(page.indexOf('<h2>Kiểm tra kênh subscribe</h2>'));
+    expect(section).toContain('Lệch game: message được publish lên game gamea nhưng các phiên SDK của user chỉ subscribe game gameb');
+    expect(section).toContain(`<td>Publish kênh</td><td>${PUBLISHED}</td><td>gamea</td>`);
+    expect(section).toContain(`<td>SDK subscribe</td><td>${SUBSCRIBED_ROLE}</td><td>gameb</td>`);
+    expect(section.match(/<tr>/g)).toHaveLength(4);
+    expect(page).toContain(`kênh ${PUBLISHED}`);
+  });
+
+  it('says the check cannot be made when the logs show neither channel', () => {
+    const trace = sampleTrace();
+    const bare: MergedTrace = { ...trace, users: trace.users.map((u) => ({ ...u, points: u.points.filter((p) => p.kind !== 'publish' && p.kind !== 'subscribe') })) };
+    const section = between(iamTracePage(SAMPLE_REQUEST, bare), '<h2>Kiểm tra kênh subscribe</h2>', '<h2>Suy luận');
+    expect(section).toContain('Không ghi nhận dòng message-delivery publish');
+    expect(section).not.toContain('<table>');
   });
 
   // IAM_TRACE_SAMPLE_DIR=<dir> pnpm vitest run --project unit tests/render/iam-trace-page.test.ts writes the page for a visual check.

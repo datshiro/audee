@@ -5,7 +5,7 @@ import { CAMPAIGN, JOURNEY, OTHER_JOURNEY, ROLE_ID, SAMPLE_REQUEST, sampleTrace,
 
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1'], since: '24h', window: '24 giờ gần nhất' };
 const pt = (over: Partial<CheckedPoint> & Pick<CheckedPoint, 'kind'>): CheckedPoint => ({
-  label: 'x', journey: 'J1', outcome: 'info', time: '', source_field: '_time', evidence: 'e', state: 'seen', why: '', ref: 'r', check: 'unverified', ...over,
+  label: 'x', journey: 'J1', outcome: 'info', channel: '', time: '', source_field: '_time', evidence: 'e', state: 'seen', why: '', ref: 'r', check: 'unverified', ...over,
 });
 const user = (id: string, points: CheckedPoint[], ids: Partial<{ user_id: string; role_id: string }> = {}): MergedTrace['users'][number] => ({ id, user_id: ids.user_id ?? '', role_id: ids.role_id ?? '', points });
 const trace = (users: MergedTrace['users']): MergedTrace => ({ finding: 'f', conclusion: [], notes: [], verified: true, counts: { confirmed: 0, corrected: 0, unverified: 0 }, users });
@@ -201,7 +201,7 @@ describe('layoutTrace', () => {
   it('merges the two ids of the sample player into one section', () => {
     expect(players).toHaveLength(1);
     expect(players[0]).toMatchObject({ ids: [ROLE_ID, USER_ID], userId: USER_ID, roleId: ROLE_ID });
-    expect(players[0]?.points).toHaveLength(19);
+    expect(players[0]?.points).toHaveLength(22);
   });
 
   it('draws the requested journey first, then the others, then the client lane', () => {
@@ -238,9 +238,12 @@ describe('layoutTrace', () => {
   it('puts delivered, SDK and inbox points on the client lane, with a not recorded node', () => {
     expect(players[0]?.client.nodes.map((n) => [n.label, n.cls, n.time])).toEqual([
       ['Ack delivered', 'missing', '—'],
+      ['Publish kênh', 'other', '10:28:16'],
       ['received', 'other', '10:28:19'],
       ['open', 'other', '10:28:44'],
       ['Inbox mark-read', 'other', '10:29:02'],
+      ['SDK subscribe', 'other', '11:42:24'],
+      ['SDK subscribe', 'other', '11:43:43'],
     ]);
     expect(players[0]?.client.nodes[0]?.sub).toBe('không ghi nhận');
   });
@@ -248,7 +251,7 @@ describe('layoutTrace', () => {
   it('lists the points lane by lane for the evidence table', () => {
     const labels = players[0]?.points.map((p) => p.label) ?? [];
     expect(labels.slice(0, 2)).toEqual(['Run bắt đầu', 'GameAPI role enrich']);
-    expect(labels.at(-1)).toBe('Inbox mark-read');
+    expect(labels.at(-1)).toBe('SDK subscribe');
   });
 
   it('gives a point with no journey the requested journey lane, and an empty lane when there are no server points', () => {

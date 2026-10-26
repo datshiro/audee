@@ -9,6 +9,10 @@ export const OTHER_JOURNEY = '9000000000000007184';
 export const ROLE_ID = 'RID-TEST-01';
 export const USER_ID = '1100000000000000001';
 
+export const PUBLISHED = `role:gamea:${USER_ID}:${ROLE_ID}:env-test`;
+export const SUBSCRIBED_ROLE = `role:gameb:${USER_ID}:${ROLE_ID}:env-test`;
+export const SUBSCRIBED_USER = `user:gameb:${USER_ID}`;
+
 export const SAMPLE_REQUEST: IamTraceRequest = { target: CAMPAIGN, journey: JOURNEY, users: [ROLE_ID, USER_ID], since: '24h', window: '24 giờ gần nhất' };
 
 type Spec = Pick<CheckedPoint, 'kind' | 'label'> & Partial<CheckedPoint>;
@@ -20,6 +24,7 @@ const point = (spec: Spec): CheckedPoint => {
   return {
     journey,
     outcome: 'info',
+    channel: '',
     time: '',
     source_field: state === 'not_recorded' ? '' : '_time',
     evidence: state === 'seen' ? `line ${n} for journey ${journey} traceId=trace-${n}` : '',
@@ -51,6 +56,9 @@ const server = (): CheckedPoint[] => [
 
 const client = (): CheckedPoint[] => [
   point({ kind: 'delivered', label: 'Ack delivered', state: 'not_recorded', journey: '' }),
+  point({ kind: 'publish', label: 'Publish kênh', journey: '', channel: PUBLISHED, time: '2026-10-25T03:28:16.900Z', evidence: `publish ${PUBLISHED}` }),
+  point({ kind: 'subscribe', label: 'SDK subscribe', journey: '', channel: SUBSCRIBED_USER, time: '2026-10-25T04:42:24.000Z', evidence: `subscribe ${SUBSCRIBED_USER}` }),
+  point({ kind: 'subscribe', label: 'SDK subscribe', journey: '', channel: SUBSCRIBED_ROLE, time: '2026-10-25T04:43:43.000Z', evidence: `subscribe ${SUBSCRIBED_ROLE}` }),
   point({ kind: 'sdk_event', label: 'received', journey: '', time: '2026-10-25T03:28:19.000Z', evidence: 'tracking received' }),
   point({ kind: 'sdk_event', label: 'open', journey: '', time: '2026-10-25T03:28:44.000Z', evidence: 'tracking open' }),
   point({ kind: 'inbox', label: 'Inbox mark-read', journey: '', time: '2026-10-25T03:29:02.000Z', evidence: 'PUT inbox read' }),

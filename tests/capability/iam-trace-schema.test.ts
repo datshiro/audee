@@ -27,7 +27,7 @@ import type { RunResult } from '../../src/runner/run.js';
 
 const res = (structured: unknown, extra: Partial<RunResult> = {}): RunResult => ({ isError: false, text: '', structured, denials: [], toolUses: [], durationMs: 1, ...extra });
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', window: '24 giờ gần nhất' };
-const point = (over: Partial<TracePoint> = {}): TracePoint => ({ kind: 'trigger', label: 'trigger', journey: 'J1', outcome: 'info', time: '1761354123456', source_field: '_time', evidence: 'journey workflow executed J1', state: 'seen', why: '', ...over });
+const point = (over: Partial<TracePoint> = {}): TracePoint => ({ kind: 'trigger', label: 'trigger', journey: 'J1', outcome: 'info', channel: '', time: '1761354123456', source_field: '_time', evidence: 'journey workflow executed J1', state: 'seen', why: '', ...over });
 const GOOD: TraceResult = {
   status: 'done',
   finding: 'IAM đã gửi.',
@@ -529,6 +529,29 @@ describe('journey proof', () => {
     expect(both.users[0]?.points.map((p) => p.journey)).toEqual(['', '', '', 'J1']);
     const campaignOnly = parseTraceOutput(res(traced), { ...REQ, target: 'CAMP', users: ['u1'] });
     expect(campaignOnly.users[0]?.points[0]?.journey).toBe('CAMP');
+  });
+
+  it('keeps publish and subscribe on the client row and checks their channel', () => {
+    expect(rowOf('publish')).toBe('client');
+    expect(rowOf('subscribe')).toBe('client');
+    const traced = clone(GOOD);
+    traced.users[0]!.points = [
+      point({ kind: 'publish', journey: '', channel: 'role:gamea:U1:R1:env', evidence: 'publish role:gamea:U1:R1:env' }),
+      point({ kind: 'subscribe', journey: '', channel: '', state: 'not_recorded', time: '', source_field: '', evidence: '' }),
+      point({ kind: 'subscribe', journey: '', channel: '' }),
+      point({ kind: 'subscribe', journey: '', channel: 'bad channel<b>' }),
+      point({ kind: 'send', channel: 'role:gamea:U1:R1:env' }),
+    ];
+    const parsed = parseTraceOutput(res(traced), { ...REQ, users: ['u1'] });
+    expect(parsed.users[0]?.points.map((p) => p.state)).toEqual(['seen', 'not_recorded', 'inferred', 'inferred', 'inferred']);
+    const merged = mergeVerification(parsed, undefined);
+    expect(merged.users[0]?.points.map((p) => p.state)).toEqual(['seen', 'not_recorded', 'inferred', 'inferred', 'inferred']);
+  });
+
+  it('requires the channel field in the trace contract', () => {
+    const noChannel = clone(GOOD) as unknown as { users: Array<{ points: Array<Record<string, unknown>> }> };
+    delete noChannel.users[0]!.points[0]!['channel'];
+    expect(() => parseTraceOutput(res(noChannel), REQ)).toThrow('trace result does not match the contract');
   });
 
   it('puts delivered on the client row', () => {

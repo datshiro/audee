@@ -111,9 +111,18 @@ owner notices carry that name as their kind).
   audee converts to ICT itself, and the page says once that times are store time and marks (†) only a point whose time
   came from the message. A condition outcome or an SDK event name is `seen` only when the
   message prints it, otherwise the point is inferred (from what ran next) or "không ghi nhận" (never "không xảy ra").
-  Nine point kinds: server kinds trigger, wait_end, check_call, condition, frequency, send; client kinds delivered,
-  sdk_event, inbox. Temporal rows and external business points are out of scope; the page says "Temporal không kiểm
-  tra".
+  Eleven point kinds: server kinds trigger, wait_end, check_call, condition, frequency, send; client kinds delivered,
+  publish, subscribe, sdk_event, inbox. Temporal rows and external business points are out of scope; the page says
+  "Temporal không kiểm tra".
+- Subscription check (added 2026-10-26 after the owner compared the page with the reference doc): a `publish` point is
+  message-delivery publishing the message to a channel, a `subscribe` point is one SDK session subscribing (at most 8,
+  or one not_recorded point when no subscribe line exists); both carry the channel name verbatim in `channel` (empty
+  on every other kind; a point with an unusable channel, or a publish/subscribe point without one, is shown as
+  inferred). Both sit on the client lane and are exempt from the journey proof. The page section "Kiểm tra kênh
+  subscribe" lists them (time, kind, channel, game = the second `:` segment, state) and audee computes the verdict from
+  `seen` points only: the published channel is among the subscribed ones; or no subscribed game is the published game
+  ("Lệch game"); or the same game with another channel; or the logs show no publish or no subscribe, which is said as
+  such and never read as "did not subscribe". The model copies names and never states the verdict in a point.
 - Verification: a second session on the same fence gets at most 15 points (seen first) with evidence clipped to 160
   characters and must re-query them with `trace_identity`, `trace_key` or `search_logs`. Only a call that returned
   without error counts as a re-query: `list_services`, denied calls and calls whose result was an error (an MCP refusal,
