@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { authFor, isAllowed, resolvePerson } from '../../src/authz/people.js';
-import { loadConfig } from '../../src/config/load.js';
+import { authFor, authSettings, isAllowed, resolvePerson } from '../../src/authz/people.js';
+import { expandHome, loadConfig } from '../../src/config/load.js';
+import { ConfigSchema } from '../../src/config/schema.js';
 
 const cfg = loadConfig(fileURLToPath(new URL('../fixtures/config/people.yaml', import.meta.url)));
 
@@ -27,5 +28,20 @@ describe('people', () => {
     if (dat === undefined || minh === undefined) throw new Error('fixture people missing');
     expect(authFor(cfg, minh)).toBe('api_key');
     expect(authFor(cfg, dat)).toBe('subscription');
+  });
+  it('TestSubscriptionConfigDirOnlyWhenNotDefault', () => {
+    const at = (dir: string) => ({ ...cfg, auth: { ...cfg.auth, claude_config_dir: dir } });
+    expect(cfg.auth.claude_config_dir).toBe('~/.claude');
+    expect(authSettings(cfg, 'subscription')).toEqual({ auth: 'subscription' });
+    expect(authSettings(at('~/.claude/'), 'subscription')).toEqual({ auth: 'subscription' });
+    expect(authSettings(at(expandHome('~/.claude')), 'subscription')).toEqual({ auth: 'subscription' });
+    expect(authSettings(at('~/.claude-hack'), 'subscription')).toEqual({ auth: 'subscription', configDir: expandHome('~/.claude-hack') });
+    expect(authSettings(at('/opt/claude-x/'), 'subscription')).toEqual({ auth: 'subscription', configDir: '/opt/claude-x' });
+    expect(authSettings(at('~/.claude-hack'), 'api_key')).not.toHaveProperty('configDir');
+  });
+  it('TestConfigDirMustBeHomeOrAbsolute', () => {
+    const dirOk = (dir: string): boolean => ConfigSchema.shape.auth.safeParse({ claude_config_dir: dir }).success;
+    for (const dir of ['~/.claude-hack', '/opt/claude']) expect(dirOk(dir), dir).toBe(true);
+    for (const dir of ['claude-hack', './x', '~x', '~/a,b', '', '~/', '/', '/a)b', '~/a*', '~/a b']) expect(dirOk(dir), dir).toBe(false);
   });
 });

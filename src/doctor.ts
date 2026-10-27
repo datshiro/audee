@@ -5,7 +5,7 @@ import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSyn
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
-import { authSettings } from './authz/people.js';
+import { authSettings, claudeConfigDir } from './authz/people.js';
 import { answerSchemaMatches, printAnswerSchema } from './capability/kb-answer.js';
 import { kbQueryDirs } from './capability/kb-query.js';
 import { expandHome } from './config/load.js';
@@ -26,7 +26,7 @@ export type DoctorDeps = {
   verified?: { claudeCode: string; sdk: string; apiKeyGuard: string | null };
   hasKeychainItem?: (item: string) => boolean;
   userConfigPath?: string; // ~/.claude.json
-  settingsPath?: string; // ~/.claude/settings.json, loaded by review sessions
+  settingsPath?: string; // ~/.claude/settings.json, loaded by API-key review sessions
   env?: NodeJS.ProcessEnv;
   optionsFor?: (profile: ProfileName, cap: Config['capabilities'][string]) => Options;
   kbDirs?: (kbDir: string) => KbPaths;
@@ -60,7 +60,7 @@ const minutes = (clock: string): number => {
   return (h ?? 0) * 60 + (m ?? 0);
 };
 
-// A session on the owner's auth with the environment the daemon uses (sessionEnv: no CLAUDE_CONFIG_DIR, USER kept).
+// A session on the owner's auth with the environment the daemon uses (sessionEnv, USER kept, plus auth.claude_config_dir).
 // Proves the daemon path (runAgent's env and auth), so it loads no settings, hooks or tools: the cost stays small and fixed.
 export async function ownerAuthProbe(cfg: Config): Promise<Check> {
   const options: Options = {
@@ -104,9 +104,16 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     check('claude code version', pkg.claudeCodeVersion === verified.claudeCode, `bundled ${pkg.claudeCodeVersion ?? 'unknown'}, fence verified on ${verified.claudeCode}`);
   }
 
-  // CLAUDE_CONFIG_DIR: sessions never see it (sessionEnv); subscription sessions get ~/.claude-hack from deploy/claude-hack.sh
-  if (env['CLAUDE_CONFIG_DIR'] !== undefined) check('config dir', true, `warning: CLAUDE_CONFIG_DIR is set in this shell; subscription sessions use ~/.claude-hack (its login and settings)`);
-  else check('config dir', true, '~/.claude-hack');
+  // The shell's CLAUDE_CONFIG_DIR never reaches sessions (sessionEnv); subscription sessions use auth.claude_config_dir
+  const lanes = [cfg.auth.owner, cfg.auth.teammates, cfg.classifier.auth];
+  const configDir = cfg.auth.claude_config_dir;
+  const configPath = expandHome(configDir);
+  if (!lanes.includes('subscription')) check('config dir', true, `${configDir} unused: no session runs on the subscription`);
+  else if (!existsSync(configPath) || !statSync(configPath).isDirectory()) check('config dir', false, `${configDir} is not a directory; subscription sessions would have no login`);
+  // Outside ~/.claude, Claude Code keeps the login in <dir>/.claude.json; ~/.claude's sits beside it as ~/.claude.json
+  else if (claudeConfigDir(cfg) !== undefined && !existsSync(join(configPath, '.claude.json'))) check('config dir', false, `${configDir} has no .claude.json; log in with CLAUDE_CONFIG_DIR=${configDir} claude`);
+  else if (env['CLAUDE_CONFIG_DIR'] !== undefined) check('config dir', true, `warning: CLAUDE_CONFIG_DIR is set in this shell; subscription sessions use ${configDir} (its login and settings)`);
+  else check('config dir', true, configDir);
 
   // 4. seatbelt fails closed
   const optionsFor = deps.optionsFor ?? ((profile, cap) => buildOptions({
@@ -283,15 +290,21 @@ export async function runDoctor(cfg: Config, deps: DoctorDeps = {}): Promise<Che
     }
   }
 
-  // 11. the user settings env block loaded by review sessions
-  const settingsPath = deps.settingsPath ?? expandHome('~/.claude/settings.json');
-  try {
-    const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as { env?: Record<string, unknown> };
-    const bad = Object.keys(settings.env ?? {}).filter((k) => k.startsWith('ANTHROPIC_') || SECRET_KEY.test(k)).sort();
-    check('settings env', bad.length === 0, bad.length === 0 ? `${settingsPath} env holds no secret-named key` : `${settingsPath} env holds ${bad.join(', ')}; review sessions would load them`);
-  } catch (e) {
-    const missing = (e as NodeJS.ErrnoException).code === 'ENOENT';
-    check('settings env', missing, missing ? `${settingsPath} absent` : `${settingsPath}: ${(e as Error).message}`);
+  // 11. the user settings env block loaded by review sessions: subscription ones read auth.claude_config_dir's,
+  // API-key ones ~/.claude's
+  const settingsPaths = [...new Set([
+    ...(lanes.includes('api_key') ? [deps.settingsPath ?? expandHome('~/.claude/settings.json')] : []),
+    ...(lanes.includes('subscription') ? [join(configPath, 'settings.json')] : []),
+  ])];
+  for (const settingsPath of settingsPaths) {
+    try {
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as { env?: Record<string, unknown> };
+      const bad = Object.keys(settings.env ?? {}).filter((k) => k.startsWith('ANTHROPIC_') || SECRET_KEY.test(k)).sort();
+      check('settings env', bad.length === 0, bad.length === 0 ? `${settingsPath} env holds no secret-named key` : `${settingsPath} env holds ${bad.join(', ')}; review sessions would load them`);
+    } catch (e) {
+      const missing = (e as NodeJS.ErrnoException).code === 'ENOENT';
+      check('settings env', missing, missing ? `${settingsPath} absent` : `${settingsPath}: ${(e as Error).message}`);
+    }
   }
 
   // 12, 15. chats and work hours

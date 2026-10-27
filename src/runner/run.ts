@@ -1,5 +1,5 @@
 import { query, type Options, type SDKMessage, type SDKResultMessage, type SDKUserMessage, type Settings } from '@anthropic-ai/claude-agent-sdk';
-import { apiKeyHelperCommand, CLAUDE_HACK, sessionEnv } from './env.js';
+import { apiKeyHelperCommand, CLAUDE_COMMAND, sessionEnv } from './env.js';
 
 export type RunInput = {
   options: Options;
@@ -8,6 +8,7 @@ export type RunInput = {
   auth: 'subscription' | 'api_key';
   apiKeyItem?: string;
   baseUrl?: string; // API-key sessions only: an Anthropic-compatible gateway
+  configDir?: string; // subscription sessions only: CLAUDE_CONFIG_DIR, when not ~/.claude
   tmpdir?: string;
   signal?: AbortSignal;
   extraEnv?: Record<string, string>; // tests only
@@ -132,8 +133,9 @@ export async function runAgent(input: RunInput): Promise<RunResult> {
   let followedUp = false;
   try {
     const gateway = input.auth === 'api_key' && input.baseUrl !== undefined ? { ANTHROPIC_BASE_URL: input.baseUrl } : {};
-    const env = { ...sessionEnv({ tmpdir: input.tmpdir }), ...gateway, ...(input.extraEnv ?? {}) };
-    const executable = input.auth === 'subscription' ? { pathToClaudeCodeExecutable: CLAUDE_HACK } : {};
+    const configDir = input.auth === 'subscription' && input.configDir !== undefined ? { CLAUDE_CONFIG_DIR: input.configDir } : {};
+    const env = { ...sessionEnv({ tmpdir: input.tmpdir }), ...gateway, ...configDir, ...(input.extraEnv ?? {}) };
+    const executable = input.auth === 'subscription' ? { pathToClaudeCodeExecutable: CLAUDE_COMMAND } : {};
     for await (const message of query({ prompt: turnInput?.messages ?? input.prompt, options: { ...executable, ...options, env, abortController: controller } })) {
       collectToolCalls(message, calls);
       if (message.type === 'system' && message.subtype === 'background_tasks_changed') background = message.tasks.filter((t) => t.ambient !== true).length;

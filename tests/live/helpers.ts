@@ -3,7 +3,7 @@
 import { query, type Options, type SDKMessage, type SDKResultMessage, type Settings } from '@anthropic-ai/claude-agent-sdk';
 import { expandHome } from '../../src/config/load.js';
 import { loadKeychainEnv } from '../../src/keychain.js';
-import { apiKeyHelperCommand, CLAUDE_HACK, sessionEnv } from '../../src/runner/env.js';
+import { apiKeyHelperCommand, CLAUDE_COMMAND, sessionEnv } from '../../src/runner/env.js';
 
 export const LIVE_MODEL = process.env['AUDEE_LIVE_MODEL'] ?? 'claude-opus-5-5';
 export const KB_DIR = expandHome(process.env['AUDEE_KB_DIR'] ?? '~/.claude/kb'); // a KB worktree under test
@@ -103,7 +103,7 @@ export async function runLive(options: Options, prompt: string, auth: LiveAuth =
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 600_000);
   try {
     const env = sessionEnv(opts.tmpdir !== undefined ? { tmpdir: opts.tmpdir } : {});
-    const executable = auth.auth === 'subscription' ? { pathToClaudeCodeExecutable: CLAUDE_HACK } : {}; // as runAgent: the login lives in ~/.claude-hack
+    const executable = auth.auth === 'subscription' ? { pathToClaudeCodeExecutable: CLAUDE_COMMAND } : {}; // as runAgent on the default auth.claude_config_dir: the installed claude on ~/.claude
     return await collect(query({ prompt, options: { ...options, ...executable, ...(Object.keys(settings).length > 0 ? { settings } : {}), env, abortController: controller } }));
   } finally {
     clearTimeout(timer);

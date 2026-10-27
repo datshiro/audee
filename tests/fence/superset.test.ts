@@ -86,6 +86,13 @@ describe('fence superset of Ciel', () => {
     expect(flagValues(argv, '--disallowedTools')).toContain('Read(~/.claude.json)');
     expect(flagValues(argv, '--disallowedTools')).toContain('ScheduleWakeup');
   });
+  it('TestReviewDeniesConfigDirUserConfig', async () => {
+    const review = INPUTS['review'] as ProfileInput;
+    const denied = (input: ProfileInput): unknown => buildOptions(input).disallowedTools;
+    expect(denied({ ...review, configDir: '/Users/x/.claude-hack' })).toEqual([...(denied(review) as string[]), 'Read(//Users/x/.claude-hack/.claude.json)']);
+    const { argv } = await captureSession(buildOptions({ ...review, configDir: '/Users/x/.claude-hack' }));
+    expect(flagValues(argv, '--disallowedTools')).toEqual(expect.arrayContaining(['Read(~/.claude.json)', 'Read(//Users/x/.claude-hack/.claude.json)']));
+  });
   it('TestReviewGateDeniesScheduleWakeup', async () => {
     const hook = buildOptions(INPUTS['review'] as ProfileInput).hooks?.PreToolUse?.[0]?.hooks[0];
     const out = await hook?.({ hook_event_name: 'PreToolUse', tool_name: 'ScheduleWakeup', tool_input: {} } as never, undefined, { signal: new AbortController().signal });

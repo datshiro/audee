@@ -514,6 +514,14 @@ describe('watcher', () => {
     expect(inputs).toHaveLength(1);
     expect(inputs[0]).toMatchObject({ auth: 'api_key', apiKeyItem: 'audee-anthropic', baseUrl: 'https://gateway.example', options: { model: 'claude-opus-4-8' } });
   });
+
+  it('TestClassifierCarriesConfigDir', async () => {
+    const { watcher, cfg, inputs } = harness();
+    cfg.classifier.auth = 'subscription';
+    cfg.auth.claude_config_dir = '/Users/x/.claude-hack';
+    await watcher.handle(file(inboxJSON('1', 'colleague', new Date(), 'Dat ơi')), none);
+    expect(inputs[0]).toMatchObject({ auth: 'subscription', configDir: '/Users/x/.claude-hack' });
+  });
 });
 
 // utimesSync is referenced so the import stays used in every build of this file

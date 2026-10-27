@@ -317,6 +317,18 @@ different version than the fences were verified on (`src/fence/verified.ts`); re
 ## Auth and the API key guard
 - Capability sessions for the owner and for teammates run on the owner's Team-seat login (`auth.owner` and
   `auth.teammates: subscription`, owner decision 2026-10-18, reversing the plan's API-key-for-teammates decision).
+- Subscription sessions run the installed `claude` command through `deploy/claude.sh` on the config dir
+  `auth.claude_config_dir` (default `~/.claude`: its login and settings), owner decision 2026-10-27. From 2026-10-22
+  they ran through `deploy/claude-hack.sh` on `~/.claude-hack`. API-key sessions keep the SDK's bundled Claude Code.
+- To switch login, set `auth.claude_config_dir` (dashboard Settings, Auth, "Claude config dir"; for example
+  `~/.claude-hack`) and save: the reload applies it to the next session, with no rebuild or restart. Clear it to go
+  back to `~/.claude`. For the default, `CLAUDE_CONFIG_DIR` stays unset, as setting it, even to `~/.claude`, changes
+  where Claude Code looks for its login and `.claude.json`. Any other dir is passed as `CLAUDE_CONFIG_DIR`, review
+  sessions load `<dir>/settings.json`, the review fence also denies `Read(<dir>/.claude.json)`, and `doctor` checks
+  that the dir and its `.claude.json` (where that dir keeps its login) exist and that `<dir>/settings.json` holds no
+  secret-named env key; a save that fails these checks is refused. MCP servers still come from `~/.claude.json`
+  either way (review runs with a strict MCP config). The reload interrupts running sessions, so switch when the
+  queue is idle, then run `audee doctor --probe` once: the reload does not prove the login works.
 - The API key guard (phase 13) was never run: there was no `audee-anthropic` Keychain item then, so
   `FENCE_VERIFIED_ON.apiKeyGuard` is `null`. With teammates on the owner's login the guard does not gate them; `doctor`
   instead warns that Bash-capable grants (review, code_mapping) run as the owner and could reach the login token.

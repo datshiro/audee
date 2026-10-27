@@ -1,5 +1,6 @@
 // Port of Ciel's MR review (ciel/actions.go) onto the review profile.
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
+import { claudeConfigDir } from '../authz/people.js';
 import { expandHome } from '../config/load.js';
 import type { Capability as CapabilityConfig } from '../config/schema.js';
 import { REVIEW_JIRA_ALIAS, REVIEW_JIRA_SERVER, REVIEW_MCP_SERVERS } from '../fence/constants.js';
@@ -175,10 +176,11 @@ export const review: Capability = async (ctx) => {
     };
   };
   let options;
+  const configDir = claudeConfigDir(ctx.cfg);
   try {
     options = buildOptions({
       profile: 'review', cwd: expandHome(cap.workdir ?? '~/.claude/kb'),
-      mcpServers: reviewMcpServers(ctx),
+      mcpServers: reviewMcpServers(ctx), ...(configDir !== undefined ? { configDir } : {}),
       model: cap.model, ...(cap.budget_usd !== undefined ? { budgetUsd: cap.budget_usd } : {}), seatbelt: cap.seatbelt,
     });
   } catch (e) {
