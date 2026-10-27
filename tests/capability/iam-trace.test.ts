@@ -462,6 +462,7 @@ describe('iam_trace capability', () => {
     expect(prompt).toContain('ONE point per call');
     expect(prompt).toContain('Never a service name, URL, path, id or sentence');
     expect(prompt).toContain('[publish]');
+    expect(prompt).toContain('"grpc_client send request" line of the Centrifugo Publish call');
     expect(prompt).toContain('[subscribe]');
     expect(prompt).toContain('Channel: set "channel" only on publish and subscribe points');
     expect(prompt).toContain('under the same player entry');

@@ -68,6 +68,12 @@ describe('laneSvg', () => {
     expect(gapX).toBe(8 + PITCH);
   });
 
+  it('keeps the inferred asterisk on the label\'s last line', () => {
+    const svg = laneSvg([node({ label: 'Evaluate điều kiện', inferred: true })]);
+    const lines = [...svg.matchAll(/class="lb" x="[\d.]+" y="\d+">([^<]*)/g)].map((m) => m[1]);
+    expect(lines).toEqual(['Evaluate điều kiện *']);
+  });
+
   it('stacks a two-line label above the node without touching it', () => {
     const svg = laneSvg([node({ label: 'Kết quả điều kiện quốc gia' })]);
     const ys = [...svg.matchAll(/class="lb" x="[\d.]+" y="(\d+)"/g)].map((m) => Number(m[1]));
