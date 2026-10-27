@@ -81,8 +81,8 @@ export const ConfigSchema = z.strictObject({
     // An Anthropic-compatible gateway (LiteLLM) for API-key sessions; subscription sessions always use the login.
     base_url: z.string().regex(/^https:\/\/[^\s/?#]+(\/[^\s?#]*)?$/u, 'must be an https URL').optional(),
     // The Claude Code config dir (its login and settings) for subscription sessions.
-    // ~/ or absolute, so doctor and the daemon resolve it alike; no comma, which would split its fence rule.
-    claude_config_dir: z.string().regex(/^(~\/|\/)[^,]*$/u, 'must start with ~/ or / and hold no comma').default('~/.claude'),
+    // ~/ or absolute, so doctor and the daemon resolve it alike; none of , ( ) * or space, which would break its fence rule.
+    claude_config_dir: z.string().regex(/^(~\/|\/)[^,()*\s]+$/u, 'must start with ~/ or /, name a dir, and hold none of , ( ) * or spaces').default('~/.claude'),
   }).prefault({}),
   concurrency: z.strictObject({
     max_concurrent: z.number().int().positive().default(3),

@@ -42,6 +42,6 @@ describe('people', () => {
   it('TestConfigDirMustBeHomeOrAbsolute', () => {
     const dirOk = (dir: string): boolean => ConfigSchema.shape.auth.safeParse({ claude_config_dir: dir }).success;
     for (const dir of ['~/.claude-hack', '/opt/claude']) expect(dirOk(dir), dir).toBe(true);
-    for (const dir of ['claude-hack', './x', '~x', '~/a,b', '']) expect(dirOk(dir), dir).toBe(false);
+    for (const dir of ['claude-hack', './x', '~x', '~/a,b', '', '~/', '/', '/a)b', '~/a*', '~/a b']) expect(dirOk(dir), dir).toBe(false);
   });
 });
