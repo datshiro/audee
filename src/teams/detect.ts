@@ -74,6 +74,7 @@ export type ClassifySession = {
   auth: 'subscription' | 'api_key';
   apiKeyItem?: string;
   baseUrl?: string;
+  configDir?: string;
   signal: AbortSignal;
 };
 
@@ -186,7 +187,8 @@ export class Detector {
     const input: RunInput = {
       options, prompt: this.prompt(history, msg), timeoutMs: session.timeoutMs, auth: session.auth,
       ...(session.apiKeyItem !== undefined ? { apiKeyItem: session.apiKeyItem } : {}),
-      ...(session.baseUrl !== undefined ? { baseUrl: session.baseUrl } : {}), signal: session.signal,
+      ...(session.baseUrl !== undefined ? { baseUrl: session.baseUrl } : {}),
+      ...(session.configDir !== undefined ? { configDir: session.configDir } : {}), signal: session.signal,
     };
     let result;
     try {

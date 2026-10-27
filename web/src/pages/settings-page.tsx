@@ -157,6 +157,7 @@ function Content({ data, draft }: { data: ConfigView; draft: Draft }) {
           <SelectField label="Teammate sessions" value={f.str(['auth', 'teammates'])} options={AUTH} hint={f.hint(['auth', 'teammates'], "subscription uses the owner's login")} changed={f.changed(['auth', 'teammates'])} onChange={(v) => f.set(['auth', 'teammates'], v)} />
           <TextField label="Gateway base URL" mono value={f.str(['auth', 'base_url'])} placeholder="Direct to Anthropic" validate={baseUrlErr} hint="Optional https gateway for API-key sessions" changed={f.changed(['auth', 'base_url'])} onChange={f.setText(['auth', 'base_url'])} />
           <TextField label="API key keychain item" mono value={f.str(['auth', 'api_key_keychain_item'])} hint={f.hint(['auth', 'api_key_keychain_item'])} changed={f.changed(['auth', 'api_key_keychain_item'])} onChange={f.setText(['auth', 'api_key_keychain_item'])} />
+          <TextField label="Claude config dir" mono value={f.str(['auth', 'claude_config_dir'])} placeholder="~/.claude" hint={f.hint(['auth', 'claude_config_dir'], 'Login and settings for subscription sessions')} changed={f.changed(['auth', 'claude_config_dir'])} onChange={f.setText(['auth', 'claude_config_dir'])} />
         </div>
       </Section>
 

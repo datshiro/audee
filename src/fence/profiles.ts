@@ -21,6 +21,7 @@ export type ProfileInput = {
   mcpTools?: Record<string, string[]>;
   seatbelt: boolean;
   apiKeyHelper?: string;
+  configDir?: string; // absolute; only when not ~/.claude, whose ~/.claude.json REVIEW_EXTRA_DENIED covers
 };
 
 function required<T>(value: T | undefined, name: string, profile: ProfileName): T {
@@ -63,7 +64,9 @@ export function buildOptions(input: ProfileInput): Options {
   switch (input.profile) {
     case 'review': {
       const jira = input.mcpServers[REVIEW_JIRA_ALIAS] !== undefined;
-      const denied = [...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED, ...(jira ? REVIEW_JIRA_WRITE_TOOLS : [])];
+      // `//` roots the rule at /, as in the //** rules
+      const userConfig = input.configDir !== undefined ? [`Read(/${input.configDir}/.claude.json)`] : [];
+      const denied = [...REVIEW_DENIED_TOOLS, ...REVIEW_EXTRA_DENIED, ...(jira ? REVIEW_JIRA_WRITE_TOOLS : []), ...userConfig];
       Object.assign(options, {
         permissionMode: 'auto',
         settingSources: ['user', 'project', 'local'],

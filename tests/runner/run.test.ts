@@ -107,13 +107,29 @@ describe('runner', () => {
     expect((await dump('subscription')).some((l) => l.startsWith('ANTHROPIC_BASE_URL='))).toBe(false); // the login never goes to the gateway
   }, 20_000);
 
-  it('TestSubscriptionRunsThroughClaudeHack', async () => {
+  it('TestSubscriptionRunsInstalledClaudeOnDefaultConfig', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'audee-run-'));
     const configOut = join(dir, 'config-dir');
-    await writeFile(join(dir, 'claude'), `#!/bin/sh\necho "$CLAUDE_CONFIG_DIR" > "${configOut}"\n`);
+    await writeFile(join(dir, 'claude'), `#!/bin/sh\necho "config=$CLAUDE_CONFIG_DIR" > "${configOut}"\n`);
     await chmod(join(dir, 'claude'), 0o755);
     await runAgent({ options: {}, prompt: 'x', timeoutMs: 10_000, auth: 'subscription', extraEnv: { PATH: `${dir}:${process.env['PATH'] ?? ''}` } }).catch(() => undefined);
-    expect((await readFile(configOut, 'utf8')).trim()).toBe(join(process.env['HOME'] ?? '', '.claude-hack'));
+    expect((await readFile(configOut, 'utf8')).trim()).toBe('config='); // unset: claude uses ~/.claude
+  }, 20_000);
+
+  it('TestSubscriptionConfigDirReachesClaude', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'audee-run-'));
+    const configOut = join(dir, 'config-dir');
+    await writeFile(join(dir, 'claude'), `#!/bin/sh\necho "config=$CLAUDE_CONFIG_DIR" > "${configOut}"\n`);
+    await chmod(join(dir, 'claude'), 0o755);
+    await runAgent({ options: {}, prompt: 'x', timeoutMs: 10_000, auth: 'subscription', configDir: '/Users/x/.claude-hack', extraEnv: { PATH: `${dir}:${process.env['PATH'] ?? ''}` } }).catch(() => undefined);
+    expect((await readFile(configOut, 'utf8')).trim()).toBe('config=/Users/x/.claude-hack');
+  }, 20_000);
+
+  it('TestApiKeyIgnoresConfigDir', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'audee-run-'));
+    const envOut = join(dir, 'env');
+    await runAgent({ options: { pathToClaudeCodeExecutable: ENV_DUMP }, prompt: 'x', timeoutMs: 10_000, auth: 'api_key', apiKeyItem: 'audee-anthropic', configDir: '/Users/x/.claude-hack', extraEnv: { FAKE_CLAUDE_ARGV_OUT: join(dir, 'argv'), FAKE_CLAUDE_ENV_OUT: envOut } }).catch(() => undefined);
+    expect((await readFile(envOut, 'utf8')).split('\n').some((l) => l.startsWith('CLAUDE_CONFIG_DIR='))).toBe(false);
   }, 20_000);
 
   describe('follow-up turn', () => {

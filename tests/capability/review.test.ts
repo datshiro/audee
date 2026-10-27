@@ -290,4 +290,11 @@ capabilities:
     expect(inputs[0]?.timeoutMs).toBe(45 * 60_000);
     expect(inputs[0]?.auth).toBe('api_key');
   });
+
+  it('TestReviewDeniesConfiguredUserConfig', async () => {
+    const { ctx, inputs } = harness(text('REVIEW_POSTED: yes'));
+    ctx.cfg.auth.claude_config_dir = '/Users/x/.claude-hack';
+    await review(ctx);
+    expect(inputs[0]?.options.disallowedTools).toEqual(expect.arrayContaining(['Read(~/.claude.json)', 'Read(//Users/x/.claude-hack/.claude.json)']));
+  });
 });

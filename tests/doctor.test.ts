@@ -24,6 +24,8 @@ function setup(cfgOpts: TestConfigOptions = {}, depOverrides: DoctorDeps = {}) {
   const settingsPath = join(tmp(), 'settings.json');
   writeFileSync(settingsPath, JSON.stringify({ env: { LANG: 'en_US.UTF-8' } }));
   const cfg = testConfig({ people: 0, onedriveDir: oneDrive, mapping: { skillDir: skillLink }, review: { workdir }, keychainEnv: { GL_TOKEN: 'audee-gitlab' }, ...cfgOpts });
+  cfg.auth.claude_config_dir = tmp();
+  writeFileSync(join(cfg.auth.claude_config_dir, '.claude.json'), '{}');
   const deps: DoctorDeps = {
     nodeVersion: 'v25.8.2',
     sdkPackage: () => ({ version: '0.3.302', claudeCodeVersion: '2.1.302' }),
@@ -121,6 +123,31 @@ describe('doctor', () => {
     expect(env?.detail).not.toContain('LANG');
     const absent = await runDoctor(cfg, { ...deps, settingsPath: join(tmp(), 'nope.json') });
     expect(absent.find((c) => c.name === 'settings env')).toMatchObject({ ok: true });
+  });
+
+  it('TestDoctorFollowsClaudeConfigDir', async () => {
+    const { cfg, deps, settingsPath } = setup();
+    const dir = cfg.auth.claude_config_dir;
+    const envOf = (checks: Check[], path: string): Check | undefined => checks.find((c) => c.name === 'settings env' && c.detail.startsWith(path));
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({ env: { GITLAB_TOKEN: 'y' } }));
+    const checks = await runDoctor(cfg, deps);
+    expect(checks.find((c) => c.name === 'config dir')).toMatchObject({ ok: true, detail: dir });
+    expect(envOf(checks, join(dir, 'settings.json'))).toMatchObject({ ok: false }); // subscription sessions load it
+    expect(envOf(checks, settingsPath)).toMatchObject({ ok: true }); // teammates on api_key still load ~/.claude's
+
+    writeFileSync(join(dir, 'file'), '');
+    for (const [where, expected] of [[join(tmp(), 'missing'), 'is not a directory'], [join(dir, 'file'), 'is not a directory'], [tmp(), 'no .claude.json']] as const) {
+      cfg.auth.claude_config_dir = where;
+      const bad = (await runDoctor(cfg, deps)).find((c) => c.name === 'config dir');
+      expect(bad, where).toMatchObject({ ok: false });
+      expect(bad?.detail).toContain(expected);
+    }
+
+    cfg.auth.owner = 'api_key';
+    cfg.classifier.auth = 'api_key';
+    const keyOnly = await runDoctor(cfg, deps);
+    expect(keyOnly.find((c) => c.name === 'config dir')).toMatchObject({ ok: true });
+    expect(keyOnly.filter((c) => c.name === 'settings env').map((c) => c.detail.split(' ')[0])).toEqual([settingsPath]);
   });
 
   it('TestDoctorBashCapableByProfile', async () => {
