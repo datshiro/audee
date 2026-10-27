@@ -66,7 +66,9 @@ export function laneSvg(nodes: LayoutNode[]): string {
     parts.push(`<rect class="nd n-${n.cls}" x="${x - R}" y="${AXIS_Y - R}" width="${2 * R}" height="${2 * R}" rx="${R}"/>`);
   });
   nodes.forEach((n, i) => {
-    const lines = wrapLabel(n.label + (n.inferred ? ' *' : ''));
+    // The asterisk rides on the last line so it never wraps onto a line of its own.
+    const lines = wrapLabel(n.label);
+    if (n.inferred) lines.splice(-1, 1, `${lines.at(-1) ?? ''} *`.trim());
     lines.forEach((line, j) => parts.push(text('lb', cx(i), 36 - (lines.length - 1 - j) * 17, line)));
   });
   return `<svg class="w${nodes.length}" viewBox="0 0 ${w} ${LANE_HEIGHT}" width="${w}" height="${LANE_HEIGHT}" aria-hidden="true"><g>${parts.join('')}</g></svg>`;

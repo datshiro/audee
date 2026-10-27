@@ -83,7 +83,7 @@ Points, one line each, with the kind in brackets. You see only a log line's mess
 - [frequency] "condition into frequency_check_*" (pass) or "frequency check rejected".
 - [send] "[TRACE] SendInAppMessage call request" and the message-delivery "/api/v1/message/send" for this campaign.
 - [delivered] the message-delivery ack for the roleId around the send second; an absent ack is not_recorded, never "not delivered".
-- [publish] message-delivery publishing the created message to a Centrifugo channel for this campaign and player: "channel" is the entry's channel field, label "Publish kênh".
+- [publish] message-delivery publishing the created message to a Centrifugo channel for this campaign and player: the "grpc_client send request" line of the Centrifugo Publish call around the send second, whose entry carries the channel field; "channel" is that field, label "Publish kênh".
 - [subscribe] the player's SDK session subscribing to a channel (the connection stage of trace_identity; message-delivery lines whose message is "subscribe", with the channel in the entry's channel field): one point per subscribe event, "channel" from that field, label "SDK subscribe". At most 8 subscribe points: the first, then those nearest before and after the send. When the logs show no subscribe line for the player, report one not_recorded subscribe point with an empty channel. A channel-subscription mismatch finding in a tool reply is a claim to check against the lines, not a point.
 - [sdk_event] apollo.notification.tracking events of this campaign: received, open, read, impression, close; the label is the event name.
 - [inbox] GET /api/v1/inbox/counts, GET /api/v1/inbox/messages, PUT /api/v1/inbox/messages/read.
