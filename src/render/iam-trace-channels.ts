@@ -45,6 +45,17 @@ export function channelVerdictText(c: ChannelCheck): string {
   }
 }
 
+// role:… channels carry the realtime IAM, user:… the one-time IAM. Judged only when some subscribe was seen: with no
+// subscribe line at all the logs cannot tell which channel is missing. Raw text: callers escape it.
+export function missingChannelTexts(c: ChannelCheck): string[] {
+  if (c.subscribed.length === 0) return [];
+  const has = (prefix: string): boolean => c.subscribed.some((ch) => ch.startsWith(prefix));
+  return [
+    ...(has('role:') ? [] : ['Thiếu kênh role-based: tính năng real time IAM chưa work vì client không subscribe channel real time.']),
+    ...(has('user:') ? [] : ['Thiếu kênh user-based: tính năng one-time chưa work vì client không subscribe channel one time.']),
+  ];
+}
+
 export type PathOutcome = 'ok' | 'block' | 'unknown';
 export type DeliveryPath = { name: string; detail: string; outcome: PathOutcome; result: string; resultDetail: string };
 export type DeliveryPaths = { message: string[]; paths: DeliveryPath[]; question?: string };

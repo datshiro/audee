@@ -5,7 +5,7 @@ import { strings } from '../capability/kb-answer.js';
 import { defang } from './defang.js';
 import { answerPageCSP, answerPageStyle, clip, escapeHTML, maxNoteChars, maxNotes } from './html.js';
 import { idTail, KIND_VI, type LayoutLane, type LayoutPlayer, layoutTrace } from './iam-trace-layout.js';
-import { channelVerdictText, checkChannels, deliveryPaths, gameOf, isChannelPoint, OTHER_CASES, OTHER_CASES_NOTE, PATHS_SOURCE } from './iam-trace-channels.js';
+import { channelVerdictText, checkChannels, deliveryPaths, gameOf, isChannelPoint, missingChannelTexts, OTHER_CASES, OTHER_CASES_NOTE, PATHS_SOURCE } from './iam-trace-channels.js';
 import { laneSvg, pathsSvg, widthRules } from './iam-trace-svg.js';
 
 const t = (s: string, n: number): string => escapeHTML(clip(defang(s), n));
@@ -115,7 +115,8 @@ function channelSection(players: LayoutPlayer[]): string {
     const delivery = deliveryPaths(pl.points, check);
     const paths = `<div class="scroll">${pathsSvg(delivery)}</div><table><thead><tr><th>Đường message tới SDK</th><th>Kết quả</th><th>Chi tiết</th></tr></thead><tbody>${delivery.paths.map((path) => `<tr><td>${t(path.name, 60)}<small>${t(path.detail, 120)}</small></td><td>${t(path.result, 60)}</td><td>${t(path.resultDetail, 200)}</td></tr>`).join('')}</tbody></table>`;
     const question = delivery.question !== undefined ? `<p><strong>${t(delivery.question, 300)}</strong></p>` : '';
-    return `${players.length > 1 ? `<h3>${ids(pl)}</h3>` : ''}<p class="verdict">${t(channelVerdictText(check), 400)}</p>${table}${paths}${question}`;
+    const missing = missingChannelTexts(check).map((m) => `<p class="verdict">${t(m, 200)}</p>`).join('');
+    return `${players.length > 1 ? `<h3>${ids(pl)}</h3>` : ''}<p class="verdict">${t(channelVerdictText(check), 400)}</p>${missing}${table}${paths}${question}`;
   };
   return `<section><h2>Kiểm tra kênh subscribe</h2>
 <p>So kênh message-delivery publish message với các kênh mà SDK của user subscribe; audee tự so từ các dòng log đã ghi nhận.</p>
@@ -199,9 +200,11 @@ export function iamTraceNotice(req: IamTraceRequest, trace: MergedTrace): string
   const states: Record<PointState, number> = { seen: 0, inferred: 0, not_recorded: 0 };
   for (const pl of players) for (const p of pl.points) states[p.state] += 1;
   const { corrected, unverified } = tally(players);
+  const missing = players.flatMap((pl) => missingChannelTexts(checkChannels(pl.points)).map((m) => `<br>${players.length > 1 ? `${ids(pl)}: ` : ''}${t(m, 200)}`)).join('');
   return (
     '🤖 <b>Trace IAM tự động</b>, timeline trong file, bạn kiểm tra lại trước khi dùng nhé:<br>' +
     t(trace.finding, 300) +
+    missing +
     `<br>${players.length} user · ${states.seen} mốc ghi nhận · ${states.inferred} mốc suy ra · ${states.not_recorded} mốc không ghi nhận` +
     (corrected > 0 ? ` · ${corrected} mốc đã sửa khi kiểm chứng` : '') +
     (unverified > 0 ? ` · ${unverified} mốc chưa kiểm chứng` : '') +

@@ -310,6 +310,18 @@ describe('iam trace sample page', () => {
     expect(section.match(/Chưa kiểm tra được/g)).toHaveLength(3 + 3); // figure and table, three paths each
   });
 
+  it('tells the requester which channel type the SDK did not subscribe, on the page and in the notice', () => {
+    const trace = sampleTrace();
+    const noRole: MergedTrace = { ...trace, users: trace.users.map((u) => ({ ...u, points: u.points.filter((p) => p.channel !== SUBSCRIBED_ROLE) })) };
+    const realtime = 'tính năng real time IAM chưa work vì client không subscribe channel real time';
+    const section = between(iamTracePage(SAMPLE_REQUEST, noRole), '<h2>Kiểm tra kênh subscribe</h2>', '<h2>Suy luận');
+    expect(section).toContain(`<p class="verdict">Thiếu kênh role-based: ${realtime}.</p>`);
+    expect(section).not.toContain('one-time');
+    expect(iamTraceNotice(SAMPLE_REQUEST, noRole)).toContain(`<br>Thiếu kênh role-based: ${realtime}.`);
+    expect(iamTraceNotice(SAMPLE_REQUEST, trace)).not.toContain('Thiếu kênh');
+    expect(page).not.toContain('Thiếu kênh');
+  });
+
   // IAM_TRACE_SAMPLE_DIR=<dir> pnpm vitest run --project unit tests/render/iam-trace-page.test.ts writes the page for a visual check.
   it.runIf(process.env['IAM_TRACE_SAMPLE_DIR'] !== undefined)('writes the sample page for a visual check', () => {
     const dir = process.env['IAM_TRACE_SAMPLE_DIR'] as string;

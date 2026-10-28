@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CheckedPoint } from '../../src/capability/iam-trace-schema.js';
-import { channelVerdictText, checkChannels, deliveryPaths, gameOf } from '../../src/render/iam-trace-channels.js';
+import { channelVerdictText, checkChannels, deliveryPaths, gameOf, missingChannelTexts } from '../../src/render/iam-trace-channels.js';
 
 const pt = (kind: 'publish' | 'subscribe', channel: string, state: CheckedPoint['state'] = 'seen'): CheckedPoint => ({
   kind, label: kind, journey: '', outcome: 'info', channel, result: '', time: '', source_field: '_time', evidence: state === 'seen' ? 'line' : '', why: state === 'inferred' ? 'w' : '', state, ref: 'r', check: 'unverified',
@@ -107,5 +107,34 @@ describe('deliveryPaths', () => {
       expect(d.question).toBeUndefined();
     }
     expect(paths([]).message).toEqual(['Message đã tạo', 'chưa rõ giờ publish', 'gameId chưa rõ', 'SDK user: chưa rõ']);
+  });
+});
+
+describe('missingChannelTexts', () => {
+  const missing = (points: CheckedPoint[]) => missingChannelTexts(checkChannels(points));
+  const REALTIME = 'Thiếu kênh role-based: tính năng real time IAM chưa work vì client không subscribe channel real time.';
+  const ONE_TIME = 'Thiếu kênh user-based: tính năng one-time chưa work vì client không subscribe channel one time.';
+
+  it('says nothing when both channel types were subscribed', () => {
+    expect(missing([pt('subscribe', 'user:gamea:U1'), pt('subscribe', 'role:gamea:U1:R1:env')])).toEqual([]);
+  });
+
+  it('names the realtime IAM when only user channels were subscribed, with or without a publish line', () => {
+    expect(missing([pt('subscribe', 'user:gamea:U1')])).toEqual([REALTIME]);
+    expect(missing([pt('publish', 'role:gamea:U1:R1:env'), pt('subscribe', 'user:gamea:U1')])).toEqual([REALTIME]);
+  });
+
+  it('names the one-time IAM when only role channels were subscribed', () => {
+    expect(missing([pt('subscribe', 'role:gamea:U1:R1:env')])).toEqual([ONE_TIME]);
+  });
+
+  it('names both when no subscribed channel has either prefix', () => {
+    expect(missing([pt('subscribe', 'broadcast')])).toEqual([REALTIME, ONE_TIME]);
+  });
+
+  it('claims nothing when no subscribe was seen', () => {
+    expect(missing([])).toEqual([]);
+    expect(missing([pt('subscribe', '', 'not_recorded')])).toEqual([]);
+    expect(missing([pt('subscribe', 'user:gamea:U1', 'inferred')])).toEqual([]);
   });
 });

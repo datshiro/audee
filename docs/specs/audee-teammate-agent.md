@@ -127,6 +127,10 @@ owner notices carry that name as their kind).
   `seen` points only: the published channel is among the subscribed ones; or no subscribed game is the published game
   ("Lệch game"); or the same game with another channel; or the logs show no publish or no subscribe, which is said as
   such and never read as "did not subscribe". The model copies names and never states the verdict in a point.
+  When at least one subscribe is seen, the section and the chat notice (owner request 2026-10-28) also tell the
+  requester which channel type is missing among the seen subscribes: no `role:` channel means the realtime IAM does
+  not work because the client does not subscribe the realtime channel; no `user:` channel means the one-time IAM does
+  not work for the same reason. With no subscribe seen, neither is said.
   Below the table the page draws the three ways a message can reach the SDK (popup realtime, replay on reconnect, App
   Inbox), as an SVG figure plus a table: left the message (publish time, game from the published channel, game from the
   subscribe channels), then each way, then what the logs say. audee computes only what the logs show: the popup is
