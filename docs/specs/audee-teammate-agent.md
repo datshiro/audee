@@ -67,6 +67,28 @@ Event and owner reasons are fixed strings (`renderer failed`, `answer mode misma
 the job folder. `audee doctor` checks `render-answer` and that the KB contract equals the pinned copy, only when
 `default_mode` is `product`.
 
+## code_mapping page
+Departure from Ciel (2026-10-28): a `done` code mapping is sent as an HTML page through the outbox file flow
+(`codemapping-<message id>-<yyyymmdd-hhmmss>.html` in OneDrive `/Ciel/files`). The chat gets a notice with the probe
+summary, the identity verdict and the share link. The `<pre>` chat reply and the oversized `.json` file are gone.
+`need_input` and failed results stay chat replies.
+- The session returns `probeSummary`, `identityVerdict`, `assumptions` and `toConfirm` beside the payload fields; a
+  `done` result without `probeSummary` or `identityVerdict` counts as failed. `notes` holds only unfixed non-PASS lines.
+- The page (`src/render/mapping-page.ts`) opens with the request and a summary, then three blocks: codeMapping
+  JSON-quoted as before, supportedOutputFields, and sampleMessage. Summary text is defanged, clipped and escaped. The
+  blocks are escaped only, so their bytes match the payload that passed the probe.
+- Each block has a Copy button. The page carries one constant script (`MAPPING_COPY_SCRIPT`), allowed only by its
+  SHA-256 in the CSP (`script-src 'sha256-…'`, never `'unsafe-inline'`). Without clipboard access it selects the block.
+- `checkMappingPage` applies the `checkAnswerPage` rules with that CSP, adds `pre`, `button`, `id` and `data-copy`,
+  and requires exactly that script once, byte for byte. Both checks share `checkPage`; the answer-page rules are
+  unchanged.
+- Every field and the request get the secret check before rendering, and the page's visible text after. A hit
+  withholds the page with a fixed reason. A sample whose `device_id` or token field holds a real-looking value is
+  withheld too.
+- A page over 2 MB fails the check and the requester gets the failed reply; the `.json` fallback no longer exists.
+  Browsers turn CR and CRLF in a block into LF, so a sample with CRs copies with LFs.
+- Pending: confirm that the OneDrive share link and Teams run the copy script; text stays selectable when they do not.
+
 ## iam_trace
 Traces one Apollo in-app message (IAM) on prod for given users and sends a timeline page. Opt-in: the capability is
 commented out in `config.example.yaml`; at most one capability may use profile `iam_trace`, under any name (events and

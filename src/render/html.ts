@@ -43,8 +43,7 @@ export const mappingFailedReply = '❌ <b>Code mapping bị lỗi.</b> Mình s�
 
 // ciel/mapping.go:174-181
 export const mappingMissingReply = '<b>Mình cần thêm thông tin để làm code mapping:</b>';
-export const mappingDoneReply = '<b>Code mapping xong.</b> Bạn kiểm tra lại trước khi tạo EventSource nhé.';
-export const mappingTooLongReply = '<b>Code mapping xong</b> nhưng quá dài để gửi trong chat, mình gửi file:';
+export const mappingWithheldReply = '❌ <b>Kết quả code mapping có thể chứa thông tin bí mật nên mình không gửi.</b> Mình sẽ xem lại.';
 export const maxReplyChars = 20000;
 export const maxNoteChars = 300;
 export const maxNotes = 10;
@@ -156,31 +155,18 @@ export function noteList(items: string[]): string {
   return out + '</ul>';
 }
 
-// ciel/mapping.go:186-194: JSON-quoted so the requester can paste codeMapping into an EventSource payload.
-export function jsonString(s: string): string {
-  return JSON.stringify(s);
-}
-
 export type MappingResult = {
   status: string;
   codeMapping?: string;
   sampleMessage?: string;
   supportedOutputFields?: unknown[];
+  probeSummary?: string;
+  identityVerdict?: string;
+  assumptions?: string[];
+  toConfirm?: string[];
   notes?: string[];
   missing?: string[];
 };
-
-// ciel/mapping.go:164-183 mappingReplyHTML: [html, fits]
-export function mappingReplyHTML(res: MappingResult): [string, boolean] {
-  if (res.status === 'need_input') return [mappingMissingReply + noteList(res.missing ?? []), true];
-  const fields = JSON.stringify(res.supportedOutputFields ?? null, null, 2);
-  let out = mappingDoneReply;
-  for (const [name, value] of [['codeMapping', jsonString(res.codeMapping ?? '')], ['supportedOutputFields', fields]] as const) {
-    out += `<br><b>${name}</b><pre>${preEscape(value)}</pre>`;
-  }
-  if (runeLength(out) > maxReplyChars) return [mappingTooLongReply, false];
-  return [out, true];
-}
 
 export type KbQueryResult = {
   status: string;
@@ -237,8 +223,8 @@ function headedCells(html: string): string[] {
 // meta, one stylesheet that loads nothing, and otherwise only well-formed tags with the renderer's own elements and
 // attributes. Escaped text holds no raw "<" or ">". Reasons are fixed words, never page content.
 export const answerPageCSP = "default-src 'none'; style-src 'unsafe-inline'";
-const ANSWER_PAGE_ELEMENTS = new Set('html head meta title style body main header section div p span strong ol ul li table thead tbody tr th td small footer blockquote h1 h2 h3 svg g rect polygon path text tspan'.split(' '));
-const ANSWER_PAGE_ATTRIBUTES = new Set('class lang charset name content http-equiv viewBox x y width height rx points d role aria-hidden'.split(' '));
+export const ANSWER_PAGE_ELEMENTS: ReadonlySet<string> = new Set('html head meta title style body main header section div p span strong ol ul li table thead tbody tr th td small footer blockquote h1 h2 h3 svg g rect polygon path text tspan'.split(' '));
+export const ANSWER_PAGE_ATTRIBUTES: ReadonlySet<string> = new Set('class lang charset name content http-equiv viewBox x y width height rx points d role aria-hidden'.split(' '));
 export const maxAnswerPageBytes = 2 * 1024 * 1024;
 // HTML whitespace only: JS \s also matches NBSP and friends, which a browser reads as text or part of a tag name.
 const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[\t\n\f\r ]+[a-zA-Z][-a-zA-Z:]*(?:="[^"<>]*")?)*)[\t\n\f\r ]*(\/?)>/g;
@@ -246,8 +232,16 @@ const ATTR = /[\t\n\f\r ]+([a-zA-Z][-a-zA-Z:]*)(?:="([^"<>]*)")?/g;
 // A browser drops a CSP meta that is not in <head>, and anything but whitespace or another meta before it ends <head>.
 const HEAD_BEFORE_CSP = /^[\t\n\f\r ]*<html(?:[\t\n\f\r ][^<>]*)?>[\t\n\f\r ]*<head>(?:[\t\n\f\r ]*<meta[\t\n\f\r ][^<>]*>)*[\t\n\f\r ]*$/i;
 
+// The rules a page is checked against. script, when set, is the one script the page may carry, byte for byte.
+export type PageRules = { elements: ReadonlySet<string>; attributes: ReadonlySet<string>; csp: string; script?: string };
+const ANSWER_PAGE_RULES: PageRules = { elements: ANSWER_PAGE_ELEMENTS, attributes: ANSWER_PAGE_ATTRIBUTES, csp: answerPageCSP };
+
 // The reason a page fails the check, or undefined when it passes.
 export function checkAnswerPage(html: string): string | undefined {
+  return checkPage(html, ANSWER_PAGE_RULES);
+}
+
+export function checkPage(html: string, rules: PageRules): string | undefined {
   if (Buffer.byteLength(html) > maxAnswerPageBytes) return 'page too large';
   if (!/^<!doctype html>/i.test(html)) return 'markup';
   const opens = html.match(/<style/gi) ?? [];
@@ -255,17 +249,24 @@ export function checkAnswerPage(html: string): string | undefined {
   const style = /<style>([\s\S]*?)<\/style>/.exec(html);
   if (opens.length !== 1 || closes.length !== 1 || style === null) return 'stylesheet';
   if (/url\(|image-set\(|src\(|@import|expression\(|\\|<|>/i.test(style[1] ?? '')) return 'stylesheet';
-  const markup = html.replace(/^<!doctype html>/i, '').replace(style[0], '<style></style>');
+  let markup = html.replace(/^<!doctype html>/i, '').replace(style[0], '<style></style>');
+  if (rules.script !== undefined) {
+    const block = `<script>${rules.script}</script>`;
+    const scriptOpens = markup.match(/<script/gi) ?? [];
+    const scriptCloses = markup.match(/<\/script/gi) ?? [];
+    if (scriptOpens.length !== 1 || scriptCloses.length !== 1 || !markup.includes(block)) return 'script';
+    markup = markup.replace(block, '');
+  }
   let csp = 0;
   let cspAt = -1;
   let charset = 0;
   let charsetAt = -1;
   for (const m of markup.matchAll(TAG)) {
     const name = (m[2] ?? '').toLowerCase();
-    if (!ANSWER_PAGE_ELEMENTS.has(name)) return 'element';
+    if (!rules.elements.has(name)) return 'element';
     const attrs = new Map<string, string>();
     for (const [, attr = '', value = ''] of (m[3] ?? '').matchAll(ATTR)) {
-      if (!ANSWER_PAGE_ATTRIBUTES.has(attr) || attrs.has(attr.toLowerCase())) return 'attribute';
+      if (!rules.attributes.has(attr) || attrs.has(attr.toLowerCase())) return 'attribute';
       attrs.set(attr.toLowerCase(), value);
     }
     if (attrs.has('charset')) {
@@ -276,7 +277,7 @@ export function checkAnswerPage(html: string): string | undefined {
     if (attrs.has('http-equiv')) {
       if (name !== 'meta' || attrs.get('http-equiv')?.toLowerCase() !== 'content-security-policy') return 'csp';
       const content = (attrs.get('content') ?? '').replaceAll('&#39;', "'");
-      if (content !== answerPageCSP) return 'csp';
+      if (content !== rules.csp) return 'csp';
       csp++;
       cspAt = m.index ?? -1;
     }

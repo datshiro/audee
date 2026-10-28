@@ -6,7 +6,8 @@ import { resolvePerson } from '../../src/authz/people.js';
 import { expireScratchDirs, mapping, mappingDir, mappingPrompt, parseMappingOutput, probeTmpDir, setPruneProbeWorktrees } from '../../src/capability/mapping.js';
 import type { CapabilityContext } from '../../src/capability/types.js';
 import type { Job } from '../../src/queue/job.js';
-import { mappingFailedReply, mappingMissingReply, mappingTooLongReply, maxReplyChars } from '../../src/render/html.js';
+import { mappingFailedReply, mappingMissingReply, mappingWithheldReply, maxNotes } from '../../src/render/html.js';
+import { checkMappingPage } from '../../src/render/mapping-page.js';
 import type { RunInput, RunResult } from '../../src/runner/run.js';
 import { testConfig } from '../helpers/test-config.js';
 
@@ -14,7 +15,7 @@ const MSG = '1791513774214';
 const rawRetentionMs = 3 * 24 * 60 * 60 * 1000;
 
 // ciel/mapping_test.go:69-72
-const doneResult = (codeMapping = 'parts[2] >= 1 && x'): RunResult => ({ isError: false, text: 'ok', sessionId: 's', costUsd: 0.7, turns: 9, structured: { status: 'done', codeMapping, sampleMessage: 'a|b', supportedOutputFields: [{ name: 'Level' }], notes: ['RESULT 0 problem'], missing: [] }, denials: [], toolUses: ['Bash'], durationMs: 1 });
+const doneResult = (codeMapping = 'parts[2] >= 1 && x'): RunResult => ({ isError: false, text: 'ok', sessionId: 's', costUsd: 0.7, turns: 9, structured: { status: 'done', codeMapping, sampleMessage: 'a|b', supportedOutputFields: [{ name: 'Level' }], probeSummary: 'RESULT 0 problem(s)', identityVerdict: 'userId from RoleID', assumptions: ['env test'], toConfirm: ['productCode'], notes: [], missing: [] }, denials: [], toolUses: ['Bash'], durationMs: 1 });
 const needInputResult: RunResult = { isError: false, text: 'ok', sessionId: 's', structured: { status: 'need_input', notes: [], missing: ['schema'] }, denials: [], toolUses: [], durationMs: 1 };
 
 function skillDir(): string {
@@ -68,6 +69,8 @@ describe('code mapping', () => {
       ['done without mapping', wrap({ status: 'done', sampleMessage: 'a', supportedOutputFields: [{}], notes: [], missing: [] }), false],
       ['done without sample', wrap({ status: 'done', codeMapping: 'a', supportedOutputFields: [{}], notes: [], missing: [] }), false],
       ['done without fields', wrap({ status: 'done', codeMapping: 'a', sampleMessage: 'a', supportedOutputFields: [], notes: [], missing: [] }), false],
+      ['done without probe summary', wrap({ status: 'done', codeMapping: 'a', sampleMessage: 'a', supportedOutputFields: [{}], identityVerdict: 'v', notes: [], missing: [] }), false],
+      ['done without identity verdict', wrap({ status: 'done', codeMapping: 'a', sampleMessage: 'a', supportedOutputFields: [{}], probeSummary: 'p', notes: [], missing: [] }), false],
       ['need input without missing', wrap({ status: 'need_input', notes: [], missing: [] }), false],
       ['session failed', wrap({ status: 'failed', notes: ['Bash denied'], missing: [] }), false],
     ];
@@ -92,32 +95,45 @@ describe('code mapping', () => {
     expect(seen).toEqual({ stale: false, request: 'sample' });
   });
 
-  // ciel/mapping_test.go:220
-  it('TestHandleMappingRepliesWithPayload', async () => {
+  it('TestHandleMappingRepliesWithPage', async () => {
     const { ctx, inputs, dir } = harness(doneResult());
     const outcome = await mapping(ctx);
-    expect(outcome.reply?.html).toContain('<b>codeMapping</b>');
-    expect(outcome.reply?.html).toContain('parts[2] &gt;= 1 &amp;&amp; x');
+    expect(outcome.reply?.html).toContain('Code mapping xong');
+    expect(outcome.reply?.html).toContain('RESULT 0 problem(s)');
+    expect(outcome.reply?.html).not.toContain('<pre>');
+    const file = outcome.reply?.file;
+    expect(file?.name).toMatch(new RegExp(`^codemapping-${MSG}-\\d{8}-\\d{6}\\.html$`));
+    expect(checkMappingPage(file?.content ?? '')).toBeUndefined();
+    expect(file?.content).toContain('parts[2] &gt;= 1 &amp;&amp; x');
     expect(inputs[0]?.options.extraArgs).toEqual({ restricted: null });
-    expect(existsSync(dir)).toBe(false);
+    expect(outcome.removeAfterReply).toBe(dir);
     expect(existsSync(probeTmpDir(dir))).toBe(false);
     expect(outcome.event).toMatchObject({ kind: 'code_mapping', status: 'done', sessionId: 's', msgId: MSG });
   });
 
-  // ciel/mapping_test.go:251
-  it('TestHandleMappingSendsLongResultAsFile', async () => {
-    const long = 'x'.repeat(maxReplyChars);
-    const { ctx, dir } = harness(doneResult(long));
+  it('TestHandleMappingSendsLongResultAsPage', async () => {
+    const long = 'x'.repeat(30000);
+    const { ctx } = harness(doneResult(long));
     const outcome = await mapping(ctx);
-    expect(outcome.reply?.html).toBe(mappingTooLongReply);
-    const file = outcome.reply?.file;
-    expect(file?.name.startsWith(`codemapping-${MSG}-`)).toBe(true);
-    expect(file?.name.endsWith('.json')).toBe(true);
-    const content = JSON.parse(file?.content ?? '{}') as { codeMapping?: string; supportedOutputFields?: unknown[]; sampleMessage?: unknown };
-    expect(content.codeMapping).toBe(long);
-    expect(content.supportedOutputFields).toHaveLength(1);
-    expect(content.sampleMessage).toBeUndefined();
-    expect(existsSync(join(dir, 'result.json'))).toBe(true);
+    expect(outcome.reply?.file?.name.endsWith('.html')).toBe(true);
+    expect(outcome.reply?.file?.content).toContain(long);
+  });
+
+  it('TestHandleMappingWithholdsSecret', async () => {
+    const { ctx, dir } = harness(doneResult('token = "s3cr3t-value-123"'));
+    ctx.secrets = { K: 's3cr3t-value-123' };
+    const outcome = await mapping(ctx);
+    expect(outcome.reply?.html).toBe(mappingWithheldReply);
+    expect(outcome.reply?.file).toBeUndefined();
+    expect(outcome.event.status).toBe('withheld');
+    expect(outcome.notifyOwner).not.toContain('s3cr3t');
+    expect(existsSync(dir)).toBe(true);
+  });
+
+  it('TestHandleMappingNeedInputListsAtMostMaxNotes', async () => {
+    const { ctx } = harness({ ...needInputResult, structured: { status: 'need_input', notes: [], missing: Array.from({ length: 11 }, () => 'item') } });
+    const outcome = await mapping(ctx);
+    expect((outcome.reply?.html ?? '').split('<li>').length - 1).toBe(maxNotes);
   });
 
   // ciel/mapping_test.go:278
