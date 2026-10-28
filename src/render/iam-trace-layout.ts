@@ -20,6 +20,7 @@ export const KIND_VI: Record<PointKind, string> = {
 export type NodeClass = 'block' | 'check' | 'sent' | 'other' | 'missing';
 export type LayoutNode = {
   cls: NodeClass;
+  kind: PointKind;
   label: string;
   inferred: boolean;
   time: string; // hh:mm:ss, with dd/mm in front when the day differs from the previous node; — or ? without a usable time
@@ -171,7 +172,7 @@ export function buildNodes(points: CheckedPoint[]): LayoutNode[] {
     else if (p.state === 'inferred' && start === undefined) note = 'suy ra';
     else if (p.state === 'seen' && p.result.trim() === '' && CHECK_KINDS.has(p.kind)) note = 'không in kết quả';
     const result = p.result.trim();
-    return { cls, label: labelOf(p), inferred: p.state === 'inferred', time, marked: start !== undefined && p.source_field.trim() !== '' && p.source_field.trim() !== '_time', ...(result !== '' ? { result } : {}), ...(note !== undefined ? { note } : {}), count: run.length };
+    return { cls, kind: p.kind, label: labelOf(p), inferred: p.state === 'inferred', time, marked: start !== undefined && p.source_field.trim() !== '' && p.source_field.trim() !== '_time', ...(result !== '' ? { result } : {}), ...(note !== undefined ? { note } : {}), count: run.length };
   });
   runs.forEach((run, i) => {
     const next = runs[i + 1]?.[0];

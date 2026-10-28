@@ -1,7 +1,7 @@
 ---
 title: audee teammate agent
 status: completed
-last_verified: 2026-10-26
+last_verified: 2026-10-28
 claude_code_version: 2.1.302
 ---
 # audee teammate agent
@@ -164,8 +164,9 @@ owner notices carry that name as their kind).
   neither, so expect many dashed nodes until the log tools show journey or trace ids.
 - Output: a page built by audee (`src/render/iam-trace-page.ts`, layout in `iam-trace-layout.ts`, SVG in
   `iam-trace-svg.ts`), sent as `iam-trace-<message id>-<yyyymmdd-hhmmss>.html` through the outbox file flow with a short
-  Vietnamese notice. Order: a normal-size title and conclusion (finding plus bullets), the timeline, "Suy luận / chưa
-  biết" (inferred points with their reason, and the points "không ghi nhận"), the evidence table, notes. The timeline
+  Vietnamese notice. Order: a normal-size title, "Tóm tắt cho PO" (see PO summary), the heading "Chi tiết kỹ thuật", the
+  conclusion (finding plus bullets), the timeline, the channel check, "Suy luận / chưa biết" (inferred points with
+  their reason, and the points "không ghi nhận"), the evidence table, notes. The timeline
   is inline SVG drawn by audee: one lane per journey id the logs show for a player (the requested journey first, then by
   first time; titles are ids such as "Journey …2368 / campaign …2800", the campaign only on the requested lane) and one
   client lane (delivered, SDK tracking, inbox). Each node has its label above, ICT time below and an optional
@@ -187,6 +188,30 @@ owner notices carry that name as their kind).
   on the merged trace and on the page's visible text. When the trace names fewer of the requested users than asked, the
   page notes how many are missing, never which. Known secrets are the keychain_env values plus the iam-trace server's
   env values whose name holds TOKEN, SECRET, KEY or PASSWORD. A leak withholds the whole page.
+- PO summary (owner request 2026-10-28): the top of the page and of the notice answer, per player and in business
+  Vietnamese, whether the player got the IAM, where it stopped and who acts next. audee builds it in
+  `src/render/iam-trace-summary.ts` from seen points only, in fixed text; the only model text it copies is a step's
+  label and, for check steps, its result (a send's result such as `HTTP 200` is never shown). Verdicts, first match wins:
+  "Đã nhận" needs a seen send plus a seen delivery ack, any seen SDK event or a seen inbox mark-read
+  (`/inbox/messages/read`; inbox counts do not count); the owner counts the ack as receipt. A receipt timed before the
+  send is ignored; one with no usable time is kept and prints `?`. "mở" is an SDK open/read or an inbox mark-read.
+  Then "Apollo đã gửi …, nhưng game client đăng ký sai kênh …" when the channel verdict is game or mismatch; then
+  "Apollo đã gửi …; chưa ghi nhận phía game client"; then "Bị chặn tại bước …" at the earliest seen block ("Còn N lần
+  chặn khác" when there are more), where a seen send rejected by its line counts as a block, not a send; otherwise
+  "Chưa rõ" (with or without an inferred send). A seen send wins over any seen block, in its own journey or another.
+  Verdicts ignore the verification state, so an unverified trace still gets one. The text never says "Không nhận" or
+  "không xảy ra". The story lists up to 12 steps of up to 3 journeys, named from a fixed table (trigger, wait end,
+  frequency, send, ack) and a label-prefix map (enrichment, validation, evaluate, cdp) with `Bước kiểm tra "<label>"`
+  as fallback, so it reads well only when the model follows the label rule; markers are `— bị chặn`, `(xN)`, `(suy
+  ra)` (not the timeline's asterisk) and `Không ghi nhận bước …`, and the client is one "Game client: nhận lúc …"
+  line. Who acts next, one team per cause from a fixed table dated in its source line: a condition or frequency block
+  goes to the campaign's PO or operator, a rejected send and an unclear case to an Apollo developer, a wrong or missing
+  channel type (the missing-channel text verbatim) to the game or SDK team, a send with nothing from the client to the
+  game team; a received player with both channel types gets "Không cần xử lý thêm." even on a game mismatch. Players
+  are named by id tail, and the section shows no evidence or channel names. Times are still the log store's, which the
+  section says can lag, without a minute figure. The notice starts with one verdict line per player. Limits: a model
+  label can still carry a technical word into the story; an inferred send loses to a seen block in another journey.
+  Times from inside the log line need the iam-trace MCP to return a parsed `ts` (a request to apollo/kb, not done).
 - Events: status (`done`, `need_input`, `withheld`, `failed`, `unverified`), a fixed reason, cost, duration, turns and
   tool names only; never traced ids, message text or log lines. The job folder `iamtrace/<message id>` is deleted after
   a verified page is delivered, kept otherwise, and expires with the other scratch folders; a rerun or retry wipes a

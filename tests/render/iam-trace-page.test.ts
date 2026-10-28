@@ -5,7 +5,8 @@ import type { CheckedPoint, IamTraceRequest, MergedTrace, TraceResult } from '..
 import { answerPageVisibleTexts, checkAnswerPage, emptyText, failedText, iamTraceFailedReply, iamTraceMissingReply, iamTraceQueuedReply, iamTraceUsageReply, kbQueryEmptyReply, queuedText } from '../../src/render/html.js';
 import { iamTraceFileName, iamTraceNotice, iamTracePage, iamTraceTexts } from '../../src/render/iam-trace-page.js';
 import { leaksSecret } from '../../src/render/secrets.js';
-import { PUBLISHED, SAMPLE_REQUEST, SUBSCRIBED_ROLE, sampleTrace } from '../fixtures/iam-trace-sample.js';
+import { PO_OWNERS_SOURCE, PO_TIME_NOTE } from '../../src/render/iam-trace-summary.js';
+import { PUBLISHED, SAMPLE_REQUEST, SUBSCRIBED_ROLE, SUBSCRIBED_USER, sampleTrace, USER_ID } from '../fixtures/iam-trace-sample.js';
 
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', window: '24 giờ gần nhất' };
 const point = (over: Partial<CheckedPoint> & Pick<CheckedPoint, 'kind' | 'state'>): CheckedPoint => ({ label: '', journey: 'J1', outcome: 'info', channel: '', result: '', time: '', source_field: '', evidence: '', why: '', ref: 'u1-p1', check: 'unverified', ...over });
@@ -328,5 +329,51 @@ describe('iam trace sample page', () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'index.html'), page);
     writeFileSync(join(dir, 'open.html'), iamTracePage({ ...SAMPLE_REQUEST, at: new Date(), timeFilter: '_time:(a, b)', window: 'quanh 25/10 10:30 ICT (từ 30 phút trước đến 3 giờ sau)' }, sampleTrace()));
+  });
+});
+
+describe('iam trace PO summary', () => {
+  const page = iamTracePage(SAMPLE_REQUEST, sampleTrace());
+  const poOf = (html: string): string => between(html, '<section class="po">', '</section>');
+  const noRole = (): MergedTrace => {
+    const trace = sampleTrace();
+    return { ...trace, users: trace.users.map((u) => ({ ...u, points: u.points.filter((p) => p.channel !== SUBSCRIBED_ROLE) })) };
+  };
+
+  it('opens with the PO summary and puts the technical part under its own heading', () => {
+    const order = ['<section class="po">', '<h2>Tóm tắt cho PO</h2>', '<h2 class="tech">Chi tiết kỹ thuật</h2>', '<p class="finding">', '<h2>Timeline</h2>', '<h2>Kiểm tra kênh subscribe</h2>'].map((s) => page.indexOf(s));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('says whether the player got it, with the time and owner notes', () => {
+    const po = poOf(page);
+    expect(po).toContain('Đã nhận');
+    expect(po).toContain(PO_TIME_NOTE);
+    expect(po).toContain(PO_OWNERS_SOURCE);
+  });
+
+  // Scoped to the sample: a model label or check result can still carry such a word (the prompt's label rule is the guard).
+  it('keeps technical words and raw ids out of the sample PO section', () => {
+    expect(poOf(page)).toContain('Tóm tắt cho PO');
+    const text = answerPageVisibleTexts(poOf(page)).join('\n');
+    for (const word of ['_time', 'Centrifugo', 'publish', 'grpc', 'HTTP', 'traceId', 'workflow', 'journey-', PUBLISHED, SUBSCRIBED_ROLE, SUBSCRIBED_USER, USER_ID]) expect(text).not.toContain(word);
+  });
+
+  it('names the game team when a channel type is missing', () => {
+    const po = poOf(iamTracePage(SAMPLE_REQUEST, noRole()));
+    expect(po).toContain('Team game / SDK');
+    expect(po).toContain('Thiếu kênh role-based: tính năng real time IAM chưa work vì client không subscribe channel real time.');
+  });
+
+  it('notice starts with the verdict', () => {
+    const notice = iamTraceNotice(SAMPLE_REQUEST, sampleTrace());
+    const verdict = notice.indexOf('Đã nhận: Apollo gửi lúc 10:28:16, game client nhận lúc 10:28:19, mở lúc 10:28:44.');
+    expect(verdict).toBeGreaterThan(-1);
+    expect(verdict).toBeLessThan(notice.indexOf('Journey …2368 chạy trọn'));
+  });
+
+  it('every variant passes the page check', () => {
+    for (const html of [page, iamTracePage(SAMPLE_REQUEST, noRole()), iamTracePage(REQ, TRACE)]) expect(checkAnswerPage(html)).toBeUndefined();
   });
 });
