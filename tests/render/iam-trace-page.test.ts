@@ -6,7 +6,7 @@ import { answerPageVisibleTexts, checkAnswerPage, emptyText, failedText, iamTrac
 import { iamTraceFileName, iamTraceNotice, iamTracePage, iamTraceTexts } from '../../src/render/iam-trace-page.js';
 import { leaksSecret } from '../../src/render/secrets.js';
 import { PO_OWNERS_SOURCE, PO_TIME_NOTE } from '../../src/render/iam-trace-summary.js';
-import { PUBLISHED, SAMPLE_REQUEST, SUBSCRIBED_ROLE, SUBSCRIBED_USER, sampleTrace, USER_ID } from '../fixtures/iam-trace-sample.js';
+import { JOURNEY, PUBLISHED, SAMPLE_REQUEST, SUBSCRIBED_ROLE, SUBSCRIBED_USER, sampleTrace, USER_ID } from '../fixtures/iam-trace-sample.js';
 
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', window: '24 giờ gần nhất' };
 const point = (over: Partial<CheckedPoint> & Pick<CheckedPoint, 'kind' | 'state'>): CheckedPoint => ({ label: '', journey: 'J1', outcome: 'info', channel: '', result: '', time: '', source_field: '', evidence: '', why: '', ref: 'u1-p1', check: 'unverified', ...over });
@@ -358,6 +358,17 @@ describe('iam trace PO summary', () => {
     expect(poOf(page)).toContain('Tóm tắt cho PO');
     const text = answerPageVisibleTexts(poOf(page)).join('\n');
     for (const word of ['_time', 'Centrifugo', 'publish', 'grpc', 'HTTP', 'traceId', 'workflow', 'journey-', PUBLISHED, SUBSCRIBED_ROLE, SUBSCRIBED_USER, USER_ID]) expect(text).not.toContain(word);
+  });
+
+  it('names players and journeys by their full ids', () => {
+    const sample = sampleTrace();
+    const other = { ...(sample.users[1] as MergedTrace['users'][number]), id: '3585990158190706689', user_id: '3585990158190706689', role_id: '145137010184634371' };
+    const two: MergedTrace = { ...sample, users: [sample.users[0] as MergedTrace['users'][number], other] };
+    const po = poOf(iamTracePage(SAMPLE_REQUEST, two));
+    expect(po).toContain('<h3>Người chơi 3585990158190706689</h3>');
+    expect(po).toContain(`<li>Journey ${JOURNEY}:</li>`);
+    expect(po).not.toMatch(/…\d/u);
+    expect(iamTraceNotice(SAMPLE_REQUEST, two)).toContain('3585990158190706689: ');
   });
 
   it('names the game team when a channel type is missing', () => {
