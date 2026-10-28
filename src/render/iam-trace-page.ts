@@ -5,7 +5,8 @@ import { strings } from '../capability/kb-answer.js';
 import { defang } from './defang.js';
 import { answerPageCSP, answerPageStyle, clip, escapeHTML, maxNoteChars, maxNotes } from './html.js';
 import { idTail, KIND_VI, type LayoutLane, type LayoutPlayer, layoutTrace } from './iam-trace-layout.js';
-import { channelVerdictText, checkChannels, deliveryPaths, gameOf, isChannelPoint, OTHER_CASES, OTHER_CASES_NOTE, PATHS_SOURCE } from './iam-trace-channels.js';
+import { PO_OWNERS_SOURCE, PO_TIME_NOTE, poSummary } from './iam-trace-summary.js';
+import { channelVerdictText, checkChannels, deliveryPaths, gameOf, isChannelPoint, missingChannelTexts, OTHER_CASES, OTHER_CASES_NOTE, PATHS_SOURCE } from './iam-trace-channels.js';
 import { laneSvg, pathsSvg, widthRules } from './iam-trace-svg.js';
 
 const t = (s: string, n: number): string => escapeHTML(clip(defang(s), n));
@@ -73,7 +74,11 @@ text{fill:var(--fg);text-anchor:middle;font:13px/1.2 -apple-system,"Segoe UI",Ro
 .nt{fill:var(--muted);font-size:12px}
 .gp{fill:var(--muted);font-size:12px}
 .ev{white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,Menlo,monospace;font-size:13px}
-td small{display:block;color:var(--muted)}`;
+td small{display:block;color:var(--muted)}
+.po{border:1px solid var(--line);padding:4px 16px 12px;margin:16px 0}
+.pov{font-size:17px;font-weight:600;margin:12px 0 4px}
+.story{list-style:none;margin:4px 0 8px;padding-left:0}
+h2.tech{border-top:2px solid var(--line);padding-top:16px;margin-top:40px}`;
 
 function timeText(p: CheckedPoint): string {
   if (p.state === 'not_recorded') return '—';
@@ -115,7 +120,8 @@ function channelSection(players: LayoutPlayer[]): string {
     const delivery = deliveryPaths(pl.points, check);
     const paths = `<div class="scroll">${pathsSvg(delivery)}</div><table><thead><tr><th>Đường message tới SDK</th><th>Kết quả</th><th>Chi tiết</th></tr></thead><tbody>${delivery.paths.map((path) => `<tr><td>${t(path.name, 60)}<small>${t(path.detail, 120)}</small></td><td>${t(path.result, 60)}</td><td>${t(path.resultDetail, 200)}</td></tr>`).join('')}</tbody></table>`;
     const question = delivery.question !== undefined ? `<p><strong>${t(delivery.question, 300)}</strong></p>` : '';
-    return `${players.length > 1 ? `<h3>${ids(pl)}</h3>` : ''}<p class="verdict">${t(channelVerdictText(check), 400)}</p>${table}${paths}${question}`;
+    const missing = missingChannelTexts(check).map((m) => `<p class="verdict">${t(m, 200)}</p>`).join('');
+    return `${players.length > 1 ? `<h3>${ids(pl)}</h3>` : ''}<p class="verdict">${t(channelVerdictText(check), 400)}</p>${missing}${table}${paths}${question}`;
   };
   return `<section><h2>Kiểm tra kênh subscribe</h2>
 <p>So kênh message-delivery publish message với các kênh mà SDK của user subscribe; audee tự so từ các dòng log đã ghi nhận.</p>
@@ -124,6 +130,24 @@ ${players.map(block).join('\n')}
 <ul>${OTHER_CASES.map((c) => `<li>${t(c, 200)}</li>`).join('')}</ul>
 <p>${t(OTHER_CASES_NOTE, 200)}</p>
 <p><small>${t(PATHS_SOURCE, 300)}</small></p></section>`;
+}
+
+const tailIds = (player: LayoutPlayer): string => t(player.ids.map(idTail).join(' / '), 64);
+
+function poSection(players: LayoutPlayer[]): string {
+  const block = (pl: LayoutPlayer): string => {
+    const s = poSummary(pl);
+    const actions = s.actions.length > 0
+      ? `<table><thead><tr><th>Nguyên nhân</th><th>Ai xử lý</th><th>Việc cần làm</th></tr></thead><tbody>${s.actions.map((a) => `<tr><td>${t(a.cause, 300)}</td><td>${t(a.owner, 300)}</td><td>${t(a.next, 300)}</td></tr>`).join('')}</tbody></table>`
+      : '<p>Không cần xử lý thêm.</p>';
+    return `${players.length > 1 ? `<h3>${tailIds(pl)}</h3>` : ''}<p class="pov">${t(s.verdict.text, 400)}</p>
+<ul class="story">${s.story.map((l) => `<li>${t(l, 200)}</li>`).join('')}</ul>
+${actions}`;
+  };
+  return `<section class="po"><h2>Tóm tắt cho PO</h2>
+${players.map(block).join('\n')}
+<p><small>${t(PO_TIME_NOTE, 200)}</small></p>
+<p><small>${t(PO_OWNERS_SOURCE, 200)}</small></p></section>`;
 }
 
 function inferredSection(players: LayoutPlayer[]): string {
@@ -177,8 +201,10 @@ ${widthRules(counts)}</style>
 </head>
 <body>
 <main>
-<header><h1>Trace IAM</h1><p>IAM ${t(req.target, 64)}${req.journey !== undefined ? ` · journey ${t(req.journey, 64)}` : ''} · ${t(req.window, 120)} · giờ ICT</p>${banner}<p class="warn">Temporal không kiểm tra.${filter}${verifyLine(trace, tally(players))}</p>
-<p class="finding">${t(trace.finding, 300) || 'Không có kết luận.'}</p>${conclusion}</header>
+<header><h1>Trace IAM</h1><p>IAM ${t(req.target, 64)}${req.journey !== undefined ? ` · journey ${t(req.journey, 64)}` : ''} · ${t(req.window, 120)} · giờ ICT</p>${banner}<p class="warn">Temporal không kiểm tra.${filter}${verifyLine(trace, tally(players))}</p></header>
+${poSection(players)}
+<h2 class="tech">Chi tiết kỹ thuật</h2>
+<p class="finding">${t(trace.finding, 300) || 'Không có kết luận.'}</p>${conclusion}
 <section><h2>Timeline</h2>
 <p>Giờ ICT. Mỗi hàng là một journey; khoảng cách giữa các mốc không theo tỷ lệ, nhãn +… là thời gian từ mốc trước, xN là mốc lặp N lần.</p>
 ${legend}
@@ -199,9 +225,13 @@ export function iamTraceNotice(req: IamTraceRequest, trace: MergedTrace): string
   const states: Record<PointState, number> = { seen: 0, inferred: 0, not_recorded: 0 };
   for (const pl of players) for (const p of pl.points) states[p.state] += 1;
   const { corrected, unverified } = tally(players);
+  const missing = players.flatMap((pl) => missingChannelTexts(checkChannels(pl.points)).map((m) => `<br>${players.length > 1 ? `${ids(pl)}: ` : ''}${t(m, 200)}`)).join('');
+  const verdicts = players.map((pl) => `${players.length > 1 ? `${tailIds(pl)}: ` : ''}${t(poSummary(pl).verdict.text, 300)}<br>`).join('');
   return (
     '🤖 <b>Trace IAM tự động</b>, timeline trong file, bạn kiểm tra lại trước khi dùng nhé:<br>' +
+    verdicts +
     t(trace.finding, 300) +
+    missing +
     `<br>${players.length} user · ${states.seen} mốc ghi nhận · ${states.inferred} mốc suy ra · ${states.not_recorded} mốc không ghi nhận` +
     (corrected > 0 ? ` · ${corrected} mốc đã sửa khi kiểm chứng` : '') +
     (unverified > 0 ? ` · ${unverified} mốc chưa kiểm chứng` : '') +

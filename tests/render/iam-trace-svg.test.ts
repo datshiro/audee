@@ -3,7 +3,7 @@ import { checkAnswerPage } from '../../src/render/html.js';
 import type { LayoutNode } from '../../src/render/iam-trace-layout.js';
 import { LABEL_COLUMNS, laneSvg, laneWidth, LANE_HEIGHT, PITCH, pathsSvg, widthRules, wrapLabel, wrapText } from '../../src/render/iam-trace-svg.js';
 
-const node = (over: Partial<LayoutNode> = {}): LayoutNode => ({ cls: 'other', label: 'Run', inferred: false, time: '10:00:00', marked: false, count: 1, ...over });
+const node = (over: Partial<LayoutNode> = {}): LayoutNode => ({ cls: 'other', kind: 'trigger', label: 'Run', inferred: false, time: '10:00:00', marked: false, count: 1, ...over });
 const wrap = (svg: string): string => `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>x{}</style></head><body>${svg}</body></html>`;
 
 describe('wrapLabel', () => {
