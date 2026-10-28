@@ -227,6 +227,7 @@ describe('review', () => {
       const reportOnly = got.includes('the answer is "Leave it report-only"');
       const inline = got.includes('inline diff comment on its\nfile and line') && got.includes('mcp__gitlab__comment_mr');
       expect(posts, `post=${post}`).toBe(post);
+      expect(got.includes('the answer is\n"Post the acknowledgement"'), `post=${post}`).toBe(post);
       expect(reportOnly, `post=${post}`).toBe(!post);
       expect(inline, `post=${post}`).toBe(post);
       expect(got.includes('still post one short comment'), `post=${post}`).toBe(post);

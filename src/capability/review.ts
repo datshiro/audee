@@ -29,7 +29,8 @@ make the MR unreviewable.
 
 // actions.go:28-32
 export const postFindingsAnswer = `Publishing: the user wants confirmed findings posted on the MR. If the review asks whether to post
-them, the answer is "Post review comments on the MR". Post every finding as an inline diff comment on its
+them, the answer is "Post review comments on the MR". If it asks whether to acknowledge a clean High-risk MR, the answer is
+"Post the acknowledgement", so the author sees the result. Post every finding as an inline diff comment on its
 file and line (mcp__gitlab__post_review_findings with file and new_line); only a finding whose line is not in the
 diff may fall back to a general note. Then add one summary comment (mcp__gitlab__comment_mr).
 If you end up posting nothing on the MR (for example a rule says to post nothing), still post one short comment
