@@ -132,15 +132,13 @@ ${players.map(block).join('\n')}
 <p><small>${t(PATHS_SOURCE, 300)}</small></p></section>`;
 }
 
-const tailIds = (player: LayoutPlayer): string => t(player.ids.map(idTail).join(' / '), 64);
-
 function poSection(players: LayoutPlayer[]): string {
   const block = (pl: LayoutPlayer): string => {
     const s = poSummary(pl);
     const actions = s.actions.length > 0
       ? `<table><thead><tr><th>Nguyên nhân</th><th>Ai xử lý</th><th>Việc cần làm</th></tr></thead><tbody>${s.actions.map((a) => `<tr><td>${t(a.cause, 300)}</td><td>${t(a.owner, 300)}</td><td>${t(a.next, 300)}</td></tr>`).join('')}</tbody></table>`
       : '<p>Không cần xử lý thêm.</p>';
-    return `${players.length > 1 ? `<h3>${tailIds(pl)}</h3>` : ''}<p class="pov">${t(s.verdict.text, 400)}</p>
+    return `${players.length > 1 ? `<h3>Người chơi ${ids(pl)}</h3>` : ''}<p class="pov">${t(s.verdict.text, 400)}</p>
 <ul class="story">${s.story.map((l) => `<li>${t(l, 200)}</li>`).join('')}</ul>
 ${actions}`;
   };
@@ -226,7 +224,7 @@ export function iamTraceNotice(req: IamTraceRequest, trace: MergedTrace): string
   for (const pl of players) for (const p of pl.points) states[p.state] += 1;
   const { corrected, unverified } = tally(players);
   const missing = players.flatMap((pl) => missingChannelTexts(checkChannels(pl.points)).map((m) => `<br>${players.length > 1 ? `${ids(pl)}: ` : ''}${t(m, 200)}`)).join('');
-  const verdicts = players.map((pl) => `${players.length > 1 ? `${tailIds(pl)}: ` : ''}${t(poSummary(pl).verdict.text, 300)}<br>`).join('');
+  const verdicts = players.map((pl) => `${players.length > 1 ? `${ids(pl)}: ` : ''}${t(poSummary(pl).verdict.text, 300)}<br>`).join('');
   return (
     '🤖 <b>Trace IAM tự động</b>, timeline trong file, bạn kiểm tra lại trước khi dùng nhé:<br>' +
     verdicts +

@@ -208,7 +208,8 @@ owner notices carry that name as their kind).
   goes to the campaign's PO or operator, a rejected send and an unclear case to an Apollo developer, a wrong or missing
   channel type (the missing-channel text verbatim) to the game or SDK team, a send with nothing from the client to the
   game team; a received player with both channel types gets "Không cần xử lý thêm." even on a game mismatch. Players
-  are named by id tail, and the section shows no evidence or channel names. Times are still the log store's, which the
+  ("Người chơi <requested ids>") and journeys are named by their full ids, never an id tail such as `…2081`, which the
+  owner found confusing (2026-10-28); the section shows no evidence or channel names. Times are still the log store's, which the
   section says can lag, without a minute figure. The notice starts with one verdict line per player. Limits: a model
   label can still carry a technical word into the story; an inferred send loses to a seen block in another journey.
   Times from inside the log line need the iam-trace MCP to return a parsed `ts` (a request to apollo/kb, not done).

@@ -30,7 +30,7 @@ export type LayoutNode = {
   gap?: string; // time from this node to the next one
   count: number;
 };
-export type LayoutLane = { title: string; sub: string; nodes: LayoutNode[]; points: CheckedPoint[] };
+export type LayoutLane = { title: string; journey: string; sub: string; nodes: LayoutNode[]; points: CheckedPoint[] }; // journey: the full id, empty for the client lane or an unknown journey
 export type LayoutPlayer = { ids: string[]; userId: string; roleId: string; journeys: LayoutLane[]; client: LayoutLane; points: CheckedPoint[] };
 
 export const UNKNOWN_JOURNEY = 'Journey chưa rõ';
@@ -183,11 +183,11 @@ export function buildNodes(points: CheckedPoint[]): LayoutNode[] {
   return nodes;
 }
 
-function laneOf(title: string, points: CheckedPoint[]): LayoutLane {
+function laneOf(title: string, points: CheckedPoint[], journey = ''): LayoutLane {
   const times = order(points).map((it) => it.ms).filter((ms): ms is number => ms !== undefined);
   const first = times[0];
   const last = times[times.length - 1];
-  return { title, sub: first !== undefined && last !== undefined ? dateRange(first, last) : '', nodes: buildNodes(points), points: order(points).map((it) => it.p) };
+  return { title, journey, sub: first !== undefined && last !== undefined ? dateRange(first, last) : '', nodes: buildNodes(points), points: order(points).map((it) => it.p) };
 }
 
 // The requested journey first, the others by their first time; a point with no journey id goes to the requested
@@ -203,7 +203,7 @@ function journeyLanes(req: IamTraceRequest, server: CheckedPoint[]): LayoutLane[
   const sorted = ids.map((id, i) => ({ id, i })).sort((a, b) => rank(a.id) - rank(b.id) || firstMs(a.id) - firstMs(b.id) || a.i - b.i);
   return sorted.map(({ id }) => {
     const campaign = req.journey !== undefined && id === req.journey ? ` / campaign ${idTail(req.target)}` : '';
-    return laneOf(id === '' ? UNKNOWN_JOURNEY : `Journey ${idTail(id)}${campaign}`, server.filter((p) => laneId(p) === id));
+    return laneOf(id === '' ? UNKNOWN_JOURNEY : `Journey ${idTail(id)}${campaign}`, server.filter((p) => laneId(p) === id), id);
   });
 }
 

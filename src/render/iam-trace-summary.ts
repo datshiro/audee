@@ -2,7 +2,7 @@
 // seen points, in fixed Vietnamese; the only model text it copies is a step's label and result. Raw text: the page escapes.
 import { type CheckedPoint, ictTime, type PointKind } from '../capability/iam-trace-schema.js';
 import { checkChannels, missingChannelTexts } from './iam-trace-channels.js';
-import { KIND_VI, type LayoutPlayer } from './iam-trace-layout.js';
+import { KIND_VI, type LayoutPlayer, UNKNOWN_JOURNEY } from './iam-trace-layout.js';
 
 export type VerdictKind = 'received' | 'sent_wrong_channel' | 'sent_no_client' | 'blocked' | 'unclear';
 export type PoAction = { cause: string; owner: string; next: string };
@@ -59,7 +59,7 @@ function story(player: LayoutPlayer, receipt: CheckedPoint | undefined, open: Ch
       return `- ${n.time} ${step}${result}${n.cls === 'block' ? ' — bị chặn' : ''}${n.count > 1 ? ` (x${n.count})` : ''}${n.inferred ? ' (suy ra)' : ''}`;
     });
     const more = lane.nodes.length - MAX_NODES;
-    return [`${lane.title}:`, ...nodes, ...(more > 0 ? [`- … và ${more} bước khác, xem Chi tiết kỹ thuật`] : [])];
+    return [`${lane.journey !== '' ? `Journey ${lane.journey}` : UNKNOWN_JOURNEY}:`, ...nodes, ...(more > 0 ? [`- … và ${more} bước khác, xem Chi tiết kỹ thuật`] : [])];
   });
   const moreLanes = player.journeys.length - MAX_LANES;
   if (moreLanes > 0) lines.push(`… và ${moreLanes} journey khác, xem Chi tiết kỹ thuật`);
