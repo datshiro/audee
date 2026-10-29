@@ -89,7 +89,7 @@ export const STRUCTURED_OUTPUT_TOOL = 'StructuredOutput';
 // The iam_trace profile's tools: fixed here and absent from READ_ONLY_MCP_TOOLS, so no config or dashboard edit can
 // give them to an mcp_read capability or add tools to iam_trace.
 export const IAM_TRACE_SERVER = 'iam-trace';
-export const IAM_TRACE_TOOLS = ['trace_identity', 'trace_key', 'search_logs', 'list_services'].map((t) => `mcp__${IAM_TRACE_SERVER}__${t}`);
+export const IAM_TRACE_TOOLS = ['trace_identity', 'trace_key', 'search_logs', 'campaign_journey', 'list_services'].map((t) => `mcp__${IAM_TRACE_SERVER}__${t}`);
 export const IAM_TRACE_FILTERED_TOOL = `mcp__${IAM_TRACE_SERVER}__search_logs`;
 
 export const READ_ONLY_MCP_TOOLS: Record<string, string[]> = {
