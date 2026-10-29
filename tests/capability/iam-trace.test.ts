@@ -435,9 +435,20 @@ describe('iam_trace capability', () => {
     const { request } = parseTraceRequest('campaign https://hub.example/apollo/campaign/555000111\n"journeyInfo": { "id": "777000222" }\nUID: u1', new Date());
     if (request === undefined) throw new Error('no request');
     const prompt = iamTracePrompt(request);
-    expect(prompt).toContain('id: 555000111');
+    expect(prompt).toContain('campaignId: 555000111');
+    expect(prompt).not.toContain('find out which');
     expect(prompt).toContain('journeyId: 777000222');
     expect(iamTracePrompt({ ...request, journey: undefined })).not.toContain('journeyId:');
+  });
+
+  it('TestIamTracePromptNamesTheIdKind', () => {
+    const now = new Date();
+    const journey = parseTraceRequest('"journeyInfo": { "id": "777000222" }\nUID: u1', now).request;
+    const bare = parseTraceRequest('555000111 u1', now).request;
+    if (journey === undefined || bare === undefined) throw new Error('no request');
+    expect(iamTracePrompt(journey)).toContain('journeyId: 777000222');
+    expect(iamTracePrompt(journey)).not.toContain('campaignId:');
+    expect(iamTracePrompt(bare)).toContain('id: 555000111  (a campaignId or a journeyId; find out which from the logs)');
   });
 
   it('TestIamTracePrompts', () => {

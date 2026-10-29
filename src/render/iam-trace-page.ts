@@ -199,7 +199,7 @@ ${widthRules(counts)}</style>
 </head>
 <body>
 <main>
-<header><h1>Trace IAM</h1><p>IAM ${t(req.target, 64)}${req.journey !== undefined ? ` · journey ${t(req.journey, 64)}` : ''} · ${t(req.window, 120)} · giờ ICT</p>${banner}<p class="warn">Temporal không kiểm tra.${filter}${verifyLine(trace, tally(players))}</p></header>
+<header><h1>Trace IAM</h1><p>${req.kind === 'campaign' ? 'Campaign' : req.kind === 'journey' ? 'Journey' : 'IAM'} ${t(req.target, 64)}${req.journey !== undefined ? ` · journey ${t(req.journey, 64)}` : ''} · ${t(req.window, 120)} · giờ ICT</p>${banner}<p class="warn">Temporal không kiểm tra.${filter}${verifyLine(trace, tally(players))}</p></header>
 ${poSection(players)}
 <h2 class="tech">Chi tiết kỹ thuật</h2>
 <p class="finding">${t(trace.finding, 300) || 'Không có kết luận.'}</p>${conclusion}

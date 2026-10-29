@@ -85,7 +85,14 @@ owner notices carry that name as their kind).
   (`/campaign/<id>`) or `campaignId:`, a `journeyInfo` id or `journeyId:`, or `UID:` / `RID:` / `userId:` / `roleId:`
   lines, audee reads only values of those shapes (ids of at most 64 safe characters, campaign and journey ids of 6 to 25
   digits) and ignores every other word; the campaign id is the target, and a journey id found with it is passed to the
-  sessions as `journeyId`. A date in such a message counts only as `dd/mm hh:mm`, so timestamps in pasted JSON are
+  sessions as `journeyId`. The id's kind is passed on too (added 2026-10-29): a `/campaign/<id>` link or `campaignId:`
+  is told to the sessions as `campaignId`, a lone journey id as `journeyId`, and the page header names it; only a bare
+  short-form id stays "campaignId or journeyId, find out from the logs". The short form also takes a link in place of
+  the id (`iam_trace https://hub.vnggames.com/apollo/campaign/<id> u1,u2 [dd/mm hh:mm]`) when the word after it is a
+  comma list of id-like values, each with a digit and none a duration like `9h`, and only a datetime follows (or a
+  second id-like word, which gets the missing-comma reply); otherwise
+  the message is read as pasted, so `<link> 2 người chơi báo lỗi` asks for users. Campaign and journey ids still come
+  from the whole message, so a link carrying both keeps both. A date in such a message counts only as `dd/mm hh:mm`, so timestamps in pasted JSON are
   ignored. A message with users but no campaign or journey, or with an id but no users, gets a need_input reply for the
   missing part only.
 - Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by two sessions are the defaults of every
@@ -157,7 +164,7 @@ owner notices carry that name as their kind).
 - Tags (2026-10-26, timeline redesign): the trace tags each point with `journey` (an id, empty for client kinds) and
   `outcome` (`pass`, `block`, `info`) and returns a short `conclusion` (2-4 bullets); a point's `label` is a short name of at most 24 characters that says what the step does in the data flow ("Event trigger", "Evaluate điều kiện", "Enrichment: role", "Validation: country", "CDP: …", "Frequency check", "Gửi IAM"), never a service name, URL or id; a point's `result` (at most 20 characters) is what the step returned or decided as the line prints it, shown under the node's time, and a check that printed no result shows "không in kết quả" (with the reduced-fidelity MCP most results are not printed); an API call is one point at the request time with the response in the evidence; the verifier schema is unchanged
   and never touches them. audee validates the tags: an unsafe journey id becomes empty, the conclusion is capped at 4
-  bullets, a journey tag equal to the campaign (when the request names the journey too), a requested user or a role id becomes empty, a trace holds at most 60 points per user (several journeys per user). After verification a server point's
+  bullets, a journey tag equal to the campaign (when the request names it as a campaign or names the journey too), a requested user or a role id becomes empty, a trace holds at most 60 points per user (several journeys per user). After verification a server point's
   journey counts as seen only when its own evidence carries the journey id (as a whole token) or shares a `traceId`
   (`traceId`, `trace_id`, with or without escaped quotes) with another point whose evidence does; otherwise, or with no
   journey tag, the point is shown as inferred with a fixed Vietnamese reason. On real traces most lines may carry

@@ -26,8 +26,10 @@ export const MISSING_USERS = 'ít nhất một userId hoặc roleId (nhiều mã
 const HOUR_MS = 3_600_000;
 
 // windowStart/windowEnd exist only with a datetime; timeFilter carries the same bounds as text.
+// kind says what target is when a link or a label named it; a bare short-form id leaves it unknown.
 // journey is the journey id when the message carried both a campaign and a journey id (target is then the campaign).
-export type IamTraceRequest = { target: string; journey?: string; users: string[]; at?: Date; since: string; timeFilter?: string; windowStart?: Date; windowEnd?: Date; window: string };
+export type TargetKind = 'campaign' | 'journey';
+export type IamTraceRequest = { target: string; kind?: TargetKind; journey?: string; users: string[]; at?: Date; since: string; timeFilter?: string; windowStart?: Date; windowEnd?: Date; window: string };
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,63}$/u;
 // dd/mm[/yyyy] h:mm[:ss] anywhere after the users, followed by a space, punctuation or the end.
@@ -41,6 +43,7 @@ export const MISSING_COMMAS = 'các userId/roleId phải cách nhau bằng dấu
 
 // A pasted bug report: a campaign link or id, a journeyInfo id, and UID:/RID: lines. Only values of these shapes are
 // read; the surrounding words never reach the request.
+const LINK_RE = /^https?:\/\/\S*\/(?:campaign|journey)s?\/\d{6,25}(?:[/?#]\S*)?$/iu;
 const CAMPAIGN_RES = [/\/campaigns?\/(\d{6,25})\b/iu, /campaign[\s_-]?id"?\s*[:=#]\s*"?(\d{6,25})/iu];
 const JOURNEY_RES = [/\/journeys?\/(\d{6,25})\b/iu, /journeyInfo"?\s*[:=]\s*\{\s*"?id"?\s*[:=]\s*"?(\d{6,25})/iu, /journey[\s_-]?id"?\s*[:=#]\s*"?(\d{6,25})/iu];
 const USER_LABEL_RE = /\b(?:uid|rid|user[\s_-]?id|role[\s_-]?id)"?\s*[:=#]\s*"?([^\s"',;]+(?:"?\s*,\s*"?[^\s"',;]+)*)/giu;
@@ -53,13 +56,14 @@ function firstMatch(res: RegExp[], text: string): string | undefined {
   return undefined;
 }
 
-function freeForm(text: string): { target: string; journey?: string; users: string[] } | undefined {
+function freeForm(text: string): { target: string; kind?: TargetKind; journey?: string; users: string[] } | undefined {
   const campaign = firstMatch(CAMPAIGN_RES, text);
   const journey = firstMatch(JOURNEY_RES, text);
   const users = [...new Set([...text.matchAll(USER_LABEL_RE)].flatMap((m) => (m[1] ?? '').split(/"?\s*,\s*"?/u)).filter((u) => u !== ''))];
   if (campaign === undefined && journey === undefined && users.length === 0) return undefined;
   const target = campaign ?? journey ?? '';
-  return { target, ...(campaign !== undefined && journey !== undefined && journey !== campaign ? { journey } : {}), users };
+  const kind: TargetKind | undefined = campaign !== undefined ? 'campaign' : journey !== undefined ? 'journey' : undefined;
+  return { target, ...(kind !== undefined ? { kind } : {}), ...(campaign !== undefined && journey !== undefined && journey !== campaign ? { journey } : {}), users };
 }
 
 const iso = (ms: number): string => new Date(ms).toISOString().replace(/\.\d{3}Z$/u, 'Z');
@@ -91,19 +95,31 @@ function requestTime(rest: string, now: Date, lenient = false): { at?: number; x
   return { at, x };
 }
 
-// iam_trace <campaignId|journeyId> <userId|roleId>[,...] [dd/mm hh:mm], or a pasted message with a campaign link or id,
-// a journeyInfo id and UID:/RID: lines. In the short form users come only from the first token after the target
+// iam_trace <campaignId|journeyId|link> <userId|roleId>[,...] [dd/mm hh:mm], or a pasted message with a campaign link or
+// id, a journeyInfo id and UID:/RID: lines. A /campaign/<id> link names a campaign id, a /journey/<id> link a journey id.
+// In the short form users come only from the first token after the target
 // (spaces around commas allowed); other words are ignored, except an id-like word right after the users, which is
-// taken for a user missing its comma.
+// taken for a user missing its comma. After a link only a datetime or such a word may follow the users.
 export function parseTraceRequest(raw: string, now: Date): { request?: IamTraceRequest; missing: string[] } {
   const text = raw.replace(/\s+/gu, ' '); // one space per run: the patterns below then stay linear on long whitespace
-  const free = freeForm(text);
   const tokens = text.replace(/\s*,\s*/gu, ',').trim().split(/\s+/u).filter((t) => t !== '');
+  const link = LINK_RE.exec(tokens[0] ?? '');
+  const pasted = freeForm(text);
+  // iam_trace <link> u1,u2 [dd/mm hh:mm] is the short form with a link for the id, not a pasted message without UID:
+  // lines: every value after the link is id-like with a digit and is no duration, and only a datetime or a user missing
+  // its comma may follow, so "<link> báo lỗi" or "<link> 2 người chơi báo lỗi" still asks for users. The ids still come
+  // from the whole text.
+  const userLike = (u: string): boolean => ID_RE.test(u) && /\d/u.test(u) && !DURATION_TOKEN.test(u) && !DATE_OR_TIME_TOKEN.test(u);
+  const third = (tokens[2] ?? '').replace(/[.,;!?]+$/u, '');
+  const linkShort = link !== null && pasted?.users.length === 0 && (tokens[1] ?? '').split(',').every(userLike) && (tokens.length === 2 || DATE_OR_TIME_TOKEN.test(third) || userLike(third));
+  const free = linkShort ? undefined : pasted;
+  const ids = linkShort ? pasted : free;
   const second = tokens[1] ?? '';
   const list = DATE_OR_TIME_TOKEN.test(second) ? '' : second;
   const rest = free !== undefined ? [text] : tokens.slice(list === '' ? 1 : 2);
-  const target = free !== undefined ? free.target : (tokens[0] ?? '');
-  const journey = free?.journey;
+  const target = ids !== undefined ? ids.target : (tokens[0] ?? '');
+  const kind = ids?.kind;
+  const journey = ids?.journey;
   const users = free !== undefined ? free.users : [...new Set(list.split(',').filter((u) => u !== ''))];
   const missing: string[] = [];
   if (target === '') missing.push(MISSING_TARGET);
@@ -118,13 +134,14 @@ export function parseTraceRequest(raw: string, now: Date): { request?: IamTraceR
   const { at, x, problem } = requestTime(rest.join(' '), now, free !== undefined);
   if (problem !== undefined) missing.push(problem);
   if (missing.length > 0) return { missing };
-  if (at === undefined) return { request: { target, ...(journey !== undefined ? { journey } : {}), users, since: '24h', window: '24 giờ gần nhất' }, missing };
+  if (at === undefined) return { request: { target, ...(kind !== undefined ? { kind } : {}), ...(journey !== undefined ? { journey } : {}), users, since: '24h', window: '24 giờ gần nhất' }, missing };
 
   const start = at - 30 * 60_000;
   const end = Math.min(at + 3 * HOUR_MS, now.getTime());
   return {
     request: {
       target,
+      ...(kind !== undefined ? { kind } : {}),
       ...(journey !== undefined ? { journey } : {}),
       users,
       at: new Date(at),
@@ -306,11 +323,12 @@ export function proveJourneys<P extends TracePoint>(points: P[]): P[] {
   });
 }
 
-// A journey tag is an id of its own: not the campaign (when the request names the journey too) and not a user or role id.
+// A journey tag is an id of its own: not the campaign (when the request names it as one, or names the journey too) and
+// not a user or role id.
 function journeyTagOk(journey: string, u: TraceUser, request: IamTraceRequest): boolean {
   if (journey === '') return true;
   if (!ID_RE.test(journey)) return false;
-  if (request.journey !== undefined && journey === request.target) return false;
+  if ((request.journey !== undefined || request.kind === 'campaign') && journey === request.target) return false;
   return ![...request.users, u.id, u.user_id, u.role_id].includes(journey);
 }
 
