@@ -22,7 +22,7 @@ async function decide(tool: string, input: unknown): Promise<string> {
 describe('iam_trace fence', () => {
   it('TestIamTraceToolList', () => {
     expect(IAM_TRACE_SERVER).toBe('iam-trace');
-    expect(IAM_TRACE_TOOLS).toEqual(['mcp__iam-trace__trace_identity', 'mcp__iam-trace__trace_key', 'mcp__iam-trace__search_logs', 'mcp__iam-trace__list_services']);
+    expect(IAM_TRACE_TOOLS).toEqual(['mcp__iam-trace__trace_identity', 'mcp__iam-trace__trace_key', 'mcp__iam-trace__search_logs', 'mcp__iam-trace__campaign_journey', 'mcp__iam-trace__list_services']);
     expect(Object.keys(READ_ONLY_MCP_TOOLS)).not.toContain('iam-trace');
   });
 

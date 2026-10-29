@@ -87,7 +87,10 @@ owner notices carry that name as their kind).
   digits) and ignores every other word; the campaign id is the target, and a journey id found with it is passed to the
   sessions as `journeyId`. The id's kind is passed on too (added 2026-10-29): a `/campaign/<id>` link or `campaignId:`
   is told to the sessions as `campaignId`, a lone journey id as `journeyId`, and the page header names it; only a bare
-  short-form id stays "campaignId or journeyId, find out from the logs". The short form also takes a link in place of
+  short-form id stays "campaignId or journeyId, find out from the logs". A campaign with no journey id given is
+  resolved first with `campaign_journey` (added 2026-10-29), which reads journey-trigger's `GetJourneyByID` lines: the
+  journey whose send nodes name exactly that campaign, newest first. It retries once over 168h on no-match, then falls
+  back to the players' lines and says the journey was not confirmed. No database is read. The short form also takes a link in place of
   the id (`iam_trace https://hub.vnggames.com/apollo/campaign/<id> u1,u2 [dd/mm hh:mm]`) when the word after it is a
   comma list of id-like values, each with a digit and none a duration like `9h`, and nothing follows but a full
   `dd/mm hh:mm`, optionally behind one more id-like word (which gets the missing-comma reply). Any other message is read
@@ -110,7 +113,7 @@ owner notices carry that name as their kind).
   filter that is missing, not a string or blank; holds a comment (`#`), a line break, unbalanced parentheses, an
   unterminated string, a malformed escape inside double quotes or a backslash inside single quotes; or holds `[ ] { } |`
   or a backslash outside a string. `"`, `'` and backtick all delimit strings, so any character inside one is allowed. It
-  also guards the ids that land in a LogsQL phrase (`unsafeId`): `trace_key` `key` and `trace_identity` `userId`,
+  also guards the ids that land in a LogsQL phrase (`unsafeId`): `trace_key` `key`, `campaign_journey` `campaignId` and `trace_identity` `userId`,
   `roleId`, `gameId` and `serverId` must be at most 128 characters matching `^[A-Za-z0-9_.:@|-]+$`; an empty or null id
   counts as absent (the MCP treats it so) and is the MCP's to refuse.
 - Reduced fidelity (owner decision 2026-10-26): the iam-trace MCP drops structured log fields on purpose, so only a
@@ -345,7 +348,7 @@ allow and deny lists (`src/fence/gate.ts`). Lists are in `src/fence/constants.ts
 | `mapping` | code_mapping | Read, Glob, Grep, Edit, Write, Bash; `--restricted` | none loaded; the GDS data-contract tool is allowed | reads outside the folder; Bash only the exact probe commands; edits to the pinned skill |
 | `kb_read` | kb_query | Read, Glob, Grep, Agent; `--restricted` | kb (read-only tools) | KB writes, `kb_search`, Skill, secret-shaped files, wiki inbox/people, repo config/secret globs |
 | `mcp_read` | opt-in (Grafana) | none built in | configured server, listed read tools only | every write tool of that server |
-| `iam_trace` | iam_trace | none built in; `--restricted` | iam-trace: `trace_identity`, `trace_key`, `search_logs`, `list_services` (fixed in `IAM_TRACE_TOOLS`, never from config or dashboard); the gate also guards the `search_logs` filter and the trace ids | every other tool; Bash, Read, other MCP servers; a `search_logs` filter that is missing or blank, holds a comment, a line break, unbalanced parentheses, an unterminated string or a malformed escape, or holds `[ ] { } \|` or a backslash outside a string (`"`, `'` and backtick delimit strings); a `trace_key` `key` or `trace_identity` `userId`/`roleId`/`gameId`/`serverId` over 128 characters or outside `[A-Za-z0-9_.:@\|-]` (empty or null counts as absent) |
+| `iam_trace` | iam_trace | none built in; `--restricted` | iam-trace: `trace_identity`, `trace_key`, `search_logs`, `campaign_journey`, `list_services` (fixed in `IAM_TRACE_TOOLS`, never from config or dashboard); the gate also guards the `search_logs` filter and the trace ids | every other tool; Bash, Read, other MCP servers; a `search_logs` filter that is missing or blank, holds a comment, a line break, unbalanced parentheses, an unterminated string or a malformed escape, or holds `[ ] { } \|` or a backslash outside a string (`"`, `'` and backtick delimit strings); a `trace_key` `key`, `campaign_journey` `campaignId` or `trace_identity` `userId`/`roleId`/`gameId`/`serverId` over 128 characters or outside `[A-Za-z0-9_.:@\|-]` (empty or null counts as absent) |
 
 Fences verified live on Claude Code 2.1.302 / Agent SDK 0.3.302 (see Fence baseline); the `iam_trace` fence is not
 yet verified live (see iam_trace). `doctor` fails when the SDK or the bundled Claude Code is a

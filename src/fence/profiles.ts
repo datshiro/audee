@@ -158,6 +158,7 @@ export function buildOptions(input: ProfileInput): Options {
           argGuard: {
             [IAM_TRACE_FILTERED_TOOL]: { filter: unsafeFilter },
             [`mcp__${IAM_TRACE_SERVER}__trace_key`]: { key: unsafeId },
+            [`mcp__${IAM_TRACE_SERVER}__campaign_journey`]: { campaignId: unsafeId },
             [`mcp__${IAM_TRACE_SERVER}__trace_identity`]: { userId: unsafeId, roleId: unsafeId, gameId: unsafeId, serverId: unsafeId },
           },
         }),

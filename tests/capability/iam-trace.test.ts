@@ -451,6 +451,17 @@ describe('iam_trace capability', () => {
     expect(iamTracePrompt(bare)).toContain('id: 555000111  (a campaignId or a journeyId; find out which from the logs)');
   });
 
+  it('TestIamTracePromptLooksUpTheCampaignJourney', () => {
+    const now = new Date();
+    const campaign = parseTraceRequest('https://hub.vnggames.com/apollo/campaign/2114622278003490816 u1', now).request;
+    const both = parseTraceRequest('campaignId: 2114622278003490816\njourneyId: 2114622279181455360\nUID: u1', now).request;
+    const journey = parseTraceRequest('"journeyInfo": { "id": "777000222" }\nUID: u1', now).request;
+    const bare = parseTraceRequest('555000111 u1', now).request;
+    if (campaign === undefined || both === undefined || journey === undefined || bare === undefined) throw new Error('no request');
+    expect(iamTracePrompt(campaign)).toContain('first call campaign_journey with campaignId 2114622278003490816 and since "24h"');
+    for (const r of [both, journey, bare]) expect(iamTracePrompt(r)).not.toContain('first call campaign_journey');
+  });
+
   it('TestIamTracePrompts', () => {
     const now = new Date();
     const { request } = parseTraceRequest('C1 u1,r2', now);
