@@ -38,6 +38,7 @@ const DATE_LIKE = /\d{1,2}\/\d{1,2}/u;
 const TIME_LIKE = /\d{1,2}[:h]\d{2}/u;
 const DATE_OR_TIME_TOKEN = /^(?:\d{1,2}\/\d{1,2}(?:\/\d{4})?|\d{1,2}[:h]\d{2}(?::\d{2})?)$/u;
 const DURATION_TOKEN = /^\d{1,3}[hdmp]$/u;
+const FULL_DATETIME_RE = /^\d{1,2}\/\d{1,2}(?:\/\d{4})? \d{1,2}:\d{2}(?::\d{2})?[.,;!?]*$/u;
 export const MISSING_DATETIME = 'thời điểm theo dạng dd/mm hh:mm (ví dụ 25/10 09:30), có cả ngày và giờ';
 export const MISSING_COMMAS = 'các userId/roleId phải cách nhau bằng dấu phẩy, không phải dấu cách (ví dụ u1,u2)';
 
@@ -106,12 +107,14 @@ export function parseTraceRequest(raw: string, now: Date): { request?: IamTraceR
   const link = LINK_RE.exec(tokens[0] ?? '');
   const pasted = freeForm(text);
   // iam_trace <link> u1,u2 [dd/mm hh:mm] is the short form with a link for the id, not a pasted message without UID:
-  // lines: every value after the link is id-like with a digit and is no duration, and only a datetime or a user missing
-  // its comma may follow, so "<link> báo lỗi" or "<link> 2 người chơi báo lỗi" still asks for users. The ids still come
-  // from the whole text.
+  // lines: every value after the link is id-like with a digit and is no duration, and after it only a full dd/mm hh:mm
+  // may follow, optionally behind one more user missing its comma. Any other word ("<link> báo lỗi", "<link> 2 người
+  // chơi báo lỗi", "<link> 2 25/10 09:30 không nhận") makes it a pasted message that asks for users. The ids still
+  // come from the whole text.
   const userLike = (u: string): boolean => ID_RE.test(u) && /\d/u.test(u) && !DURATION_TOKEN.test(u) && !DATE_OR_TIME_TOKEN.test(u);
-  const third = (tokens[2] ?? '').replace(/[.,;!?]+$/u, '');
-  const linkShort = link !== null && pasted?.users.length === 0 && (tokens[1] ?? '').split(',').every(userLike) && (tokens.length === 2 || DATE_OR_TIME_TOKEN.test(third) || userLike(third));
+  const tailOk = (tail: string[]): boolean => tail.length === 0 || FULL_DATETIME_RE.test(tail.join(' '));
+  const linkShort = link !== null && pasted?.users.length === 0 && (tokens[1] ?? '').split(',').every(userLike)
+    && (tailOk(tokens.slice(2)) || (userLike((tokens[2] ?? '').replace(/[.,;!?]+$/u, '')) && tailOk(tokens.slice(3))));
   const free = linkShort ? undefined : pasted;
   const ids = linkShort ? pasted : free;
   const second = tokens[1] ?? '';

@@ -82,7 +82,7 @@ describe('parseTraceRequest', () => {
       expect(parseTraceRequest('https://hub.vnggames.com/apollo/journey/2112496888072355840 u1', now).request).toMatchObject({ target: '2112496888072355840', kind: 'journey' });
       expect(parseTraceRequest(url, now)).toEqual({ missing: [MISSING_USERS] });
       expect(parseTraceRequest(`${url} check giúp`, now)).toEqual({ missing: [MISSING_USERS] });
-      for (const prose of ['2 người chơi báo không nhận được popup', '10 user lỗi, cần check gấp', '1234567 không nhận được', '9h', '3d']) {
+      for (const prose of ['2 người chơi báo không nhận được popup', '10 user lỗi, cần check gấp', '1234567 không nhận được', '9h', '3d', '2 25/10 09:30 người chơi không nhận IAM', '2 9:30 sáng nay không nhận', 'u1 25/10']) {
         expect(parseTraceRequest(`${url} ${prose}`, now)).toEqual({ missing: [MISSING_USERS] });
       }
     });

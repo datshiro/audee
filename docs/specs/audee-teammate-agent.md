@@ -89,12 +89,12 @@ owner notices carry that name as their kind).
   is told to the sessions as `campaignId`, a lone journey id as `journeyId`, and the page header names it; only a bare
   short-form id stays "campaignId or journeyId, find out from the logs". The short form also takes a link in place of
   the id (`iam_trace https://hub.vnggames.com/apollo/campaign/<id> u1,u2 [dd/mm hh:mm]`) when the word after it is a
-  comma list of id-like values, each with a digit and none a duration like `9h`, and only a datetime follows (or a
-  second id-like word, which gets the missing-comma reply); otherwise
-  the message is read as pasted, so `<link> 2 người chơi báo lỗi` asks for users. Campaign and journey ids still come
-  from the whole message, so a link carrying both keeps both. A date in such a message counts only as `dd/mm hh:mm`, so timestamps in pasted JSON are
-  ignored. A message with users but no campaign or journey, or with an id but no users, gets a need_input reply for the
-  missing part only.
+  comma list of id-like values, each with a digit and none a duration like `9h`, and nothing follows but a full
+  `dd/mm hh:mm`, optionally behind one more id-like word (which gets the missing-comma reply). Any other message is read
+  as pasted, so `<link> 2 người chơi báo lỗi` or `<link> 2 25/10 09:30 không nhận` asks for users. Campaign and journey
+  ids still come from the whole message, so a link carrying both keeps both. A date in a pasted message counts only as
+  `dd/mm hh:mm`, so timestamps in pasted JSON are ignored. A message with users but no campaign or journey, or with an
+  id but no users, gets a need_input reply for the missing part only.
 - Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by two sessions are the defaults of every
   capability on profile `iam_trace`, whatever its name; values set in config win. The example config gives it its own lane, `iam_trace` with concurrency 1. The trace gets 65%
   of each; the verifier gets the budget left after the trace's actual cost and the time left, and is skipped below $0.30
