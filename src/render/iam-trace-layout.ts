@@ -193,7 +193,7 @@ function laneOf(title: string, points: CheckedPoint[], journey = ''): LayoutLane
 // The requested journey first, the others by their first time; a point with no journey id goes to the requested
 // journey, else the first one seen, else a lane of its own.
 function journeyLanes(req: IamTraceRequest, server: CheckedPoint[]): LayoutLane[] {
-  const asked = [req.journey, req.target].filter((id): id is string => id !== undefined);
+  const asked = [req.journey, req.kind === 'campaign' ? undefined : req.target].filter((id): id is string => id !== undefined);
   const seen = [...new Set(server.map((p) => p.journey).filter((j) => j !== ''))];
   const fallback = asked.find((id) => seen.includes(id)) ?? seen[0] ?? req.journey ?? '';
   const laneId = (p: CheckedPoint): string => (p.journey === '' ? fallback : p.journey);

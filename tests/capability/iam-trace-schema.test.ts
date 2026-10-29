@@ -14,6 +14,7 @@ import {
   parseVerifyOutput,
   JOURNEY_MISSING_WHY,
   JOURNEY_UNPROVEN_WHY,
+  MISSING_COMMAS,
   pointProblem,
   proveChannels,
   CHANNEL_UNPROVEN_WHY,
@@ -60,14 +61,38 @@ describe('parseTraceRequest', () => {
     it('reads the campaign url, the journey id and the labelled users', () => {
       const { request, missing } = parseTraceRequest(KHA, now);
       expect(missing).toEqual([]);
-      expect(request).toMatchObject({ target: '2112496887177932800', journey: '2112496888072355840', users: ['PHQDC7632', '3479946215524515840'], since: '24h', window: '24 giờ gần nhất' });
+      expect(request).toMatchObject({ target: '2112496887177932800', kind: 'campaign', journey: '2112496888072355840', users: ['PHQDC7632', '3479946215524515840'], since: '24h', window: '24 giờ gần nhất' });
     });
 
     it('takes a journey id as the target when there is no campaign', () => {
       const { request, missing } = parseTraceRequest('"journeyInfo": { "id": "2112496888072355840" }\nUID: u1', now);
       expect(missing).toEqual([]);
-      expect(request).toMatchObject({ target: '2112496888072355840', users: ['u1'] });
+      expect(request).toMatchObject({ target: '2112496888072355840', kind: 'journey', users: ['u1'] });
       expect(request?.journey).toBeUndefined();
+    });
+
+    it('reads a /campaign/<id> link as the campaign id, also in the short form', () => {
+      const url = 'https://hub.vnggames.com/apollo/campaign/2114622278003490816';
+      expect(parseTraceRequest(`${url}\nUID: u1`, now).request).toMatchObject({ target: '2114622278003490816', kind: 'campaign', users: ['u1'] });
+      const short = parseTraceRequest(`${url} u1, u2 25/10 09:30`, now);
+      expect(short.missing).toEqual([]);
+      expect(short.request).toMatchObject({ target: '2114622278003490816', kind: 'campaign', users: ['u1', 'u2'] });
+      expect(short.request?.window).toContain('25/10 09:30');
+      expect(parseTraceRequest(`${url}?tab=flow u1`, now).request).toMatchObject({ target: '2114622278003490816', kind: 'campaign' });
+      expect(parseTraceRequest('https://hub.vnggames.com/apollo/journey/2112496888072355840 u1', now).request).toMatchObject({ target: '2112496888072355840', kind: 'journey' });
+      expect(parseTraceRequest(url, now)).toEqual({ missing: [MISSING_USERS] });
+      expect(parseTraceRequest(`${url} check giúp`, now)).toEqual({ missing: [MISSING_USERS] });
+      for (const prose of ['2 người chơi báo không nhận được popup', '10 user lỗi, cần check gấp', '1234567 không nhận được', '9h', '3d', '2 25/10 09:30 người chơi không nhận IAM', '2 9:30 sáng nay không nhận', 'u1 25/10']) {
+        expect(parseTraceRequest(`${url} ${prose}`, now)).toEqual({ missing: [MISSING_USERS] });
+      }
+    });
+
+    it('keeps both ids from a link or a later journey line in the short form', () => {
+      const both = 'https://hub.vnggames.com/apollo/campaign/2114622278003490816/journey/2112496888072355840 u1';
+      expect(parseTraceRequest(both, now).request).toMatchObject({ target: '2114622278003490816', kind: 'campaign', journey: '2112496888072355840', users: ['u1'] });
+      const later = parseTraceRequest('https://hub.vnggames.com/apollo/campaign/2114622278003490816 u1 journeyId: 2112496888072355840', now);
+      expect(later).toEqual({ missing: [MISSING_USERS] });
+      expect(parseTraceRequest('https://hub.vnggames.com/apollo/campaign/2114622278003490816 u1 u2 25/10 09:30', now)).toEqual({ missing: [MISSING_COMMAS] });
     });
 
     it('accepts comma lists, quotes and several label spellings', () => {
@@ -529,8 +554,10 @@ describe('journey proof', () => {
     traced.users[0]!.points = [point({ journey: 'CAMP' }), point({ journey: 'u1' }), point({ journey: 'role-1' }), point({ journey: 'J1' })];
     const both = parseTraceOutput(res(traced), { ...REQ, target: 'CAMP', journey: 'J1', users: ['u1'] });
     expect(both.users[0]?.points.map((p) => p.journey)).toEqual(['', '', '', 'J1']);
-    const campaignOnly = parseTraceOutput(res(traced), { ...REQ, target: 'CAMP', users: ['u1'] });
-    expect(campaignOnly.users[0]?.points[0]?.journey).toBe('CAMP');
+    const unknown = parseTraceOutput(res(traced), { ...REQ, target: 'CAMP', users: ['u1'] });
+    expect(unknown.users[0]?.points[0]?.journey).toBe('CAMP');
+    const campaign = parseTraceOutput(res(traced), { ...REQ, target: 'CAMP', kind: 'campaign', users: ['u1'] });
+    expect(campaign.users[0]?.points[0]?.journey).toBe('');
   });
 
   it('keeps publish and subscribe on the client row and checks their channel', () => {
