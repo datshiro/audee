@@ -83,10 +83,12 @@ owner notices carry that name as their kind).
   (user, role or unknown) and a time normalised to `YYYY-MM-DD HH:mm` ICT from any wording (`hôm qua 9h`, `25/10
   09:30`, read day/month). audee trusts none of it: an id survives only if it is at most 64 safe characters and equals
   a whole word of the message (words split on spaces, quotes, brackets, commas, `=` and URL separators, trailing
-  punctuation dropped, `UID:abc` also yields `abc`), so a dash-group of `4QX2-TMBV-8NRC` or the `2026` of a date never
+  punctuation dropped, `UID:abc` also yields `abc`, `dd/mm[/yy]` and `hh:mm` spans blanked first), so a dash-group of
+  `4QX2-TMBV-8NRC`, the `2026` of `2026-10-25`, the day or month of a `dd/mm` or the minutes of an `hh:mm` never
   passes; a lone journey id becomes the target and a bare id beside a journey id the campaign; users are de-duplicated
   and never the target. The model's time words are quoted in a reply only when the message holds them. A `dd/mm`
-  without a year that the model placed after today is read as last year's. Each of these gets a
+  without a year that the model placed after today is read as last year's while that is still in the logs. A rejected
+  request keeps the model's output in the job folder. Each of these gets a
   Vietnamese need_input reply and no trace runs: no target; no user; more than 5 users; a time that does not parse or
   does not exist, is later than now, or is outside the last 165 hours (log retention is 7 days). No time means the last
   24 hours. An extractor that throws or returns no valid object fails the job with a fixed reason. The id's kind is

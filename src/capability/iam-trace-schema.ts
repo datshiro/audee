@@ -113,12 +113,15 @@ MESSAGE>>>`;
 const LOCAL_TIME_RE = /^(\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{2})$/u;
 const DAY_MONTH_RE = /\b\d{1,2}\/\d{1,2}\b/u;
 const TOKEN_SPLIT_RE = /[\s"'`,;=()[\]{}<>/?&#|]+/u;
+// Dates and clock times are blanked first, so their parts (the 25 of 25/10, the 30 of 09:30) are never ids.
+const DATE_TIME_SPAN_RE = /(?<![A-Za-z0-9])(?:\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|\d{1,2}[:h]\d{2}(?::\d{2})?)(?![A-Za-z0-9])/gu;
+const EXPLICIT_YEAR_RE = /\d{4}|\d{1,2}\/\d{1,2}\/\d{2}/u;
 
-// The message's words as whole ids: a dash-group of 4QX2-TMBV-8NRC or the 2026 of 2026-10-25 is not one. Trailing
+// The message's words as whole ids: a dash-group of 4QX2-TMBV-8NRC, the 2026 of 2026-10-25 or the 25 of 25/10 is not one. Trailing
 // punctuation and a label before a colon (UID:abc) do not count as part of the id.
 function messageTokens(message: string): Set<string> {
   const out = new Set<string>();
-  for (const word of message.split(TOKEN_SPLIT_RE)) {
+  for (const word of message.replace(DATE_TIME_SPAN_RE, ' ').split(TOKEN_SPLIT_RE)) {
     const w = word.replace(/^:+|[.,;:!?]+$/gu, '');
     if (w === '') continue;
     out.add(w);
@@ -181,14 +184,17 @@ function requestTime(time: ExtractedRequest['time'], message: string, now: Date)
   let at = m === null ? undefined : ictMs(y as number, mo as number, d as number, h as number, mi as number);
   if (at === undefined) return { problem: `không đọc được thời điểm ${quoted}, hãy ghi dạng dd/mm hh:mm (ví dụ 25/10 09:30)` };
   const x = `${String(d).padStart(2, '0')}/${String(mo).padStart(2, '0')} ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+  const tooOld = (t: number | undefined): boolean => t === undefined || now.getTime() - t > (RETENTION_HOURS - 3) * HOUR_MS;
   if (at > now.getTime()) {
-    // A dd/mm without a year that lands after today means last year's date (28/12 asked on 2 January).
+    // A dd/mm without a year that lands after today means last year's date (28/12 asked on 2 January), but only when
+    // last year's date is still in the logs; otherwise the user did mean a future day.
     const today = new Date(now.getTime() + ICT_OFFSET_MS);
     const isToday = today.getUTCFullYear() === y && today.getUTCMonth() === (mo as number) - 1 && today.getUTCDate() === d;
-    if (!DAY_MONTH_RE.test(raw) || /\d{4}/u.test(raw) || isToday) return { problem: `thời điểm ${x} còn ở tương lai (giờ Việt Nam)` };
-    at = ictMs((y as number) - 1, mo as number, d as number, h as number, mi as number);
+    const lastYear = ictMs((y as number) - 1, mo as number, d as number, h as number, mi as number);
+    if (!DAY_MONTH_RE.test(raw) || EXPLICIT_YEAR_RE.test(raw) || isToday || tooOld(lastYear)) return { problem: `thời điểm ${x} còn ở tương lai (giờ Việt Nam)` };
+    at = lastYear as number;
   }
-  if (at === undefined || now.getTime() - at > (RETENTION_HOURS - 3) * HOUR_MS) return { problem: `thời điểm ${x} phải trong 7 ngày gần nhất (kho log chỉ giữ 7 ngày)` };
+  if (tooOld(at)) return { problem: `thời điểm ${x} phải trong 7 ngày gần nhất (kho log chỉ giữ 7 ngày)` };
   return { at, x };
 }
 

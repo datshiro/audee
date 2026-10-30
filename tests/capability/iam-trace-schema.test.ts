@@ -93,6 +93,15 @@ describe('validateRequest', () => {
     expect(validateRequest(ex({ target: { id: '2026', kind: 'unknown' }, users: [{ id: '10', kind: 'user' }] }), 'iam_trace 2026-10-25 user abc', now).missing).toEqual([MISSING_TARGET, MISSING_USERS]);
   });
 
+  it('never takes a part of a date or a clock time for an id', () => {
+    const one = (target: string, user: string, message: string) => validateRequest(ex({ target: { id: target, kind: 'unknown' }, users: [{ id: user, kind: 'user' }] }), message, now).missing;
+    expect(one('25', 'u1', 'iam_trace 25/10 09:30 user u1')).toEqual([MISSING_TARGET]);
+    expect(one('C123', '30', 'C123 lúc 09:30')).toEqual([MISSING_USERS]);
+    expect(one('C123', '30', 'C123 lúc 9h30')).toEqual([MISSING_USERS]);
+    expect(one('2027', 'u1', 'C123 u1 28/12/2027')).toEqual([MISSING_TARGET]);
+    expect(one('C123', 'u1', 'C123 u1 25/10 09:30')).toEqual([]);
+  });
+
   it('keeps ids behind labels, inside links and before trailing punctuation', () => {
     const message = 'UID:abc1 RID: r2. xem https://hub.example/apollo/campaign/2114622278003490816?tab=flow nhé';
     const { request } = validateRequest(ex({ target: { id: '2114622278003490816', kind: 'campaign' }, users: [{ id: 'abc1', kind: 'user' }, { id: 'r2', kind: 'role' }] }), message, now);
@@ -160,6 +169,8 @@ describe('validateRequest', () => {
     expect(dated('28/12/2027 23:00', '2027-12-28 23:00').missing.join('\n')).toContain('tương lai');
     expect(dated('ngày mai 9h', '2027-01-03 09:00').missing.join('\n')).toContain('tương lai');
     expect(dated('2/1 23:00', '2027-01-02 23:00').missing.join('\n')).toContain('tương lai');
+    expect(dated('28/12/26 23:00', '2027-12-28 23:00').missing.join('\n')).toContain('tương lai');
+    expect(dated('5/1 09:00', '2027-01-05 09:00').missing.join('\n')).toContain('tương lai');
   });
 
   it('asks for the time in words it can read when only raw is given', () => {

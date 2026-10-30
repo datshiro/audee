@@ -252,7 +252,10 @@ export const iamTrace: Capability = async (ctx) => {
     return failed('extract returned no request');
   }
   const { request, missing } = validateRequest(extractRes.structured as ExtractedRequest, message, new Date());
-  if (request === undefined) return { reply: { html: iamTraceMissingReply(missing) }, event: event('need_input', 'request incomplete') };
+  if (request === undefined) {
+    keepOutput(jobDir, { ...extractRes, text: '' }, 'request incomplete'); // so the owner can see what the model read
+    return { reply: { html: iamTraceMissingReply(missing) }, event: event('need_input', 'request incomplete') };
+  }
 
   const budget = cap.budget_usd;
   let mcpServers: Record<string, McpServerConfig>;
