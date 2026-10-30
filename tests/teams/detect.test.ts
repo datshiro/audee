@@ -145,10 +145,32 @@ describe('detector', () => {
 
   it('triggers iam_trace on its fixed word', () => {
     const triggers = triggersOf(testConfig({ teams: { aliases: ['Dat'] }, iamTrace: {} }));
-    expect(triggers).toContainEqual({ capability: 'iam_trace', token: 'iam_trace' });
+    expect(triggers).toContainEqual({ capability: 'iam_trace', token: 'iam_trace', whole: true });
     expect(triggersOf(testConfig()).map((t) => t.token)).not.toContain('iam_trace');
     const d = testDetector();
-    expect(d.capabilityToken(triggers, msg('colleague', 'Dat iam_trace 123 u1, u2 25/10 09:30'))).toEqual({ capability: 'iam_trace', question: '123 u1, u2 25/10 09:30' });
+    expect(d.capabilityToken(triggers, msg('colleague', 'Dat iam_trace 123 u1, u2 25/10 09:30'))).toEqual({ capability: 'iam_trace', question: 'Dat iam_trace 123 u1, u2 25/10 09:30' });
     expect(d.capabilityToken(triggers, msg('colleague', 'iam_trace 123 u1 not addressed'))).toBeUndefined();
+  });
+
+  it('keeps the whole iam_trace message wherever the word stands', () => {
+    const triggers = triggersOf(testConfig({ teams: { aliases: ['Dat'] }, iamTrace: {} }));
+    const d = testDetector();
+    const last = 'Dat check thử user role 4QX2-TMBV-8NRC dùng campaign 2100000000000000101 đã send IAM chưa iam_trace';
+    expect(d.capabilityToken(triggers, msg('colleague', last))).toEqual({ capability: 'iam_trace', question: last });
+    expect(d.capabilityToken(triggers, msg('colleague', 'Dat campaign 12 iam_trace user u1'))).toEqual({ capability: 'iam_trace', question: 'Dat campaign 12 iam_trace user u1' });
+  });
+
+  it('treats an iam_trace message without any digit as empty', () => {
+    const triggers = triggersOf(testConfig({ teams: { aliases: ['Dat'] }, iamTrace: {} }));
+    const d = testDetector();
+    expect(d.capabilityToken(triggers, msg('colleague', 'Dat iam_trace'))).toEqual({ capability: 'iam_trace', question: '' });
+    expect(d.capabilityToken(triggers, msg('colleague', 'Dat iam_trace giúp mình với'))).toEqual({ capability: 'iam_trace', question: '' });
+    expect(d.capabilityToken(triggers, msg('colleague', '<at>Đạt (6)</at> iam_trace', 'me-id'))).toEqual({ capability: 'iam_trace', question: '' });
+  });
+
+  it('leaves @mention names out of the iam_trace request', () => {
+    const triggers = triggersOf(testConfig({ teams: { aliases: ['Dat'] }, iamTrace: {} }));
+    const d = testDetector();
+    expect(d.capabilityToken(triggers, msg('colleague', '<at>Đạt (6)</at> check u1 campaign 12 iam_trace', 'me-id'))).toEqual({ capability: 'iam_trace', question: 'check u1 campaign 12 iam_trace' });
   });
 });

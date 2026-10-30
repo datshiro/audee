@@ -47,8 +47,8 @@ describe('iam_trace replies', () => {
     expect(emptyText('grafana')).toBe(kbQueryEmptyReply);
   });
 
-  it('the usage reply says users are comma-separated', () => {
-    expect(iamTraceUsageReply).toContain('cách nhau bằng dấu phẩy');
+  it('the usage reply says free wording is fine', () => {
+    expect(iamTraceUsageReply).toContain('viết tự nhiên cũng được');
   });
 
   it('the missing reply escapes and defangs each item and ends with the usage', () => {

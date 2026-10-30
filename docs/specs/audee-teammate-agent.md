@@ -1,7 +1,7 @@
 ---
 title: audee teammate agent
 status: completed
-last_verified: 2026-10-28
+last_verified: 2026-10-30
 claude_code_version: 2.1.302
 ---
 # audee teammate agent
@@ -71,33 +71,32 @@ the job folder. `audee doctor` checks `render-answer` and that the KB contract e
 Traces one Apollo in-app message (IAM) on prod for given users and sends a timeline page. Opt-in: the capability is
 commented out in `config.example.yaml`; at most one capability may use profile `iam_trace`, under any name (events and
 owner notices carry that name as their kind).
-- Trigger: the word is fixed, `iam_trace <campaignId|journeyId> <userId|roleId>[,...] [dd/mm hh:mm]`; users are
-  comma-separated, at most 5, taken only from the token after the id. An mcp_read trigger may not be `iam_trace`. The
-  grant is the capability's name (`iam_trace` in the example config) or `*` in `people[].can`. audee parses the request
-  in code before any session. The datetime may stand anywhere after the users, with words after it (`25/10 9:30 nhé`):
-  `h:mm` or `hh:mm`, seconds ignored, optionally `dd/mm/yyyy`. Each of these gets a Vietnamese need_input reply and no
-  session runs: a missing or malformed id; more than 5 users; an id-like word (one holding a digit) right after the
-  users, taken for a user missing its comma; a date or time that cannot be read as `dd/mm hh:mm` (a date without a time,
-  a time without a date, `9h30`, impossible values), which never falls back to the last 24 hours; a time later today or
-  a future `dd/mm/yyyy`; a datetime outside the last 165 hours (log retention is 7 days). Any other future `dd/mm` is
-  read as last year's. A bare `iam_trace` gets the usage line.
-  Pasted messages work too (added 2026-10-26 after a colleague's first test): when the text holds a campaign link
-  (`/campaign/<id>`) or `campaignId:`, a `journeyInfo` id or `journeyId:`, or `UID:` / `RID:` / `userId:` / `roleId:`
-  lines, audee reads only values of those shapes (ids of at most 64 safe characters, campaign and journey ids of 6 to 25
-  digits) and ignores every other word; the campaign id is the target, and a journey id found with it is passed to the
-  sessions as `journeyId`. The id's kind is passed on too (added 2026-10-29): a `/campaign/<id>` link or `campaignId:`
-  is told to the sessions as `campaignId`, a lone journey id as `journeyId`, and the page header names it; only a bare
-  short-form id stays "campaignId or journeyId, find out from the logs". A campaign with no journey id given is
-  resolved first with `campaign_journey` (added 2026-10-29), which reads journey-trigger's `GetJourneyByID` lines: the
-  journey whose send nodes name exactly that campaign, newest first. It retries once over 168h on no-match, then falls
-  back to the players' lines and says the journey was not confirmed. No database is read. The short form also takes a link in place of
-  the id (`iam_trace https://hub.vnggames.com/apollo/campaign/<id> u1,u2 [dd/mm hh:mm]`) when the word after it is a
-  comma list of id-like values, each with a digit and none a duration like `9h`, and nothing follows but a full
-  `dd/mm hh:mm`, optionally behind one more id-like word (which gets the missing-comma reply). Any other message is read
-  as pasted, so `<link> 2 người chơi báo lỗi` or `<link> 2 25/10 09:30 không nhận` asks for users. Campaign and journey
-  ids still come from the whole message, so a link carrying both keeps both. A date in a pasted message counts only as
-  `dd/mm hh:mm`, so timestamps in pasted JSON are ignored. A message with users but no campaign or journey, or with an
-  id but no users, gets a need_input reply for the missing part only.
+- Trigger: the word `iam_trace` is fixed but may stand anywhere in a message that @mentions or names the user
+  (changed 2026-10-30, after `... đã send IAM chưa iam_trace` got the usage line). An mcp_read trigger may not be
+  `iam_trace`. The grant is the capability's name (`iam_trace` in the example config) or `*` in `people[].can`. The job
+  input is the whole message without @mention names; a message with no digit left gets the usage line and no job.
+  The request is read by an extractor session before any trace: the classifier fence with its own system prompt and no
+  tool at all (`tools: []`, `--restricted`, `dontAsk`, no setting sources, no MCP), `classifier.model`/`effort`/
+  `timeout`/`auth` (its model may exist only behind that auth), a JSON schema, and only the current message plus the
+  job's `requestedAt` as send time (never chat history). `<` and `>` in the message are replaced so it cannot close its
+  data block. The extractor's cost is extra to `budget_usd`, which still covers the trace and the verifier. It returns the target (campaign, journey or unknown), a journey id beside a campaign, the users
+  (user, role or unknown) and a time normalised to `YYYY-MM-DD HH:mm` ICT from any wording (`hôm qua 9h`, `25/10
+  09:30`, read day/month). audee trusts none of it: an id survives only if it is at most 64 safe characters and equals
+  a whole word of the message (words split on spaces, quotes, brackets, commas, `=` and URL separators, trailing
+  punctuation dropped, `UID:abc` also yields `abc`, `dd/mm[/yy]` and `hh:mm` spans blanked first), so a dash-group of
+  `4QX2-TMBV-8NRC`, the `2026` of `2026-10-25`, the day or month of a `dd/mm` or the minutes of an `hh:mm` never
+  passes; a lone journey id becomes the target and a bare id beside a journey id the campaign; users are de-duplicated
+  and never the target. The model's time words are quoted in a reply only when the message holds them. A `dd/mm`
+  without a year that the model placed after today is read as last year's while that is still in the logs. A rejected
+  request keeps the model's output in the job folder. Each of these gets a
+  Vietnamese need_input reply and no trace runs: no target; no user; more than 5 users; a time that does not parse or
+  does not exist, is later than now, or is outside the last 165 hours (log retention is 7 days). No time means the last
+  24 hours. An extractor that throws or returns no valid object fails the job with a fixed reason. The id's kind is
+  passed to the sessions (`campaignId`, `journeyId`, or "find out from the logs" for a bare id) and the page header
+  names it. A campaign with no journey id given is resolved first with `campaign_journey` (added 2026-10-29), which
+  reads journey-trigger's `GetJourneyByID` lines: the journey whose send nodes name exactly that campaign, newest
+  first. It retries once over 168h on no-match, then falls back to the players' lines and says the journey was not
+  confirmed. No database is read.
 - Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by two sessions are the defaults of every
   capability on profile `iam_trace`, whatever its name; values set in config win. The example config gives it its own lane, `iam_trace` with concurrency 1. The trace gets 65%
   of each; the verifier gets the budget left after the trace's actual cost and the time left, and is skipped below $0.30
@@ -343,7 +342,7 @@ allow and deny lists (`src/fence/gate.ts`). Lists are in `src/fence/constants.ts
 
 | Profile | Used by | Tools | MCP | Notable denials |
 |---|---|---|---|---|
-| `classifier` | message triage | none needed | none | Bash, Edit, Write, Web, Agent, Workflow, gitlab |
+| `classifier` | message triage; with its own system prompt, the iam_trace extractor | none needed; the extractor gets none at all (`tools: []`, `--restricted`, `dontAsk`, no settings) | none | Bash, Edit, Write, Web, Agent, Workflow, gitlab |
 | `review` | review | Claude Code defaults, `permissionMode: auto`, user/project settings | gitlab, kb | approve/merge/ship/update/create MR, play/retry jobs, `git push`, env/ps/security, KB writes, `~/.claude.json`, `~/.ssh`, `~/.audee`, `sh -c`-style shells, `pgrep`, `ScheduleWakeup` |
 | `mapping` | code_mapping | Read, Glob, Grep, Edit, Write, Bash; `--restricted` | none loaded; the GDS data-contract tool is allowed | reads outside the folder; Bash only the exact probe commands; edits to the pinned skill |
 | `kb_read` | kb_query | Read, Glob, Grep, Agent; `--restricted` | kb (read-only tools) | KB writes, `kb_search`, Skill, secret-shaped files, wiki inbox/people, repo config/secret globs |
