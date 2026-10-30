@@ -119,10 +119,18 @@ describe('watcher', () => {
     const { watcher, state, outbox, inputs } = harness({ result: new Error('must not classify'), iamTrace: {} });
     await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'anh Dat iam_trace C1 u1,u2')), none);
     expect(state.pendingJobs()).toHaveLength(1);
-    expect(state.pendingJobs()[0]).toMatchObject({ kind: 'iam_trace', input: 'C1 u1,u2', principal: 'teams:linh' });
+    expect(state.pendingJobs()[0]).toMatchObject({ kind: 'iam_trace', input: 'anh Dat iam_trace C1 u1,u2', principal: 'teams:linh' });
     expect(watcher.queue.snapshot().find((l) => l.name === 'iam_trace')?.queued).toEqual([expect.objectContaining({ kind: 'iam_trace' })]);
     expect(replies(outbox).map((r) => r.html)).toEqual([iamTraceQueuedReply]);
     expect(inputs).toHaveLength(0);
+  });
+
+  it('queues iam_trace when the word ends the message', async () => {
+    const { watcher, state, outbox } = harness({ result: new Error('must not classify'), iamTrace: {} });
+    const text = 'Dat check user role 4QX2-TMBV-8NRC campaign 2100000000000000101 đã send IAM chưa iam_trace';
+    await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), text)), none);
+    expect(state.pendingJobs()).toEqual([expect.objectContaining({ kind: 'iam_trace', input: text })]);
+    expect(replies(outbox).map((r) => r.html)).toEqual([iamTraceQueuedReply]);
   });
 
   it('TestHandleIamTraceRenamedCapability', async () => {
@@ -162,7 +170,7 @@ describe('watcher', () => {
   it('TestHandleIamTraceGrantedExplicitly', async () => {
     const { watcher, state } = harness({ iamTrace: {}, grants: { linh: ['iam_trace'] } });
     await watcher.handle(file(inboxJSON('1791513774214', 'linh', new Date(), 'Dat iam_trace C1 u1')), none);
-    expect(state.pendingJobs()).toEqual([expect.objectContaining({ kind: 'iam_trace', input: 'C1 u1' })]);
+    expect(state.pendingJobs()).toEqual([expect.objectContaining({ kind: 'iam_trace', input: 'Dat iam_trace C1 u1' })]);
   });
 
   it('TestHandleIamTraceDisabled', async () => {

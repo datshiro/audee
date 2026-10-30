@@ -4,8 +4,9 @@
 import type { McpServerConfig, Options } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { authSettings } from '../authz/people.js';
 import type { Event } from '../events.js';
-import { IAM_TRACE_SERVER } from '../fence/constants.js';
+import { IAM_EXTRACT_SYSTEM, IAM_TRACE_SERVER } from '../fence/constants.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions } from '../fence/profiles.js';
 import { answerPageVisibleTexts, checkAnswerPage, clip, iamTraceFailedReply, iamTraceMissingReply, iamTraceWithheldReply } from '../render/html.js';
@@ -13,10 +14,10 @@ import { iamTraceFileName, iamTraceNotice, iamTracePage, iamTraceTexts } from '.
 import { leaksSecret, redactSecretPairs } from '../render/secrets.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
 import {
-  IAM_TRACE_SCHEMA, IAM_VERIFY_SCHEMA, type IamTraceRequest, type MergedTrace, mergeVerification, numberPoints, parseTraceOutput, parseTraceRequest,
-  parseVerifyOutput, type TraceResult, type Verdict, verifierPoints, verifierSince,
+  type ExtractedRequest, IAM_EXTRACT_SCHEMA, IAM_TRACE_SCHEMA, IAM_VERIFY_SCHEMA, iamExtractPrompt, type IamTraceRequest, type MergedTrace, mergeVerification,
+  numberPoints, parseTraceOutput, parseVerifyOutput, type TraceResult, type Verdict, validateRequest, verifierPoints, verifierSince,
 } from './iam-trace-schema.js';
-import { strings } from './kb-answer.js';
+import { matches, strings } from './kb-answer.js';
 import { capabilityConfig, freshDir, keepOutput, keepResult, messageDir, sessionEvent, sessionInput } from './session.js';
 import type { Capability, CapabilityOutcome } from './types.js';
 
@@ -193,15 +194,16 @@ export const iamTrace: Capability = async (ctx) => {
   const started = Date.now();
   const cap = capabilityConfig(ctx);
   let dir: string | undefined;
+  let extractRes: RunResult | undefined;
   let traceRes: RunResult | undefined;
   let verifyRes: RunResult | undefined;
 
   const event = (status: Status, reason?: string): Partial<Event> => {
     const base = { kind, status, ...(reason !== undefined ? { reason } : {}) };
-    if (traceRes === undefined) return { ...base, durationMs: Date.now() - started };
-    const runs = verifyRes === undefined ? [traceRes] : [traceRes, verifyRes];
+    const runs = [extractRes, traceRes, verifyRes].filter((r): r is RunResult => r !== undefined);
+    if (runs.length === 0) return { ...base, durationMs: Date.now() - started };
     return {
-      ...sessionEvent(traceRes, Date.now() - started),
+      ...sessionEvent(traceRes ?? extractRes, Date.now() - started),
       ...base,
       costUsd: runs.reduce((s, r) => s + (r.costUsd ?? 0), 0),
       numTurns: runs.reduce((s, r) => s + (r.turns ?? 0), 0),
@@ -221,19 +223,43 @@ export const iamTrace: Capability = async (ctx) => {
     return { reply: { html: iamTraceWithheldReply }, notifyOwner: notify('withheld', WITHHELD), event: ev };
   };
 
-  const { request, missing } = parseTraceRequest(ctx.job.input ?? '', new Date(started));
+  let jobDir: string;
+  try {
+    jobDir = iamTraceDir(ctx.dataDir, ctx.job.messageId);
+    dir = jobDir;
+    freshDir(jobDir);
+  } catch (e) {
+    if (dir !== undefined && existsSync(dir)) keepOutput(dir, undefined, (e as Error).message);
+    return failed('session setup failed');
+  }
+
+  // The request is the whole message: a small model reads the ids and the time, and validateRequest keeps only what
+  // the message itself carries.
+  const message = ctx.job.input ?? '';
+  const classifier = ctx.cfg.classifier;
+  const extractOptions = buildOptions({ profile: 'classifier', system: IAM_EXTRACT_SYSTEM, cwd: jobDir, mcpServers: {}, schema: IAM_EXTRACT_SCHEMA, model: classifier.model, effort: classifier.effort, seatbelt: false });
+  try {
+    // On the classifier's auth: its model may exist only behind that auth (the gateway).
+    const prompt = iamExtractPrompt(message, new Date(ctx.job.requestedAt));
+    extractRes = await ctx.run({ options: extractOptions, prompt, timeoutMs: classifier.timeout, ...authSettings(ctx.cfg, classifier.auth), signal: ctx.signal });
+  } catch (e) {
+    if (e instanceof InterruptedError || ctx.signal.aborted) throw e;
+    keepOutput(jobDir, undefined, (e as Error).message);
+    return failed('extract session failed');
+  }
+  if (extractRes.isError || !matches(extractRes.structured, IAM_EXTRACT_SCHEMA)) {
+    keepOutput(jobDir, { ...extractRes, text: '' }, 'extract returned no request');
+    return failed('extract returned no request');
+  }
+  const { request, missing } = validateRequest(extractRes.structured as ExtractedRequest, message, new Date());
   if (request === undefined) return { reply: { html: iamTraceMissingReply(missing) }, event: event('need_input', 'request incomplete') };
 
   const budget = cap.budget_usd;
-  let jobDir: string;
   let mcpServers: Record<string, McpServerConfig>;
   const options = (schema: Record<string, unknown>, budgetUsd: number | undefined): Options =>
     buildOptions({ profile: 'iam_trace', cwd: jobDir, mcpServers, schema, model: cap.model, ...(budgetUsd !== undefined ? { budgetUsd } : {}), seatbelt: cap.seatbelt });
   let traceOptions: Options;
   try {
-    jobDir = iamTraceDir(ctx.dataDir, ctx.job.messageId);
-    dir = jobDir;
-    freshDir(jobDir);
     mcpServers = loadMcpServers([IAM_TRACE_SERVER], ctx.secrets, ctx.userConfigPath);
     traceOptions = options(IAM_TRACE_SCHEMA, budget === undefined ? undefined : budget * TRACE_SHARE);
   } catch (e) {

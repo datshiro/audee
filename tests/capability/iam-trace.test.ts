@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { resolvePerson } from '../../src/authz/people.js';
 import { iamTrace, iamTraceDir, iamTracePrompt, iamVerifyPrompt } from '../../src/capability/iam-trace.js';
-import { IAM_TRACE_SCHEMA, numberPoints, parseTraceRequest, type TracePoint, type TraceResult } from '../../src/capability/iam-trace-schema.js';
+import { type ExtractedRequest, IAM_EXTRACT_SCHEMA, IAM_TRACE_SCHEMA, type IamTraceRequest, numberPoints, type TracePoint, type TraceResult } from '../../src/capability/iam-trace-schema.js';
 import type { CapabilityContext, CapabilityOutcome } from '../../src/capability/types.js';
 import type { Config } from '../../src/config/schema.js';
 import { IAM_TRACE_TOOLS } from '../../src/fence/constants.js';
@@ -18,7 +18,7 @@ const USER_CONFIG = { mcpServers: { 'iam-trace': { command: 'iam-trace-mcp', env
 
 type Fake = RunResult | Error | ((dir: string) => RunResult);
 
-type HarnessOptions = { trace: Fake; verify?: Fake; input?: string; messageId?: string; userConfig?: unknown; userConfigPath?: string; kind?: string; tune?: (cap: NonNullable<Config['capabilities'][string]>) => void };
+type HarnessOptions = { trace: Fake; verify?: Fake; extract?: Fake; input?: string; messageId?: string; userConfig?: unknown; userConfigPath?: string; kind?: string; tune?: (cap: NonNullable<Config['capabilities'][string]>) => void };
 
 function harness(o: HarnessOptions) {
   const cfg = testConfig({ iamTrace: {} });
@@ -34,15 +34,34 @@ function harness(o: HarnessOptions) {
   const messageId = o.messageId ?? '42';
   const dir = join(cfg.data_dir, 'iamtrace', messageId);
   const inputs: RunInput[] = [];
+  const extracts: RunInput[] = [];
+  const text = o.input ?? 'C1 u1';
   const run = async (input: RunInput): Promise<RunResult> => {
-    inputs.push(input);
-    const fake = input.options.outputFormat?.schema === IAM_TRACE_SCHEMA ? o.trace : (o.verify ?? new Error('no verifier result'));
+    const schema = input.options.outputFormat?.schema;
+    (schema === IAM_EXTRACT_SCHEMA ? extracts : inputs).push(input);
+    const fake = schema === IAM_EXTRACT_SCHEMA ? (o.extract ?? extractRun(shortForm(text))) : schema === IAM_TRACE_SCHEMA ? o.trace : (o.verify ?? new Error('no verifier result'));
     if (fake instanceof Error) throw fake;
     return typeof fake === 'function' ? fake(dir) : fake;
   };
-  const job: Job = { kind, channel: 'teams', chatId: 'chat', principal: 'teams:p1', requesterName: 'p1', messageId, input: o.input ?? 'C1 u1', requestedAt: new Date().toISOString() };
+  const job: Job = { kind, channel: 'teams', chatId: 'chat', principal: 'teams:p1', requesterName: 'p1', messageId, input: text, requestedAt: new Date().toISOString() };
   const ctx: CapabilityContext = { cfg, job, person, run, dataDir: cfg.data_dir, signal: new AbortController().signal, secrets: {}, userConfigPath };
-  return { ctx, inputs, dir };
+  return { ctx, inputs, extracts, dir };
+}
+
+const DAY = { since: '24h', window: '24 giờ gần nhất' };
+const extractRun = (structured: unknown, over: Partial<RunResult> = {}): RunResult => ({ isError: false, text: '', structured, denials: [], toolUses: [], durationMs: 1, ...over });
+
+// What a well-behaved extractor returns for "<target> <user>,<user> [dd/mm hh:mm]".
+function shortForm(input: string): ExtractedRequest {
+  const [target = '', users = '', ...rest] = input.split(/\s+/u);
+  const dt = /(\d{2})\/(\d{2}) (\d{2}):(\d{2})/u.exec(rest.join(' '));
+  const year = new Date(Date.now() + 7 * 3600_000).getUTCFullYear();
+  return {
+    target: { id: target, kind: 'unknown' },
+    journey_id: '',
+    users: users.split(',').filter((u) => u !== '').map((id) => ({ id, kind: 'unknown' })),
+    time: dt === null ? { raw: '', local: '' } : { raw: dt[0], local: `${year}-${dt[2]}-${dt[1]} ${dt[3]}:${dt[4]}` },
+  };
 }
 
 const pt = (kind: TracePoint['kind'], state: TracePoint['state'], time: string, evidence: string, label: string, why = ''): TracePoint => ({ kind, label, journey: 'J1', outcome: 'info', channel: '', result: '', time, source_field: '_time', evidence, state, why });
@@ -98,6 +117,61 @@ describe('iam_trace capability', () => {
     expect(outcome.reply?.html).toContain('ít nhất một userId hoặc roleId');
     expect(outcome.event).toMatchObject({ kind: 'iam_trace', status: 'need_input', reason: 'request incomplete' });
     expect(outcome.notifyOwner).toBeUndefined();
+  });
+
+  it('reads the request with the extractor on the classifier fence', async () => {
+    const message = 'check thử user role 4QX2-TMBV-8NRC dùng campaign 2100000000000000101 journeyId: 2100000000000000202 đã send IAM chưa iam_trace';
+    const extracted: ExtractedRequest = { target: { id: '2100000000000000101', kind: 'campaign' }, journey_id: '2100000000000000202', users: [{ id: '4QX2-TMBV-8NRC', kind: 'role' }], time: { raw: '', local: '' } };
+    const { ctx, inputs, extracts, dir } = harness({ trace: TRACE_OK, verify: VERIFY_OK, input: message, extract: extractRun(extracted) });
+    ctx.job.requestedAt = '2026-10-30T10:47:00Z';
+    await iamTrace(ctx);
+    expect(extracts).toHaveLength(1);
+    const options = extracts[0]?.options;
+    expect(options?.tools).toEqual([]);
+    expect(options?.permissionMode).toBe('dontAsk');
+    expect(options?.mcpServers).toEqual({});
+    expect(extracts[0]?.auth).toBe(ctx.cfg.classifier.auth);
+    expect(extracts[0]?.prompt).toContain('2026-10-30 17:47 Vietnam time');
+    expect(options?.strictMcpConfig).toBe(true);
+    expect(options?.model).toBe(ctx.cfg.classifier.model);
+    expect(options?.cwd).toBe(dir);
+    expect(JSON.stringify(options?.systemPrompt)).toContain('trace an Apollo in-app message');
+    expect(extracts[0]?.timeoutMs).toBe(ctx.cfg.classifier.timeout);
+    expect(extracts[0]?.prompt).toContain(message);
+    const prompt = inputs[0]?.prompt ?? '';
+    expect(prompt).toContain('campaignId: 2100000000000000101');
+    expect(prompt).toContain('journeyId: 2100000000000000202');
+    expect(prompt).toContain('users: 4QX2-TMBV-8NRC');
+  });
+
+  it('never traces an id the message does not carry', async () => {
+    const extracted: ExtractedRequest = { target: { id: 'C1', kind: 'campaign' }, journey_id: '', users: [{ id: 'u9', kind: 'user' }], time: { raw: '', local: '' } };
+    const { ctx, inputs } = harness({ trace: TRACE_OK, verify: VERIFY_OK, input: 'C1 u1', extract: extractRun(extracted) });
+    const outcome = await iamTrace(ctx);
+    expect(inputs).toHaveLength(0);
+    expect(outcome.event).toMatchObject({ status: 'need_input', reason: 'request incomplete' });
+  });
+
+  it('fails with a fixed reason when the extractor fails', async () => {
+    const thrown = harness({ trace: TRACE_OK, verify: VERIFY_OK, extract: new Error('timed out after 180000ms') });
+    const a = await iamTrace(thrown.ctx);
+    expect(thrown.inputs).toHaveLength(0);
+    expect(a.reply?.html).toBe(iamTraceFailedReply);
+    expect(a.event).toMatchObject({ status: 'failed', reason: 'extract session failed' });
+    const broken = harness({ trace: TRACE_OK, verify: VERIFY_OK, extract: extractRun({ target: 'C1' }) });
+    const b = await iamTrace(broken.ctx);
+    expect(broken.inputs).toHaveLength(0);
+    expect(b.event).toMatchObject({ status: 'failed', reason: 'extract returned no request' });
+    await expect(iamTrace(harness({ trace: TRACE_OK, extract: new InterruptedError() }).ctx)).rejects.toBeInstanceOf(InterruptedError);
+  });
+
+  it('counts the extractor run in the event', async () => {
+    const extract = extractRun(shortForm('C1 u1'), { costUsd: 0.01, turns: 1 });
+    const outcome = await iamTrace(harness({ trace: TRACE_OK, verify: VERIFY_OK, extract }).ctx);
+    expect(outcome.event.costUsd).toBeCloseTo(1.51);
+    expect(outcome.event.numTurns).toBe(15);
+    const incomplete = await iamTrace(harness({ trace: TRACE_OK, input: 'C1', extract: extractRun(shortForm('C1'), { costUsd: 0.01 }) }).ctx);
+    expect(incomplete.event).toMatchObject({ status: 'need_input', costUsd: 0.01 });
   });
 
   it('TestIamTraceDeliversVerifiedPage', async () => {
@@ -432,8 +506,7 @@ describe('iam_trace capability', () => {
   });
 
   it('TestIamTracePromptCarriesBothIds', () => {
-    const { request } = parseTraceRequest('campaign https://hub.example/apollo/campaign/555000111\n"journeyInfo": { "id": "777000222" }\nUID: u1', new Date());
-    if (request === undefined) throw new Error('no request');
+    const request: IamTraceRequest = { ...DAY, target: '555000111', kind: 'campaign', journey: '777000222', users: ['u1'] };
     const prompt = iamTracePrompt(request);
     expect(prompt).toContain('campaignId: 555000111');
     expect(prompt).not.toContain('find out which');
@@ -442,30 +515,24 @@ describe('iam_trace capability', () => {
   });
 
   it('TestIamTracePromptNamesTheIdKind', () => {
-    const now = new Date();
-    const journey = parseTraceRequest('"journeyInfo": { "id": "777000222" }\nUID: u1', now).request;
-    const bare = parseTraceRequest('555000111 u1', now).request;
-    if (journey === undefined || bare === undefined) throw new Error('no request');
+    const journey: IamTraceRequest = { ...DAY, target: '777000222', kind: 'journey', users: ['u1'] };
+    const bare: IamTraceRequest = { ...DAY, target: '555000111', users: ['u1'] };
     expect(iamTracePrompt(journey)).toContain('journeyId: 777000222');
     expect(iamTracePrompt(journey)).not.toContain('campaignId:');
     expect(iamTracePrompt(bare)).toContain('id: 555000111  (a campaignId or a journeyId; find out which from the logs)');
   });
 
   it('TestIamTracePromptLooksUpTheCampaignJourney', () => {
-    const now = new Date();
-    const campaign = parseTraceRequest('https://hub.vnggames.com/apollo/campaign/2114622278003490816 u1', now).request;
-    const both = parseTraceRequest('campaignId: 2114622278003490816\njourneyId: 2114622279181455360\nUID: u1', now).request;
-    const journey = parseTraceRequest('"journeyInfo": { "id": "777000222" }\nUID: u1', now).request;
-    const bare = parseTraceRequest('555000111 u1', now).request;
-    if (campaign === undefined || both === undefined || journey === undefined || bare === undefined) throw new Error('no request');
+    const campaign: IamTraceRequest = { ...DAY, target: '2114622278003490816', kind: 'campaign', users: ['u1'] };
+    const both: IamTraceRequest = { ...campaign, journey: '2114622279181455360' };
+    const journey: IamTraceRequest = { ...DAY, target: '777000222', kind: 'journey', users: ['u1'] };
+    const bare: IamTraceRequest = { ...DAY, target: '555000111', users: ['u1'] };
     expect(iamTracePrompt(campaign)).toContain('first call campaign_journey with campaignId 2114622278003490816 and since "24h"');
     for (const r of [both, journey, bare]) expect(iamTracePrompt(r)).not.toContain('first call campaign_journey');
   });
 
   it('TestIamTracePrompts', () => {
-    const now = new Date();
-    const { request } = parseTraceRequest('C1 u1,r2', now);
-    if (request === undefined) throw new Error('no request');
+    const request: IamTraceRequest = { ...DAY, target: 'C1', users: ['u1', 'r2'] };
     const prompt = iamTracePrompt(request);
     for (const field of ['campaignInfo.sourceTimestamp', 'isSatisfied', 'notification_data', 'messageTimestamp']) expect(prompt).not.toContain(field);
     for (const kind of ['[trigger]', '[wait_end]', '[check_call]', '[condition]', '[frequency]', '[send]', '[delivered]', '[sdk_event]', '[inbox]']) expect(prompt).toContain(kind);
