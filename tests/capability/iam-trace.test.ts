@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { resolvePerson } from '../../src/authz/people.js';
 import { iamTrace, iamTraceDir, iamTracePrompt, iamVerifyPrompt } from '../../src/capability/iam-trace.js';
 import { type ExtractedRequest, IAM_EXTRACT_SCHEMA, IAM_TRACE_SCHEMA, type IamTraceRequest, numberPoints, type TracePoint, type TraceResult } from '../../src/capability/iam-trace-schema.js';
@@ -163,6 +163,32 @@ describe('iam_trace capability', () => {
     expect(broken.inputs).toHaveLength(0);
     expect(b.event).toMatchObject({ status: 'failed', reason: 'extract returned no request' });
     await expect(iamTrace(harness({ trace: TRACE_OK, extract: new InterruptedError() }).ctx)).rejects.toBeInstanceOf(InterruptedError);
+  });
+
+  it('leaves the verifier the time the extractor took', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const slow = (): RunResult => { vi.setSystemTime(Date.now() + 180_000); return extractRun(shortForm('C1 u1')); };
+      const { ctx, inputs } = harness({ trace: TRACE_OK, verify: VERIFY_OK, extract: slow });
+      await iamTrace(ctx);
+      expect(inputs[1]?.timeoutMs).toBeGreaterThan(1_150_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('starts the verifier look-back after the extractor', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const slow = (): RunResult => { vi.setSystemTime(Date.now() + 3_700_000); return extractRun(shortForm('C1 u1')); };
+      const { ctx, inputs } = harness({ trace: TRACE_OK, verify: VERIFY_OK, extract: slow });
+      const outcome = await iamTrace(ctx);
+      expect(inputs).toHaveLength(2);
+      expect(inputs[1]?.prompt).toContain('since "25h"');
+      expect(outcome.event.durationMs).toBeGreaterThanOrEqual(3_700_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('counts the extractor run in the event', async () => {

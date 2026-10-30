@@ -158,6 +158,20 @@ describe('validateRequest', () => {
     expect(out).toContain('không đọc được thời điểm trong tin nhắn');
   });
 
+  it('reads the normalised time with a T, seconds or the Vietnam offset', () => {
+    for (const local of ['2026-10-25T09:30', '2026-10-25 09:30:00', '2026-10-25T09:30:00+07:00']) {
+      expect(validateRequest(ex({ time: { raw: '9h30', local } }), `${MSG} 9h30`, now).request?.at?.toISOString(), local).toBe('2026-10-25T02:30:00.000Z');
+    }
+  });
+
+  it('refuses a time in any other zone or with impossible seconds, and drops valid seconds', () => {
+    const one = (local: string) => validateRequest(ex({ time: { raw: '9h30', local } }), `${MSG} 9h30`, now);
+    for (const local of ['2026-10-25T09:30:00Z', '2026-10-25T09:30:00+00:00', '2026-10-25T09:30-05:00', '2026-10-25T09:30:60']) {
+      expect(one(local).missing.join('\n'), local).toContain('không đọc được thời điểm');
+    }
+    expect(one('2026-10-25T09:30:45+0700').request?.at?.toISOString()).toBe('2026-10-25T02:30:00.000Z');
+  });
+
   it('reads a one-digit hour', () => {
     expect(validateRequest(ex({ time: { raw: '9h', local: '2026-10-25 9:00' } }), `${MSG} 9h`, now).request?.at?.toISOString()).toBe('2026-10-25T02:00:00.000Z');
   });
