@@ -110,7 +110,9 @@ ${message.replaceAll('<', '‹').replaceAll('>', '›')}
 MESSAGE>>>`;
 }
 
-const LOCAL_TIME_RE = /^(\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{2})$/u;
+// A T, seconds or the Vietnam offset change nothing; any other zone is refused, since a model that stamps Z on Vietnam
+// time and one that really converted to UTC look the same.
+const LOCAL_TIME_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::[0-5]\d)?(?:\+07:?00)?$/u;
 const DAY_MONTH_RE = /\b\d{1,2}\/\d{1,2}\b/u;
 const TOKEN_SPLIT_RE = /[\s"'`,;=()[\]{}<>/?&#|]+/u;
 // Dates and clock times are blanked first, so their parts (the 25 of 25/10, the 30 of 09:30) are never ids.

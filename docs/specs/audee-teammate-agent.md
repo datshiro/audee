@@ -79,8 +79,8 @@ owner notices carry that name as their kind).
   tool at all (`tools: []`, `--restricted`, `dontAsk`, no setting sources, no MCP), `classifier.model`/`effort`/
   `timeout`/`auth` (its model may exist only behind that auth), a JSON schema, and only the current message plus the
   job's `requestedAt` as send time (never chat history). `<` and `>` in the message are replaced so it cannot close its
-  data block. The extractor's cost is extra to `budget_usd`, which still covers the trace and the verifier. It returns the target (campaign, journey or unknown), a journey id beside a campaign, the users
-  (user, role or unknown) and a time normalised to `YYYY-MM-DD HH:mm` ICT from any wording (`hôm qua 9h`, `25/10
+  data block. The extractor's cost and time are extra to `budget_usd` and `timeout`, which still cover the trace and the verifier, counted from when the request is validated. It returns the target (campaign, journey or unknown), a journey id beside a campaign, the users
+  (user, role or unknown) and a time normalised to `YYYY-MM-DD HH:mm` ICT (a `T`, seconds, which are dropped, or `+07:00` (or `+0700`) are read too; any other zone does not parse) from any wording (`hôm qua 9h`, `25/10
   09:30`, read day/month). audee trusts none of it: an id survives only if it is at most 64 safe characters and equals
   a whole word of the message (words split on spaces, quotes, brackets, commas, `=` and URL separators, trailing
   punctuation dropped, `UID:abc` also yields `abc`, `dd/mm[/yy]` and `hh:mm` spans blanked first), so a dash-group of
@@ -97,10 +97,10 @@ owner notices carry that name as their kind).
   reads journey-trigger's `GetJourneyByID` lines: the journey whose send nodes name exactly that campaign, newest
   first. It retries once over 168h on no-match, then falls back to the players' lines and says the journey was not
   confirmed. No database is read.
-- Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by two sessions are the defaults of every
+- Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by the trace and the verifier are the defaults of every
   capability on profile `iam_trace`, whatever its name; values set in config win. The example config gives it its own lane, `iam_trace` with concurrency 1. The trace gets 65%
   of each; the verifier gets the budget left after the trace's actual cost and the time left, and is skipped below $0.30
-  or 2 minutes. Lane: a trace can hold its slot for up to 20 minutes, so it runs in its own lane (concurrency 1) and never queues
+  or 2 minutes. Lane: a trace can hold its slot for `classifier.timeout` plus `timeout` (23 minutes with the defaults), so it runs in its own lane (concurrency 1) and never queues
   kb_query or mcp_read jobs; it still counts against `max_concurrent`, so a running trace leaves one fewer global slot.
 - Window: without a datetime every tool call passes `since 24h` (the tools default to 1h). With a datetime the window
   runs from 30 minutes before to 3 hours after it (clipped to now) as `_time:(<start>Z, <end>Z)` with parentheses, and

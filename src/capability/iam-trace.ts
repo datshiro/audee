@@ -251,7 +251,9 @@ export const iamTrace: Capability = async (ctx) => {
     keepOutput(jobDir, { ...extractRes, text: '' }, 'extract returned no request');
     return failed('extract returned no request');
   }
-  const { request, missing } = validateRequest(extractRes.structured as ExtractedRequest, message, new Date());
+  // timeout covers the trace and the verifier from here: the extractor's time, like its cost, is extra.
+  const asked = new Date();
+  const { request, missing } = validateRequest(extractRes.structured as ExtractedRequest, message, asked);
   if (request === undefined) {
     keepOutput(jobDir, { ...extractRes, text: '' }, 'request incomplete'); // so the owner can see what the model read
     return { reply: { html: iamTraceMissingReply(missing) }, event: event('need_input', 'request incomplete') };
@@ -299,13 +301,13 @@ export const iamTrace: Capability = async (ctx) => {
   let verdicts: Verdict[] | undefined;
   let skipReason: string | undefined;
   const remainingUsd = budget === undefined ? undefined : budget - (traceRes.costUsd ?? budget * TRACE_SHARE);
-  const remainingMs = cap.timeout - (Date.now() - started);
+  const remainingMs = cap.timeout - (Date.now() - asked.getTime());
   if (remainingUsd !== undefined && remainingUsd < MIN_VERIFY_BUDGET_USD) skipReason = 'no budget left for the verifier';
   else if (remainingMs < MIN_VERIFY_MS) skipReason = 'no time left for the verifier';
   else if (numberPoints(trace).length === 0) skipReason = 'verifier checked no point';
   else {
     try {
-      const prompt = iamVerifyPrompt(request, trace, verifierSince(request.since, Date.now() - started));
+      const prompt = iamVerifyPrompt(request, trace, verifierSince(request.since, Date.now() - asked.getTime()));
       verifyRes = await ctx.run({ ...sessionInput(ctx, cap, options(IAM_VERIFY_SCHEMA, remainingUsd), prompt), timeoutMs: remainingMs });
     } catch (e) {
       if (e instanceof InterruptedError || ctx.signal.aborted) throw e;
