@@ -45,11 +45,25 @@ describe('kb_query tech answers', () => {
     ((a['sections'] as Obj[])[0]!['blocks'] as Obj[])[1]!['text'] = 'model text never shown';
     const { markdown, sources } = techMarkdown(a, paths);
     expect(markdown).toContain('## Flow');
-    expect(markdown).toContain('It checks the limit. *(portal-service/x.go:2-3)*');
+    expect(markdown).toContain('It checks the limit.\n\n*(portal-service/x.go:2-3)*');
     expect(markdown).toContain('```\n// portal-service/x.go:4-6\nfunc step4() {}\nconst password = "<redacted>"\nfunc step6() {}\n```');
     expect(markdown).not.toContain('model text never shown');
     expect(markdown).not.toContain('hunter2hunter2');
     expect(sources).toEqual(['portal-service/x.go:2-3', 'portal-service/x.go:4-6']);
+  });
+
+  it('refuses text blocks that carry typed code or headings, and flattens headings', () => {
+    const cite = ['portal-service/x.go:2'];
+    const a = answer([{ heading: 'H\n\n# Injected', blocks: [text('```go\nfunc x() {}\n```', cite), text('# Title', cite), text('    indented code', cite), text('- a list\n- **bold** item', cite)] }]);
+    expect(gateTech(a, paths)).toMatchObject({ kept: 1, removed: 3 });
+    expect(techMarkdown(a, paths).markdown.startsWith('## H # Injected\n')).toBe(true);
+  });
+
+  it('copies code exactly as the file has it unless a line is redacted', () => {
+    writeFileSync(join(paths.repos[0]!, 'q.go'), 'fmt.Sprintf("{\\"id\\": %d}", id)\n');
+    const a = answer([{ heading: 'H', blocks: [code('portal-service/q.go:1')] }]);
+    gateTech(a, paths);
+    expect(techMarkdown(a, paths).markdown).toContain('fmt.Sprintf("{\\"id\\": %d}", id)');
   });
 
   it('maps evidence ids to real cites and drops blocks citing unknown ids or code citing a doc', () => {

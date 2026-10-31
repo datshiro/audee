@@ -97,6 +97,7 @@ describe('kb_query gather and synthesise', () => {
     expect((r['journey'] as Obj[]).map((j) => j['cite'])).toEqual(['explanatory/flows/iam-frequency-check.md', 'journey-node/internal/check.go:10-10']);
     expect((r['rules'] as Obj[]).map((j) => j['cite'])).toEqual(['explanatory/flows/iam-frequency-check.md', 'journey-node/internal/check.go:20-20']);
     expect(r['purpose']).toMatchObject({ recorded: true, source: 'explanatory/flows/iam-frequency-check.md' });
+    expect(r['diagrams']).toEqual([]); // the uncited step went, and a diagram may show it
   });
 
   it('marks a reason not recorded when its source is not a kb entry of the pack', async () => {
@@ -122,7 +123,7 @@ describe('kb_query gather and synthesise', () => {
     const h = harness(result(gathered(entries)), result(synthesised()));
     const out = await kbQuery(h.ctx);
     expect(h.inputs[1]?.prompt).not.toContain('"E3"');
-    expect(out.event).toMatchObject({ status: 'done', itemsRemoved: 3 }); // E3, the rule citing it, and the uncited step
+    expect(out.event).toMatchObject({ status: 'done', itemsRemoved: 2 }); // the rule citing E3 and the uncited step; a dropped quote is no claim
   });
 
   it('answers not_known without synthesis when no evidence survives', async () => {

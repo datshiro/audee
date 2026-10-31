@@ -1,7 +1,7 @@
 // audee's own check of a kb_query answer: every claim's cite must resolve to a file the session itself may read,
 // inside a clean checkout or the wiki, before the claim reaches a page. What does not resolve is removed.
 import { readFileSync, realpathSync, statSync } from 'node:fs';
-import { basename, isAbsolute, join, matchesGlob, posix, relative, sep } from 'node:path';
+import { basename, isAbsolute, join, posix, relative, sep } from 'node:path';
 import { KB_QUERY_DENIED, KB_QUERY_REPO_DENIED, KB_QUERY_WIKI_DENIED } from '../fence/constants.js';
 import type { KbPaths } from '../fence/profiles.js';
 import { redactSecretPairs } from '../render/secrets.js';
@@ -17,7 +17,31 @@ const READ_DENIED = KB_QUERY_DENIED.flatMap((r) => /^Read\(\/\/(.+)\)$/u.exec(r)
 const SRC_DENIED = [...KB_QUERY_REPO_DENIED, ...READ_DENIED];
 const WIKI_DENIED = [...KB_QUERY_WIKI_DENIED, ...READ_DENIED];
 
-const denied = (rel: string, globs: string[]): boolean => globs.some((g) => matchesGlob(rel, g));
+// A deny glob as a case-insensitive regex in which * and ** also match names starting with a dot: the disk is
+// case-insensitive, so ".ENV" opens ".env", and a secret under ".deploy/" is still a secret.
+function globRegex(glob: string): RegExp {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    if (glob.startsWith('**/', i)) {
+      re += '(?:[^/]*/)*';
+      i += 2;
+    } else if (glob.startsWith('/**', i) && i + 3 === glob.length) {
+      re += '(?:/.*)?';
+      i += 2;
+    } else if (glob[i] === '*') {
+      re += '[^/]*';
+    } else {
+      re += glob[i]!.replace(/[.+?^${}()|[\]\\]/gu, '\\$&');
+    }
+  }
+  return new RegExp(`^${re}$`, 'iu');
+}
+
+const SRC_DENIED_RE = SRC_DENIED.map(globRegex);
+const WIKI_DENIED_RE = WIKI_DENIED.map(globRegex);
+
+// Dot files and folders (.env, .git, .deploy, ...) are never evidence.
+const denied = (rel: string, globs: RegExp[]): boolean => rel.split('/').some((s) => s.startsWith('.')) || globs.some((g) => g.test(rel));
 const outside = (rel: string): boolean => rel === '' || isAbsolute(rel) || rel.split('/').includes('..');
 
 function lineCount(file: string): number {
@@ -27,9 +51,9 @@ function lineCount(file: string): number {
 
 // Both the path the model gave and the path it resolves to must stay inside root and pass the denials, so a
 // symlink inside a checkout cannot lead to its .env.
-function inside(root: string, rel: string, globs: string[]): string | undefined {
+function inside(root: string, rel: string, globs: RegExp[]): string | undefined {
   if (outside(rel) || denied(rel, globs)) return undefined;
-  const real = realpathSync(join(root, rel));
+  const real = realpathSync.native(join(root, rel));
   if (!real.startsWith(root + sep) || !statSync(real).isFile()) return undefined;
   return denied(relative(root, real), globs) ? undefined : real;
 }
@@ -40,9 +64,9 @@ function resolveSrc(cite: string, paths: KbPaths): ResolvedCite | undefined {
   const [, name = '', given = '', a = '', b] = m;
   const repos = paths.repos.filter((r) => basename(r) === name);
   if (repos.length !== 1) return undefined;
-  const repo = realpathSync(repos[0]!);
+  const repo = realpathSync.native(repos[0]!);
   const rel = posix.normalize(given);
-  const file = inside(repo, rel, SRC_DENIED);
+  const file = inside(repo, rel, SRC_DENIED_RE);
   if (file === undefined) return undefined;
   const from = Number(a);
   const to = b === undefined ? from : Number(b);
@@ -53,7 +77,7 @@ function resolveSrc(cite: string, paths: KbPaths): ResolvedCite | undefined {
 function resolveKb(cite: string, paths: KbPaths): ResolvedCite | undefined {
   const rel = posix.normalize(cite.trim().replace(/^kb-mcp\/wiki\//u, ''));
   if (!rel.endsWith('.md')) return undefined;
-  const file = inside(realpathSync(paths.wiki), rel, WIKI_DENIED);
+  const file = inside(realpathSync.native(paths.wiki), rel, WIKI_DENIED_RE);
   return file === undefined ? undefined : { kind: 'kb', cite: rel, file };
 }
 
@@ -108,6 +132,9 @@ const list = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : []);
 // A tech cite is source when it reads as <service>/<path>:<line>, otherwise a wiki doc.
 const resolveAny = (cite: string, paths: KbPaths): ResolvedCite | undefined => resolveCite('src', cite, paths) ?? resolveCite('kb', cite, paths);
 
+// A text line that would render as a code block or a heading: code is copied by audee, never typed by the model.
+const TYPED_BLOCK = /^(?: {4}|\t|\s*(?:```|~~~|#))/mu;
+
 // Keeps a text block with at least one resolving cite (its other cites go) and a code block whose one source cite
 // resolves to at most MAX_TECH_CODE_LINES lines; drops emptied sections. Rewrites `answer` in place.
 export function gateTech(answer: Obj, paths: KbPaths): { kept: number; removed: number; confluenceDates: string[] } {
@@ -124,7 +151,7 @@ export function gateTech(answer: Obj, paths: KbPaths): { kept: number; removed: 
       if (block['kind'] === 'code') {
         const r = cites.length === 1 ? resolveCite('src', cites[0]!, paths) : undefined;
         if (r?.kind === 'src' && r.to - r.from + 1 <= MAX_TECH_CODE_LINES) resolved = [r];
-      } else if (typeof block['text'] === 'string' && block['text'].length <= MAX_TECH_TEXT_CHARS) {
+      } else if (typeof block['text'] === 'string' && block['text'].length <= MAX_TECH_TEXT_CHARS && !TYPED_BLOCK.test(block['text'])) {
         resolved = cites.flatMap((c) => resolveAny(c, paths) ?? []);
       }
       if (resolved.length === 0) {
@@ -146,24 +173,37 @@ export function gateTech(answer: Obj, paths: KbPaths): { kept: number; removed: 
   return { kept, removed, confluenceDates: [...dates].sort() };
 }
 
+// A copied line stays as the file has it unless a secret-named value in it is redacted.
+export function redactLine(line: string): string {
+  const redacted = redactSecretPairs(line);
+  return redacted.includes('<redacted>') ? redacted : line;
+}
+
 // The Markdown page body for a gated tech answer: a text block keeps its cites after it, and a code block's body is
 // read by audee from the cited lines, secret-named values redacted, never taken from the model.
 export function techMarkdown(answer: Obj, paths: KbPaths): { markdown: string; sources: string[] } {
   const out: string[] = [];
   const sources = new Set<string>();
   for (const section of list(answer['sections'])) {
-    out.push(`## ${String(section['heading'] ?? '')}`, '');
+    out.push(`## ${String(section['heading'] ?? '').replace(/\s+/gu, ' ').trim()}`, '');
     for (const block of list(section['blocks'])) {
       const cites = block['cites'] as string[];
-      for (const c of cites) sources.add(c);
       if (block['kind'] === 'code') {
         const r = resolveCite('src', cites[0]!, paths);
-        if (r?.kind !== 'src') continue;
-        const body = redactSecretPairs(readFileSync(r.file, 'utf8').split('\n').slice(r.from - 1, r.to).join('\n'));
+        let lines: string[];
+        try {
+          lines = r?.kind === 'src' ? readFileSync(r.file, 'utf8').split('\n').slice(r.from - 1, r.to) : [];
+        } catch {
+          lines = [];
+        }
+        if (r?.kind !== 'src' || lines.length === 0) continue; // the checkout changed since the gate
+        sources.add(r.cite);
+        const body = lines.map(redactLine).join('\n');
         const fence = '`'.repeat(Math.max(3, ...[...body.matchAll(/`+/gu)].map((m) => m[0].length + 1)));
         out.push(fence, `// ${r.cite}`, body, fence, '');
       } else {
-        out.push(`${String(block['text'])} *(${cites.join('; ')})*`, '');
+        for (const c of cites) sources.add(c);
+        out.push(String(block['text']), '', `*(${cites.join('; ')})*`, '');
       }
     }
   }

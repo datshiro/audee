@@ -113,8 +113,9 @@ Answer it with the kb-query skill in {querySkill} (SKILL.md and references/). Wh
 
 export const kbQueryInstructions = kbQuerySharedInstructions + `  If the question is ambiguous or the topic search matches several docs, pick the most likely readings (at most 4)
   and answer every one in its own section. If the question is too broad to pick readings, answer with an
-  overview of what the KB covers (the main services and flows) and end with a section of 3 to 5 narrower questions
-  the requester could ask next. Leave "missing" empty.
+  overview of what the KB covers (the main services and flows), each block citing the KB docs it summarizes, and
+  end with a section of 3 to 5 narrower questions the requester could ask next, each citing the doc that covers
+  it. Leave "missing" empty.
 - Never quote credentials, tokens, passwords, keys or connection strings, even if a file shows one.
 ` + techBlockRules('the source ranges and wiki doc paths') + `
 The skill's --full and --code-flow flags still decide how much detail and how many code blocks to give. Answer
@@ -125,7 +126,8 @@ question gets a Vietnamese topic), no links and no names of people. Example: "Lu
 
 const kbQueryProductInstructions = kbQuerySharedInstructions + `  If the question is ambiguous or the topic search matches several docs, pick the most likely readings (at most 4)
   and give each its own entry in "product.readings". If the question is too broad to pick readings, give one
-  overview reading of what the KB covers and 3 to 5 narrower questions in "product.follow_ups". If neither the KB
+  overview reading of what the KB covers, whose rules cite the KB docs they summarize, and 3 to 5 narrower
+  questions in "product.follow_ups". If neither the KB
   nor the source covers the question, return no readings and say in "missing" what you could not find.
 - Never quote credentials, tokens, passwords, keys or connection strings, even if a file shows one.
 This answer's mode is product.
@@ -135,9 +137,9 @@ manager who knows Apollo's features but not its code, following the skill's prod
 ` + PRODUCT_FIELD_RULES + ` Set purpose.recorded true only when a sentence in a wiki doc under
 product/, specs/, roadmap/ or explanatory/ states why it works this way, with that doc's wiki-relative path in
 purpose.source; code, comments and commit messages never count, and never infer a reason. Mark each journey step
-and rule "src" (checked in source; cite path:line), "kb" (only the KB says it; cite the doc) or "unverified" (cite
+and rule "src" (checked in source; cite <service>/<path>:<line>), "kb" (only the KB says it; cite the doc) or "unverified" (cite
 empty). Only state what you read. An item you did not check in source or a KB doc is left out; audee removes
-"unverified" items and any item whose cite does not resolve. Put repo-relative paths you cited in "sources" (at most 10). When something you cannot fix stops you (a
+"unverified" items and any item whose cite does not resolve. Leave "sources" empty: audee fills it. When something you cannot fix stops you (a
 tool is denied, the KB is unreadable), answer status "failed" and say why in "notes". At most 5 notes, each under
 250 characters. Always set "topic": what the question asks, at most 12 words, in the same language as the question
 (a Vietnamese question gets a Vietnamese topic), no links and no names of people.`;
@@ -260,7 +262,7 @@ type Obj = Record<string, unknown>;
 // A tech answer (KB_TECH_SCHEMA): audee gates every block, builds the Markdown itself and sends it as a file page.
 // `runs` and `removedBefore` come from the split's gather session.
 export function techOutcome(ctx: CapabilityContext, dir: string, result: RunResult, started: number, paths: KbPaths, extra: { runs: RunResult[]; removedBefore: number } = { runs: [], removedBefore: 0 }): CapabilityOutcome {
-  const base = runsEvent([result, ...extra.runs], Date.now() - started);
+  const base = runsEvent([...extra.runs, result], Date.now() - started); // the gather session first: it read the files
   const failed = (reason: string): CapabilityOutcome => {
     keepOutput(dir, result, reason);
     return { reply: { html: failedText('kb_query') }, notifyOwner: `kb_query failed: ${reason}: ${dir}`, event: { ...base, kind: 'kb_query', status: 'failed', reason } };
@@ -307,7 +309,7 @@ async function splitAnswer({ ctx, cap, synthModel, dir, kbDir, paths, mcpServers
     }
   };
   const gatherOptions = buildOptions({ profile: 'kb_read', cwd: dir, mcpServers, kbPaths: paths, schema: GATHER_SCHEMA, model: cap.model, ...(budget !== undefined ? { budgetUsd: budget * GATHER_SHARE } : {}), seatbelt: cap.seatbelt });
-  const gatherRes = await run(gatherOptions, gatherPrompt(kbDir, paths, interservice), Math.floor(cap.timeout * GATHER_SHARE));
+  const gatherRes = await run(gatherOptions, gatherPrompt(kbDir, paths, interservice), Math.floor((cap.timeout - (Date.now() - started)) * GATHER_SHARE)); // after kbRefSync
   if (gatherRes instanceof Error) {
     keepOutput(dir, undefined, gatherRes.message);
     return failed(gatherRes.message, []);
@@ -339,7 +341,8 @@ async function splitAnswer({ ctx, cap, synthModel, dir, kbDir, paths, mcpServers
     keepOutput(dir, undefined, synthRes.message);
     return failed(synthRes.message, [gatherRes]);
   }
-  let removedBefore = pack.dropped;
+  // Only claims count as removed: evidence the pack dropped never reached the answer.
+  let removedBefore = 0;
   if (matches(synthRes.structured, schema)) removedBefore += (product ? mapSynthCites : mapTechCites)(synthRes.structured as Obj, pack.entries).removed;
   const extra = { runs: [gatherRes], removedBefore };
   return product ? productOutcome(ctx, dir, synthRes, started, kbDir, paths, extra) : techOutcome(ctx, dir, synthRes, started, paths, extra);

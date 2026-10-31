@@ -4,7 +4,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolvePerson } from '../../src/authz/people.js';
-import { kbQuery, kbQueryDir, kbQueryDirs, kbQueryPrompt, kbQuerySchema, setKbRefSync } from '../../src/capability/kb-query.js';
+import { kbQuery, kbQueryDir, kbQueryDirs, kbQueryPrompt, setKbRefSync } from '../../src/capability/kb-query.js';
+import { KB_TECH_SCHEMA } from '../../src/capability/kb-tech-schema.js';
 import type { CapabilityContext } from '../../src/capability/types.js';
 import { KB_QUERY_TOOLS } from '../../src/fence/constants.js';
 import type { Job } from '../../src/queue/job.js';
@@ -96,13 +97,13 @@ describe('kb_query', () => {
   });
 
   it('TestHandleKBQuerySendsAnswerAsHtmlFile', async () => {
-    const { ctx, inputs, dir } = harness(testKB('pusher'), done('## Past segment\n\n<script>x</script> & co, see https://evil.example/x'));
+    const { ctx, inputs, dir } = harness(testKB('pusher'), done('<script>x</script> & co, see https://evil.example/x'));
     const outcome = await kbQuery(ctx);
     expect(outcome.reply?.html).toBe(kbQueryFileReply + '<br><i>Về: past segment hoạt động thế nào?</i>');
     const file = outcome.reply?.file;
     expect(file?.name).toMatch(/^kb-answer-1791513774214-\d{8}-\d{6}\.html$/);
     const page = file?.content ?? '';
-    for (const want of ['<h2>Past segment</h2>', '&lt;script&gt;x&lt;/script&gt; &amp; co', 'hxxps://evil.example/x', '<li>pusher/main.go:10-10</li>', 'past segment hoạt động thế nào?']) expect(page).toContain(want);
+    for (const want of ['<h2>Answer</h2>', '&lt;script&gt;x&lt;/script&gt; &amp; co', 'hxxps://evil.example/x', '<li>pusher/main.go:10-10</li>', 'past segment hoạt động thế nào?']) expect(page).toContain(want);
     expect(page).not.toContain('<script');
     expect(synced).toBe(1);
     const input = inputs[0];
@@ -171,7 +172,7 @@ describe('kb_query', () => {
   });
 
   it('kb_query file reply carries the session topic', async () => {
-    const result = done('## Past segment', { topic: 'past segment tính audience' });
+    const result = done('Past segment', { topic: 'past segment tính audience' });
     const { ctx } = harness(testKB('pusher'), result);
     const outcome = await kbQuery(ctx);
     expect(outcome.reply?.html).toBe(kbQueryFileReply + '<br><i>Về: past segment tính audience</i>');
@@ -282,7 +283,7 @@ describe('kb_query', () => {
   });
 
   it('kb_query cannot ask the requester back', () => {
-    const status = (kbQuerySchema['properties'] as Record<string, { enum?: string[] }>)['status'];
+    const status = (KB_TECH_SCHEMA['properties'] as Record<string, { enum?: string[] }>)['status'];
     expect(status?.enum).toEqual(['done', 'failed']);
   });
 

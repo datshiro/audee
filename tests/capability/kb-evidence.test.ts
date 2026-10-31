@@ -59,6 +59,21 @@ describe('kb_query evidence gate', () => {
     }
   });
 
+  it('refuses dot files and folders and case variants of denied names', () => {
+    const portal = paths.repos[0]!;
+    for (const d of ['.deploy', '.circleci', 'SECRETS']) mkdirSync(join(portal, d));
+    writeFileSync(join(portal, '.deploy/values-prod.yaml'), lines(2));
+    writeFileSync(join(portal, '.circleci/config.yml'), lines(2));
+    writeFileSync(join(portal, 'SECRETS/dev.yaml'), lines(2));
+    writeFileSync(join(portal, 'Application-prod.yml'), lines(2));
+    writeFileSync(join(portal, '.git'), 'gitdir: /x\n');
+    writeFileSync(join(paths.wiki, 'inbox/.d.md'), '# d\n');
+    for (const bad of ['portal-service/.ENV:1', 'portal-service/.deploy/values-prod.yaml:1', 'portal-service/.circleci/config.yml:1', 'portal-service/SECRETS/dev.yaml:1', 'portal-service/Application-prod.yml:1', 'portal-service/.git:1']) {
+      expect(resolveCite('src', bad, paths), bad).toBeUndefined();
+    }
+    for (const bad of ['INBOX/x.md', 'People/y.md', 'inbox/.d.md']) expect(resolveCite('kb', bad, paths), bad).toBeUndefined();
+  });
+
   it('resolves a wiki cite with or without the wiki prefix, never into inbox or people', () => {
     expect(resolveCite('kb', 'explanatory/a.md', paths)).toMatchObject({ kind: 'kb', cite: 'explanatory/a.md' });
     expect(resolveCite('kb', 'kb-mcp/wiki/explanatory/a.md', paths)).toMatchObject({ cite: 'explanatory/a.md' });

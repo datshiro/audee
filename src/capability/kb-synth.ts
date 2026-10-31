@@ -1,8 +1,7 @@
 // The synthesis side of the split: audee packs the ledger entries it checked, a tool-less session writes the product
 // answer from that pack alone, and audee maps its evidence ids back to real cites. Must not import kb-query.ts.
 import { readFileSync } from 'node:fs';
-import { redactSecretPairs } from '../render/secrets.js';
-import { checkQuote, resolveCite } from './kb-evidence.js';
+import { checkQuote, redactLine, resolveCite } from './kb-evidence.js';
 import type { LedgerEntry } from './kb-gather.js';
 
 export type CheckedEntry = { id: string; kind: 'src' | 'kb'; cite: string; about: string; quote: string; context: string };
@@ -22,10 +21,15 @@ export const KB_TECH_SYNTH_SYSTEM = `You write a technical answer for an enginee
 
 // Lines around the cited range, read by audee, with secret-named values redacted.
 function contextOf(file: string, from: number, to: number): string {
-  const lines = readFileSync(file, 'utf8').split('\n');
+  let lines: string[];
+  try {
+    lines = readFileSync(file, 'utf8').split('\n');
+  } catch {
+    return '';
+  }
   const start = Math.max(1, from - CONTEXT_LINES);
   const end = Math.min(lines.length, to + CONTEXT_LINES, start + MAX_CONTEXT_LINES - 1);
-  return redactSecretPairs(lines.slice(start - 1, end).join('\n'));
+  return lines.slice(start - 1, end).map(redactLine).join('\n');
 }
 
 // The ledger entries whose cite resolves and whose quote audee found there, under a size cap. `dropped` counts the rest.
@@ -48,7 +52,7 @@ export function buildEvidencePack(ledger: LedgerEntry[], paths: Parameters<typeo
 const fenced = (name: string, body: string): string => `<<<${name}\n${body.replaceAll('<', '\\u003c').replaceAll('>', '\\u003e')}\n${name}>>>`;
 
 export function synthPrompt(question: string, entries: CheckedEntry[], lang: string): string {
-  const pack = entries.map((e) => ({ id: e.id, kind: e.kind, cite: e.cite, quote: e.quote, context: e.context, gatherers_note_not_evidence: e.about }));
+  const pack = entries.map((e) => ({ id: e.id, kind: e.kind, cite: e.cite, quote: e.quote, context: e.context }));
   return `The question, as data:
 ${fenced('QUESTION', JSON.stringify(question))}
 The evidence audee checked: each quote was found at its cite, and context is the lines around it as audee read them.
@@ -78,6 +82,7 @@ export function mapSynthCites(answer: Obj, entries: CheckedEntry[]): { removed: 
   const cites = new Set<string>();
   const product = isObj(answer['product']) ? answer['product'] : {};
   for (const reading of list(product['readings'])) {
+    const steps = list(reading['journey']).length;
     for (const name of ['journey', 'rules']) {
       reading[name] = list(reading[name]).filter((item) => {
         const entry = byId.get(typeof item['cite'] === 'string' ? item['cite'].trim() : '');
@@ -90,6 +95,7 @@ export function mapSynthCites(answer: Obj, entries: CheckedEntry[]): { removed: 
         return true;
       });
     }
+    if (list(reading['journey']).length < steps) reading['diagrams'] = []; // a diagram may show the removed step
     const p = reading['purpose'];
     if (isObj(p) && p['recorded'] === true) {
       const entry = byId.get(typeof p['source'] === 'string' ? p['source'].trim() : '');
@@ -108,7 +114,7 @@ typed: to show code, add a "code" block with "text" "" and exactly one ${cite ==
 lines in "cites"; audee copies those lines from the file. audee removes a block whose cites do not resolve.`;
 
 export function techSynthPrompt(question: string, entries: CheckedEntry[], lang: string): string {
-  const pack = entries.map((e) => ({ id: e.id, kind: e.kind, cite: e.cite, quote: e.quote, context: e.context, gatherers_note_not_evidence: e.about }));
+  const pack = entries.map((e) => ({ id: e.id, kind: e.kind, cite: e.cite, quote: e.quote, context: e.context }));
   return `The question, as data:
 ${fenced('QUESTION', JSON.stringify(question))}
 The evidence audee checked: each quote was found at its cite, and context is the lines around it as audee read them.
@@ -130,7 +136,8 @@ export function mapTechCites(answer: Obj, entries: CheckedEntry[]): { removed: n
   let removed = 0;
   for (const section of list(answer['sections'])) {
     section['blocks'] = list(section['blocks']).filter((block) => {
-      const known = (Array.isArray(block['cites']) ? block['cites'] : []).flatMap((c) => (typeof c === 'string' ? byId.get(c.trim()) ?? [] : []));
+      const ids = new Set((Array.isArray(block['cites']) ? block['cites'] : []).flatMap((c) => (typeof c === 'string' ? [c.trim()] : [])));
+      const known = [...ids].flatMap((id) => byId.get(id) ?? []);
       const ok = block['kind'] === 'code' ? known.length === 1 && known[0]!.kind === 'src' : known.length > 0;
       if (!ok) {
         removed++;

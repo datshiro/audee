@@ -152,7 +152,7 @@ export const withheldOutcome = (dir: string, base: Partial<Event>): CapabilityOu
 // `extra` carries the split's earlier sessions, for the event, and the items they already removed.
 export async function productOutcome(ctx: CapabilityContext, dir: string, result: RunResult, started: number, kbDir: string, paths: KbPaths, extra: { runs: RunResult[]; removedBefore: number } = { runs: [], removedBefore: 0 }): Promise<CapabilityOutcome> {
   const kind = 'kb_query';
-  const base = runsEvent([result, ...extra.runs], Date.now() - started);
+  const base = runsEvent([...extra.runs, result], Date.now() - started); // the gather session first: it read the files
   const failed = (reason: string, keep = true): CapabilityOutcome => {
     if (keep) keepOutput(dir, result, reason);
     return { reply: { html: failedText(kind) }, notifyOwner: `kb_query failed: ${reason}: ${dir}`, event: { ...base, kind, status: 'failed', reason } };
@@ -173,6 +173,7 @@ export async function productOutcome(ctx: CapabilityContext, dir: string, result
   checkReasonSources(product, paths.wiki);
   const gate = gateProduct(product, paths);
   const removed = extra.removedBefore + gate.removed;
+  s['sources'] = [...new Set(list(product['readings']).flatMap((r) => [...list(r['journey']), ...list(r['rules'])].map((i) => str(i['cite']))))].slice(0, 10);
   if (list(product['readings']).length === 0) return notKnownOutcome(ctx, base, str(s['topic']), 'no claim survived the evidence check', removed);
   writeFileSync(join(dir, 'answer.json'), JSON.stringify(s), { mode: 0o600 });
   let page: string;
