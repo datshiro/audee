@@ -22,6 +22,7 @@ function testKB(...services: string[]): string {
   let repos = '';
   for (const s of services) {
     mkdirSync(join(kb, '.kb-ref-worktrees', s), { recursive: true, mode: 0o700 });
+    writeFileSync(join(kb, '.kb-ref-worktrees', s, 'main.go'), Array.from({ length: 30 }, (_, i) => `// line ${i + 1}`).join('\n') + '\n');
     repos += `  - path: ../${s}\n    name: ${s}\n`;
   }
   writeFileSync(join(kb, 'kb.yaml'), `wiki_dir: ./kb-mcp/wiki\nrepos:\n${repos}ref_policy:\n  worktree_root: .kb-ref-worktrees\n`);
@@ -29,7 +30,17 @@ function testKB(...services: string[]): string {
   return kb;
 }
 
-const done = (answer: string, sources: string[] = []): RunResult => ({ isError: false, text: '', structured: { status: 'done', answer, sources, notes: [], missing: [] }, costUsd: 0.1, turns: 3, sessionId: 's1', denials: [], toolUses: ['Read'], durationMs: 10 });
+const CITE = 'pusher/main.go:10';
+
+// A tech answer (KB_TECH_SCHEMA) whose text is split into cited blocks of at most 1500 characters, 20 to a section.
+function techAnswer(text: string, o: { topic?: string; status?: string } = {}): Record<string, unknown> {
+  const chunks = text === '' ? [] : (text.match(/[\s\S]{1,1500}/gu) ?? []);
+  const sections = [];
+  for (let i = 0; i < chunks.length; i += 20) sections.push({ heading: 'Answer', blocks: chunks.slice(i, i + 20).map((c) => ({ kind: 'text', text: c, cites: [CITE] })) });
+  return { status: o.status ?? 'done', topic: o.topic ?? '', lang: 'vi', title: 'Answer', sections, notes: [], missing: [] };
+}
+
+const done = (answer: string, o: { topic?: string; status?: string } = {}): RunResult => ({ isError: false, text: '', structured: techAnswer(answer, o), costUsd: 0.1, turns: 3, sessionId: 's1', denials: [], toolUses: ['Read'], durationMs: 10 });
 
 function harness(kb: string, result: RunResult | Error, principal = 'teams:owner') {
   const cfg = testConfig({ kbDir: kb });
@@ -85,13 +96,13 @@ describe('kb_query', () => {
   });
 
   it('TestHandleKBQuerySendsAnswerAsHtmlFile', async () => {
-    const { ctx, inputs, dir } = harness(testKB('pusher'), done('## Past segment\n\n<script>x</script> & co, see https://evil.example/x', ['pusher/main.go:10']));
+    const { ctx, inputs, dir } = harness(testKB('pusher'), done('## Past segment\n\n<script>x</script> & co, see https://evil.example/x'));
     const outcome = await kbQuery(ctx);
     expect(outcome.reply?.html).toBe(kbQueryFileReply + '<br><i>Về: past segment hoạt động thế nào?</i>');
     const file = outcome.reply?.file;
     expect(file?.name).toMatch(/^kb-answer-1791513774214-\d{8}-\d{6}\.html$/);
     const page = file?.content ?? '';
-    for (const want of ['<h2>Past segment</h2>', '&lt;script&gt;x&lt;/script&gt; &amp; co', 'hxxps://evil.example/x', '<li>pusher/main.go:10</li>', 'past segment hoạt động thế nào?']) expect(page).toContain(want);
+    for (const want of ['<h2>Past segment</h2>', '&lt;script&gt;x&lt;/script&gt; &amp; co', 'hxxps://evil.example/x', '<li>pusher/main.go:10-10</li>', 'past segment hoạt động thế nào?']) expect(page).toContain(want);
     expect(page).not.toContain('<script');
     expect(synced).toBe(1);
     const input = inputs[0];
@@ -101,16 +112,16 @@ describe('kb_query', () => {
     expect(input?.options.cwd).toBe(dir);
     expect(readFileSync(join(dir, 'question.txt'), 'utf8')).toBe(ctx.job.input);
     expect(outcome.removeAfterReply).toBe(dir); // the watcher deletes it once the reply is delivered
-    expect(outcome.event).toMatchObject({ kind: 'kb_query', status: 'done', sessionId: 's1', costUsd: 0.1, numTurns: 3, toolUses: ['Read'] });
+    expect(outcome.event).toMatchObject({ kind: 'kb_query', status: 'done', sessionId: 's1', costUsd: 0.1, numTurns: 3, toolUses: ['Read'], itemsKept: 1, itemsRemoved: 0 });
     expect(outcome.notifyOwner).toBeUndefined();
   });
 
-  // ciel/kbquery_test.go:289
+  // ciel/kbquery_test.go:289: the tech schema has no need_input, so such an answer breaks the contract.
   it('TestHandleKBQueryKeepsFolderWhenInputNeeded', async () => {
-    const result: RunResult = { ...done(''), structured: { status: 'need_input', answer: '', sources: [], notes: [], missing: ['Which <service>? see HTTPS://evil.example'] } };
+    const result: RunResult = { ...done(''), structured: { ...techAnswer(''), status: 'need_input', missing: ['Which <service>? see HTTPS://evil.example'] } };
     const { ctx, dir } = harness(testKB('pusher'), result);
     const outcome = await kbQuery(ctx);
-    expect(outcome.reply?.html).toContain('<li>Which &lt;service&gt;? see hxxpS://evil.example</li>');
+    expect(outcome.event).toMatchObject({ status: 'failed', reason: 'answer does not match the contract' });
     expect(outcome.reply?.file).toBeUndefined();
     expect(outcome.removeAfterReply).toBeUndefined();
     expect(readFileSync(join(dir, 'question.txt'), 'utf8')).toBe(ctx.job.input);
@@ -121,11 +132,11 @@ describe('kb_query', () => {
   // ciel/kbquery_test.go:305
   it('TestHandleKBQueryFailure', async () => {
     const cases: Record<string, RunResult | Error> = {
-      'failed status': { ...done(''), structured: { status: 'failed', answer: '', sources: [], notes: ['denied'], missing: [] } },
-      'done, no answer': done(' '),
+      'failed status': { ...done(''), structured: { ...techAnswer('', { status: 'failed' }), notes: ['denied'] } },
+      'old answer shape': { ...done(''), structured: { status: 'done', answer: 'x', sources: [], notes: [], missing: [] } },
       'no structure': { ...done(''), structured: undefined, text: 'hi' },
       'claude error': { ...done(''), isError: true, structured: undefined },
-      'need_input empty': { ...done(''), structured: { status: 'need_input', answer: '', sources: [], notes: [], missing: [] } },
+      'need_input empty': { ...done(''), structured: { ...techAnswer(''), status: 'need_input' } },
       'session failed': new Error('session failed: Claude Code process exited with code 1'),
       'timed out': new Error('timed out after 900000 ms'),
     };
@@ -160,7 +171,7 @@ describe('kb_query', () => {
   });
 
   it('kb_query file reply carries the session topic', async () => {
-    const result: RunResult = { ...done('## Past segment'), structured: { status: 'done', topic: 'past segment tính audience', answer: '## Past segment', sources: [], notes: [], missing: [] } };
+    const result = done('## Past segment', { topic: 'past segment tính audience' });
     const { ctx } = harness(testKB('pusher'), result);
     const outcome = await kbQuery(ctx);
     expect(outcome.reply?.html).toBe(kbQueryFileReply + '<br><i>Về: past segment tính audience</i>');
@@ -168,24 +179,35 @@ describe('kb_query', () => {
   });
 
   it('kb_query withholds an answer whose topic looks like a credential', async () => {
-    const result: RunResult = { ...done('safe answer'), structured: { status: 'done', topic: 'use glpat-abcdefghijklmnopqrst', answer: 'safe answer', sources: [], notes: [], missing: [] } };
+    const result = done('safe answer', { topic: 'use glpat-abcdefghijklmnopqrst' });
     const { ctx } = harness(testKB('pusher'), result);
     const outcome = await kbQuery(ctx);
     expect(outcome.reply?.html).toBe(kbQueryWithheldReply);
     expect(outcome.reply?.file).toBeUndefined();
 
-    const known: RunResult = { ...done('safe answer'), structured: { status: 'done', topic: 'about s3cr3t-value-123', answer: 'safe answer', sources: [], notes: [], missing: [] } };
+    const known = done('safe answer', { topic: 'about s3cr3t-value-123' });
     const second = harness(testKB('pusher'), known);
     second.ctx.secrets = { GL_TOKEN: 's3cr3t-value-123' };
     const withheld = await kbQuery(second.ctx);
     expect(withheld.reply?.html).toBe(kbQueryWithheldReply);
   });
 
+  it('answers a tech question not_known when the model found nothing or no block survives', async () => {
+    const empty = await kbQuery(harness(testKB('pusher'), done('')).ctx);
+    expect(empty.event).toMatchObject({ status: 'not_known', reason: 'model found no evidence', itemsKept: 0 });
+    const bad = done('claims');
+    ((bad.structured as { sections: Array<{ blocks: Array<{ cites: string[] }> }> }).sections[0]!.blocks[0]!).cites = ['pusher/none.go:1'];
+    const out = await kbQuery(harness(testKB('pusher'), bad).ctx);
+    expect(out.event).toMatchObject({ status: 'not_known', reason: 'no claim survived the evidence check', itemsKept: 0, itemsRemoved: 1 });
+    expect(out.reply?.file).toBeUndefined();
+  });
+
   it('TestHandleKBQuerySendsLongAnswerWhole', async () => {
     const { ctx, dir } = harness(testKB('pusher'), done('y'.repeat(maxReplyChars)));
     const outcome = await kbQuery(ctx);
-    expect(outcome.reply?.file?.content).toContain('y'.repeat(maxReplyChars));
-    expect(outcome.reply?.file?.content).not.toContain('cắt bớt');
+    const page = outcome.reply?.file?.content ?? '';
+    expect(page.match(/y/gu)?.length).toBeGreaterThanOrEqual(maxReplyChars);
+    expect(page).not.toContain('cắt bớt');
     expect(outcome.removeAfterReply).toBe(dir);
   });
 
@@ -232,7 +254,7 @@ describe('kb_query', () => {
   it('TestKBQueryPromptOverridesSkill', () => {
     const paths = { wiki: '/kb/kb-mcp/wiki', querySkill: '/kb/.agents/skills/kb-query', scoutSkill: '/kb/.agents/skills/kb-scout', repos: ['/kb/.kb-ref-worktrees/pusher'] };
     const p = kbQueryPrompt('/kb', paths, true);
-    for (const want of ['/kb/.agents/skills/kb-query', '/kb/.agents/skills/kb-scout/SKILL.md', '/kb/kb-mcp/wiki', '/kb/.kb-ref-worktrees/pusher', './question.txt', 'Never ask a question', 'never ask the requester to clarify', 'answer every one', 'its own "## " section', 'overview of what the KB covers', 'Leave "missing" empty', 'at most 12 words', 'a Vietnamese\nquestion gets a Vietnamese topic', 'Luồng set up lucky wheel', 'run no script', 'never call kb-enrich', 'Never quote credentials', 'INTERSERVICE.md is ./INTERSERVICE.md', 'Markdown', 'no raw HTML']) {
+    for (const want of ['/kb/.agents/skills/kb-query', '/kb/.agents/skills/kb-scout/SKILL.md', '/kb/kb-mcp/wiki', '/kb/.kb-ref-worktrees/pusher', './question.txt', 'Never ask a question', 'never ask the requester to clarify', 'answer every one', 'overview of what the KB covers', 'Leave "missing" empty', 'at most 12 words', 'a Vietnamese\nquestion gets a Vietnamese topic', 'Luồng set up lucky wheel', 'run no script', 'never call kb-enrich', 'Never quote credentials', 'INTERSERVICE.md is ./INTERSERVICE.md', 'Markdown inline formatting', 'Code is never\ntyped', '--full and --code-flow']) {
       expect(p).toContain(want);
     }
     expect(kbQueryPrompt('/kb', paths, false)).not.toContain('INTERSERVICE.md');

@@ -7,16 +7,19 @@ import { parse } from 'yaml';
 import { expandHome } from '../config/load.js';
 import { loadMcpServers } from '../fence/mcp-servers.js';
 import { buildOptions, type KbPaths } from '../fence/profiles.js';
-import { failedText, kbAnswerFileName, kbAnswerHTML, kbAnswerPage, kbAnswerVisibleTexts, kbQueryClipped, kbQueryEmptyReply, kbQueryFailedReply, kbQueryFileReply, kbQueryReplyHTML, kbTopicLine, kbQueryWithheldReply, type KbQueryResult, maxKBAnswerFileChars } from '../render/html.js';
+import { failedText, kbAnswerFileName, kbAnswerHTML, kbAnswerPage, kbAnswerVisibleTexts, kbConfluenceLine, kbQueryClipped, kbQueryEmptyReply, kbQueryFailedReply, kbQueryFileReply, kbQueryReplyHTML, kbRemovedLine, kbTopicLine, kbQueryWithheldReply, type KbQueryResult, maxKBAnswerFileChars } from '../render/html.js';
 import { leaksSecret } from '../render/secrets.js';
 import { runeLength, runeSlice } from '../render/text.js';
 import { sessionEnv } from '../runner/env.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
 import type { McpServerConfig, Options } from '@anthropic-ai/claude-agent-sdk';
 import type { Capability as CapabilityConfig } from '../config/schema.js';
-import { type AnswerMode, answerMode, matches, notKnownOutcome, productOutcome, runsEvent, withheldOutcome } from './kb-answer.js';
+import type { Event } from '../events.js';
+import { type AnswerMode, answerMode, matches, notKnownOutcome, productOutcome, runsEvent, strings, withheldOutcome } from './kb-answer.js';
+import { gateTech, techMarkdown } from './kb-evidence.js';
+import { KB_TECH_SCHEMA } from './kb-tech-schema.js';
 import { GATHER_SCHEMA, type Gathered, parseGather } from './kb-gather.js';
-import { buildEvidencePack, KB_SYNTH_SYSTEM, mapSynthCites, PRODUCT_FIELD_RULES, synthPrompt } from './kb-synth.js';
+import { buildEvidencePack, KB_SYNTH_SYSTEM, KB_TECH_SYNTH_SYSTEM, mapSynthCites, mapTechCites, PRODUCT_FIELD_RULES, synthPrompt, techBlockRules, techSynthPrompt } from './kb-synth.js';
 import { KB_ANSWER_SCHEMA } from './kb-answer-schema.js';
 import { capabilityConfig, freshDir, keepOutput, keepResult, messageDir, sessionEvent, sessionInput } from './session.js';
 import type { Capability, CapabilityContext, CapabilityOutcome } from './types.js';
@@ -109,13 +112,13 @@ Answer it with the kb-query skill in {querySkill} (SKILL.md and references/). Wh
 `;
 
 export const kbQueryInstructions = kbQuerySharedInstructions + `  If the question is ambiguous or the topic search matches several docs, pick the most likely readings (at most 4)
-  and answer every one: open the answer with a short list naming them, then give each its own "## " section.
-  If the question is too broad to pick readings, answer with an overview of what the KB covers (the main services
-  and flows) and end with 3 to 5 narrower questions the requester could ask next. Leave "missing" empty.
+  and answer every one in its own section. If the question is too broad to pick readings, answer with an
+  overview of what the KB covers (the main services and flows) and end with a section of 3 to 5 narrower questions
+  the requester could ask next. Leave "missing" empty.
 - Never quote credentials, tokens, passwords, keys or connection strings, even if a file shows one.
-Answer status "done" with "answer" in the language of the question: Markdown (headings, lists, tables, fenced code
-blocks; no raw HTML, no links or images; put ASCII diagrams in a fenced code block), at most 30000 characters. Put repo-relative paths you cited in
-"sources" (at most 10). When something you cannot fix stops you (a tool is denied, the KB is unreadable),
+` + techBlockRules('the source ranges and wiki doc paths') + `
+The skill's --full and --code-flow flags still decide how much detail and how many code blocks to give. Answer
+status "done" and set "lang". When something you cannot fix stops you (a tool is denied, the KB is unreadable),
 answer status "failed" and say why in "notes". At most 5 notes, each under 250 characters.
 Always set "topic": what the question asks, at most 12 words, in the same language as the question (a Vietnamese
 question gets a Vietnamese topic), no links and no names of people. Example: "Luồng set up lucky wheel và nhận quà trên webshop".`;
@@ -224,21 +227,7 @@ export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: strin
   if (leaksSecret(texts, Object.values(ctx.secrets))) {
     return { reply: { html: kbQueryWithheldReply }, notifyOwner: `${title} answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind, status: 'withheld', reason: 'answer looks like it holds a credential' } };
   }
-  if (opts.asFile === true && res.status === 'done') {
-    const full = res.answer ?? '';
-    const clipped = runeLength(full) > maxKBAnswerFileChars;
-    const answer = clipped ? runeSlice(full, maxKBAnswerFileChars) + '\n\n' + kbQueryClipped : full;
-    if (leaksSecret(kbAnswerVisibleTexts(kbAnswerHTML(answer)), Object.values(ctx.secrets))) {
-      return { reply: { html: kbQueryWithheldReply }, notifyOwner: `${title} answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind, status: 'withheld', reason: 'answer looks like it holds a credential' } };
-    }
-    const file = { name: kbAnswerFileName(ctx.job.messageId ?? ''), content: kbAnswerPage(ctx.job.input ?? '', { ...res, answer }) };
-    const outcome: CapabilityOutcome = { reply: { html: kbQueryFileReply + kbTopicLine(res.topic, ctx.job.input ?? ''), file }, event: { ...base, kind, status: res.status } };
-    if (clipped) {
-      keepResult(dir, res); // the full answer stays for the owner
-      return outcome;
-    }
-    return { ...outcome, removeAfterReply: dir };
-  }
+  if (opts.asFile === true && res.status === 'done') return deliverAnswerFile(ctx, kind, dir, res, base, title);
   const [html, clipped] = kbQueryReplyHTML(res);
   const outcome: CapabilityOutcome = { reply: { html }, event: { ...base, kind, status: res.status } };
   if (res.status !== 'done') return outcome; // the folder stays with output.json for the owner
@@ -249,18 +238,64 @@ export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: strin
   return { ...outcome, removeAfterReply: dir };
 }
 
+// A done answer as an HTML page through the outbox file flow; what the reader will see is checked for secrets too.
+export function deliverAnswerFile(ctx: CapabilityContext, kind: string, dir: string, res: KbQueryResult, base: Partial<Event>, title: string, extraReplyHtml = ''): CapabilityOutcome {
+  const full = res.answer ?? '';
+  const clipped = runeLength(full) > maxKBAnswerFileChars;
+  const answer = clipped ? runeSlice(full, maxKBAnswerFileChars) + '\n\n' + kbQueryClipped : full;
+  if (leaksSecret(kbAnswerVisibleTexts(kbAnswerHTML(answer)), Object.values(ctx.secrets))) {
+    return { reply: { html: kbQueryWithheldReply }, notifyOwner: `${title} answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind, status: 'withheld', reason: 'answer looks like it holds a credential' } };
+  }
+  const file = { name: kbAnswerFileName(ctx.job.messageId ?? ''), content: kbAnswerPage(ctx.job.input ?? '', { ...res, answer }) };
+  const outcome: CapabilityOutcome = { reply: { html: kbQueryFileReply + kbTopicLine(res.topic, ctx.job.input ?? '') + extraReplyHtml, file }, event: { ...base, kind, status: res.status } };
+  if (clipped) {
+    keepResult(dir, res); // the full answer stays for the owner
+    return outcome;
+  }
+  return { ...outcome, removeAfterReply: dir };
+}
+
+type Obj = Record<string, unknown>;
+
+// A tech answer (KB_TECH_SCHEMA): audee gates every block, builds the Markdown itself and sends it as a file page.
+// `runs` and `removedBefore` come from the split's gather session.
+export function techOutcome(ctx: CapabilityContext, dir: string, result: RunResult, started: number, paths: KbPaths, extra: { runs: RunResult[]; removedBefore: number } = { runs: [], removedBefore: 0 }): CapabilityOutcome {
+  const base = runsEvent([result, ...extra.runs], Date.now() - started);
+  const failed = (reason: string): CapabilityOutcome => {
+    keepOutput(dir, result, reason);
+    return { reply: { html: failedText('kb_query') }, notifyOwner: `kb_query failed: ${reason}: ${dir}`, event: { ...base, kind: 'kb_query', status: 'failed', reason } };
+  };
+  if (result.isError) return failed('kb_query reported an error');
+  if (!matches(result.structured, KB_TECH_SCHEMA)) return failed('answer does not match the contract');
+  const s = result.structured as Obj;
+  if (s['status'] === 'failed') return failed('kb_query session could not finish (see its notes in output.json)');
+  keepOutput(dir, result);
+  const known = Object.values(ctx.secrets);
+  const topic = String(s['topic']);
+  if (leaksSecret([...strings(s), readFileSync(join(dir, 'question.txt'), 'utf8')], known)) return withheldOutcome(dir, base);
+  const empty = (s['sections'] as unknown[]).length === 0;
+  const gate = gateTech(s, paths);
+  const removed = extra.removedBefore + gate.removed;
+  if ((s['sections'] as unknown[]).length === 0) return notKnownOutcome(ctx, base, topic, empty ? 'model found no evidence' : 'no claim survived the evidence check', removed);
+  const { markdown, sources } = techMarkdown(s, paths);
+  const res: KbQueryResult = { status: 'done', topic, answer: markdown, sources, notes: s['notes'] as string[], missing: s['missing'] as string[] };
+  if (leaksSecret([markdown, ...sources], known)) return withheldOutcome(dir, base);
+  const out = deliverAnswerFile(ctx, 'kb_query', dir, res, base, 'kb_query', kbRemovedLine(removed) + kbConfluenceLine(gate.confluenceDates));
+  return out.event.status === 'done' ? { ...out, event: { ...out.event, itemsKept: gate.kept, itemsRemoved: removed } } : out;
+}
+
 const GATHER_SHARE = 0.7;
 export const MIN_SYNTH_BUDGET_USD = 0.05;
 export const MIN_SYNTH_MS = 60_000;
 
 type SplitInput = {
   ctx: CapabilityContext; cap: CapabilityConfig; synthModel: string; dir: string; kbDir: string; paths: KbPaths;
-  mcpServers: Record<string, McpServerConfig>; question: string; interservice: boolean; started: number;
+  mcpServers: Record<string, McpServerConfig>; question: string; interservice: boolean; started: number; mode: AnswerMode;
 };
 
-// A product answer in two sessions: the gather session (kb_read fence) collects quoted evidence, audee keeps what it
-// finds at the cited place, and a tool-less session writes the answer from that alone. Every reason is a fixed string.
-async function splitProduct({ ctx, cap, synthModel, dir, kbDir, paths, mcpServers, question, interservice, started }: SplitInput): Promise<CapabilityOutcome> {
+// An answer in two sessions: the gather session (kb_read fence) collects quoted evidence, audee keeps what it finds
+// at the cited place, and a tool-less session writes the answer from that alone. Every reason is a fixed string.
+async function splitAnswer({ ctx, cap, synthModel, dir, kbDir, paths, mcpServers, question, interservice, started, mode }: SplitInput): Promise<CapabilityOutcome> {
   const budget = cap.budget_usd;
   const failed = (reason: string, runs: RunResult[]): CapabilityOutcome => ({ reply: { html: failedText('kb_query') }, notifyOwner: `kb_query failed: ${reason}: ${dir}`, event: { ...runsEvent(runs, Date.now() - started), kind: 'kb_query', status: 'failed', reason } });
   const run = async (options: Options, prompt: string, timeoutMs: number): Promise<RunResult | Error> => {
@@ -295,15 +330,19 @@ async function splitProduct({ ctx, cap, synthModel, dir, kbDir, paths, mcpServer
   const remainingUsd = budget === undefined ? undefined : budget - (gatherRes.costUsd ?? budget * GATHER_SHARE);
   const remainingMs = cap.timeout - (Date.now() - started); // kbRefSync's time counts too
   if ((remainingUsd !== undefined && remainingUsd < MIN_SYNTH_BUDGET_USD) || remainingMs < MIN_SYNTH_MS) return failed('no budget or time left for synthesis', [gatherRes]);
-  const synthOptions = buildOptions({ profile: 'classifier', system: KB_SYNTH_SYSTEM, cwd: dir, mcpServers: {}, schema: KB_ANSWER_SCHEMA, model: synthModel, ...(remainingUsd !== undefined ? { budgetUsd: remainingUsd } : {}), seatbelt: false });
-  const synthRes = await run(synthOptions, synthPrompt(question, pack.entries, gathered.lang), remainingMs);
+  const product = mode === 'product';
+  const schema = product ? KB_ANSWER_SCHEMA : KB_TECH_SCHEMA;
+  const synthOptions = buildOptions({ profile: 'classifier', system: product ? KB_SYNTH_SYSTEM : KB_TECH_SYNTH_SYSTEM, cwd: dir, mcpServers: {}, schema, model: synthModel, ...(remainingUsd !== undefined ? { budgetUsd: remainingUsd } : {}), seatbelt: false });
+  const prompt = (product ? synthPrompt : techSynthPrompt)(question, pack.entries, gathered.lang);
+  const synthRes = await run(synthOptions, prompt, remainingMs);
   if (synthRes instanceof Error) {
     keepOutput(dir, undefined, synthRes.message);
     return failed(synthRes.message, [gatherRes]);
   }
   let removedBefore = pack.dropped;
-  if (matches(synthRes.structured, KB_ANSWER_SCHEMA)) removedBefore += mapSynthCites(synthRes.structured as Record<string, unknown>, pack.entries).removed;
-  return productOutcome(ctx, dir, synthRes, started, kbDir, paths, { runs: [gatherRes], removedBefore });
+  if (matches(synthRes.structured, schema)) removedBefore += (product ? mapSynthCites : mapTechCites)(synthRes.structured as Obj, pack.entries).removed;
+  const extra = { runs: [gatherRes], removedBefore };
+  return product ? productOutcome(ctx, dir, synthRes, started, kbDir, paths, extra) : techOutcome(ctx, dir, synthRes, started, paths, extra);
 }
 
 export const kbQuery: Capability = async (ctx) => {
@@ -330,14 +369,14 @@ export const kbQuery: Capability = async (ctx) => {
     interservice = existsSync(interservicePath);
     if (interservice) writeFileSync(join(dir, 'INTERSERVICE.md'), readFileSync(interservicePath), { mode: 0o600 });
     options = buildOptions({
-      profile: 'kb_read', cwd: dir, mcpServers, kbPaths: paths, schema: mode === 'product' ? KB_ANSWER_SCHEMA : kbQuerySchema, model: cap.model,
+      profile: 'kb_read', cwd: dir, mcpServers, kbPaths: paths, schema: mode === 'product' ? KB_ANSWER_SCHEMA : KB_TECH_SCHEMA, model: cap.model,
       ...(cap.budget_usd !== undefined ? { budgetUsd: cap.budget_usd } : {}), seatbelt: cap.seatbelt,
     });
   } catch (e) {
     return fail((e as Error).message);
   }
-  if (mode === 'product' && cap.synth_model !== undefined) {
-    return splitProduct({ ctx, cap, synthModel: cap.synth_model, dir, kbDir, paths, mcpServers, question, interservice, started });
+  if (cap.synth_model !== undefined) {
+    return splitAnswer({ ctx, cap, synthModel: cap.synth_model, dir, kbDir, paths, mcpServers, question, interservice, started, mode });
   }
   let result: RunResult;
   try {
@@ -348,5 +387,5 @@ export const kbQuery: Capability = async (ctx) => {
     return fail((e as Error).message);
   }
   if (mode === 'product') return productOutcome(ctx, dir, result, started, kbDir, paths);
-  return readOnlyOutcome(ctx, 'kb_query', dir, result, started, 'kb_query', { asFile: true });
+  return techOutcome(ctx, dir, result, started, paths);
 };

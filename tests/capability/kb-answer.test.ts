@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolvePerson } from '../../src/authz/people.js';
 import { answerMode, answerSchemaMatches, renderAnswerPage, setRenderAnswerPage } from '../../src/capability/kb-answer.js';
 import { KB_ANSWER_SCHEMA } from '../../src/capability/kb-answer-schema.js';
-import { kbQuery, kbQueryDir, kbQueryDirs, kbQuerySchema, setKbRefSync } from '../../src/capability/kb-query.js';
+import { kbQuery, kbQueryDir, kbQueryDirs, setKbRefSync } from '../../src/capability/kb-query.js';
+import { KB_TECH_SCHEMA } from '../../src/capability/kb-tech-schema.js';
 import type { CapabilityContext } from '../../src/capability/types.js';
 import type { Job } from '../../src/queue/job.js';
 import { eventLine, type Event } from '../../src/events.js';
@@ -90,16 +91,17 @@ describe('kb_query product answers', () => {
     expect(reading(rendered[0] as Obj)['purpose']).toMatchObject({ recorded: true, source: 'explanatory/flows/iam-frequency-check.md' });
   });
 
-  it('keeps today\'s schema and prompt in tech mode', async () => {
+  it('uses the tech schema and prompt in tech mode', async () => {
+    const tech = { status: 'done', topic: 'how', lang: 'en', title: 'How', sections: [{ heading: 'How', blocks: [{ kind: 'text', text: 'x', cites: ['journey-node/internal/check.go:1'] }] }], notes: [], missing: [] };
     for (const [input, mode] of [['how? --tech', 'product'], ['how?', 'tech'], ['how?', 'none']] as const) {
-      const h = harness({ status: 'done', answer: 'x', sources: [], notes: [], missing: [] }, input, mode);
+      const h = harness(tech, input, mode);
       const out = await kbQuery(h.ctx);
       expect(out.event.status, String(out.event.reason)).toBe('done');
-      expect(h.inputs[0]?.options.outputFormat).toEqual({ type: 'json_schema', schema: kbQuerySchema });
+      expect(h.inputs[0]?.options.outputFormat).toEqual({ type: 'json_schema', schema: KB_TECH_SCHEMA });
       expect(h.inputs[0]?.prompt).not.toContain('mode is product');
       expect(rendered).toHaveLength(0);
     }
-    const h = harness({ status: 'done', answer: 'x', sources: [], notes: [], missing: [] }, 'how? --tech', 'product');
+    const h = harness(tech, 'how? --tech', 'product');
     await kbQuery(h.ctx);
     expect(readFileSync(join(h.dir, 'question.txt'), 'utf8')).toBe('how?');
   });

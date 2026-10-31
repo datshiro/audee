@@ -1,6 +1,6 @@
 // Live eval of kb_query over the baseline and trap questions. Costs money: runs only with KB_EVAL=1.
 // KB_EVAL_OUT=<dir> (required), KB_EVAL_MODEL (default claude-haiku-5-5), KB_EVAL_IDS=Q1,T1 (optional subset),
-// KB_EVAL_SYNTH_MODEL (optional: the tool-less writer of the split).
+// KB_EVAL_SYNTH_MODEL (optional: the tool-less writer of the split), KB_EVAL_MODE=tech (default product).
 // Never prints answer text: the console gets `id status cost durationMs` only.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -52,6 +52,12 @@ function answerOf(jobDir: string, output: unknown): Obj | undefined {
 
 function gradingRows(id: string, answer: Obj | undefined): string[] {
   if (answer === undefined) return [];
+  if (Array.isArray(answer['sections'])) {
+    return list(answer['sections']).flatMap((section, s) => list(isObj(section) ? section['blocks'] : []).map((block, i) => {
+      const b = isObj(block) ? block : {};
+      return [id, s, 'block', i, b['kind'], list(b['cites']).join('; '), b['text'], ''].map(csv).join(',');
+    }));
+  }
   if (answer['mode'] === 'tech') return [[id, '', 'answer', '', '', '', '', ''].map(csv).join(',')];
   const product = isObj(answer['product']) ? answer['product'] : {};
   return list(product['readings']).flatMap((reading, r) => {
@@ -97,7 +103,7 @@ describe.skipIf(!enabled)('kb_query eval (live)', () => {
       const out = outDir();
       const model = process.env['KB_EVAL_MODEL'] ?? 'claude-haiku-5-5';
       const synth = process.env['KB_EVAL_SYNTH_MODEL'];
-      const cfg = testConfig({ kbDir: KB_DIR, kbDefaultMode: 'product', kbModel: model, ...(synth !== undefined && synth !== '' ? { kbSynthModel: synth } : {}) });
+      const cfg = testConfig({ kbDir: KB_DIR, kbDefaultMode: process.env['KB_EVAL_MODE'] === 'tech' ? 'tech' : 'product', kbModel: model, ...(synth !== undefined && synth !== '' ? { kbSynthModel: synth } : {}) });
       const person = resolvePerson(cfg, 'teams:owner');
       if (person === undefined) throw new Error('no owner');
       const messageId = `eval${Date.now()}${q.id}`;
@@ -113,13 +119,15 @@ describe.skipIf(!enabled)('kb_query eval (live)', () => {
       }
       writeFileSync(join(dest, 'event.json'), JSON.stringify(outcome.event, null, 2));
       writeFileSync(join(dest, 'reply.html'), outcome.reply?.html ?? '');
+      // A tech page goes out in the reply only; a product page is also in the job folder.
+      if (outcome.reply?.file !== undefined && !existsSync(join(dest, 'page.html'))) writeFileSync(join(dest, 'page.html'), outcome.reply.file.content);
 
       const output = readJson(join(jobDir, 'output.json'));
       const answer = answerOf(jobDir, output);
       const event = outcome.event as Obj;
       const num = (key: string): number | null => (typeof event[key] === 'number' ? event[key] : null);
       record(out, q.id, {
-        id: q.id, status: event['status'], reason: event['reason'] ?? null, mode: answer?.['mode'] ?? null,
+        id: q.id, status: event['status'], reason: event['reason'] ?? null, mode: answer?.['mode'] ?? (answer?.['sections'] !== undefined ? 'tech' : null),
         costUsd: num('costUsd'), durationMs: num('durationMs'), itemsKept: num('itemsKept'), itemsRemoved: num('itemsRemoved'),
         items: itemCounts(answer),
       }, gradingRows(q.id, answer));

@@ -4,6 +4,8 @@ import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, matchesGlob, posix, relative, sep } from 'node:path';
 import { KB_QUERY_DENIED, KB_QUERY_REPO_DENIED, KB_QUERY_WIKI_DENIED } from '../fence/constants.js';
 import type { KbPaths } from '../fence/profiles.js';
+import { redactSecretPairs } from '../render/secrets.js';
+import { MAX_TECH_BLOCKS, MAX_TECH_CODE_LINES, MAX_TECH_SECTIONS, MAX_TECH_TEXT_CHARS } from './kb-tech-schema.js';
 
 export type ResolvedCite = { kind: 'src'; cite: string; file: string; from: number; to: number } | { kind: 'kb'; cite: string; file: string };
 
@@ -102,6 +104,71 @@ export function confluenceSyncDate(file: string): string | undefined {
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const list = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : []);
+
+// A tech cite is source when it reads as <service>/<path>:<line>, otherwise a wiki doc.
+const resolveAny = (cite: string, paths: KbPaths): ResolvedCite | undefined => resolveCite('src', cite, paths) ?? resolveCite('kb', cite, paths);
+
+// Keeps a text block with at least one resolving cite (its other cites go) and a code block whose one source cite
+// resolves to at most MAX_TECH_CODE_LINES lines; drops emptied sections. Rewrites `answer` in place.
+export function gateTech(answer: Obj, paths: KbPaths): { kept: number; removed: number; confluenceDates: string[] } {
+  let kept = 0;
+  let removed = 0;
+  const dates = new Set<string>();
+  const all = list(answer['sections']);
+  const sections = all.slice(0, MAX_TECH_SECTIONS).filter((section) => {
+    const blocks = list(section['blocks']);
+    removed += Math.max(0, blocks.length - MAX_TECH_BLOCKS);
+    section['blocks'] = blocks.slice(0, MAX_TECH_BLOCKS).filter((block) => {
+      const cites = (Array.isArray(block['cites']) ? block['cites'] : []).filter((c): c is string => typeof c === 'string');
+      let resolved: ResolvedCite[] = [];
+      if (block['kind'] === 'code') {
+        const r = cites.length === 1 ? resolveCite('src', cites[0]!, paths) : undefined;
+        if (r?.kind === 'src' && r.to - r.from + 1 <= MAX_TECH_CODE_LINES) resolved = [r];
+      } else if (typeof block['text'] === 'string' && block['text'].length <= MAX_TECH_TEXT_CHARS) {
+        resolved = cites.flatMap((c) => resolveAny(c, paths) ?? []);
+      }
+      if (resolved.length === 0) {
+        removed++;
+        return false;
+      }
+      block['cites'] = resolved.map((r) => r.cite);
+      for (const r of resolved) {
+        const d = r.kind === 'kb' ? confluenceSyncDate(r.file) : undefined;
+        if (d !== undefined) dates.add(d);
+      }
+      kept++;
+      return true;
+    });
+    return list(section['blocks']).length > 0;
+  });
+  for (const s of all.slice(MAX_TECH_SECTIONS)) removed += list(s['blocks']).length;
+  answer['sections'] = sections;
+  return { kept, removed, confluenceDates: [...dates].sort() };
+}
+
+// The Markdown page body for a gated tech answer: a text block keeps its cites after it, and a code block's body is
+// read by audee from the cited lines, secret-named values redacted, never taken from the model.
+export function techMarkdown(answer: Obj, paths: KbPaths): { markdown: string; sources: string[] } {
+  const out: string[] = [];
+  const sources = new Set<string>();
+  for (const section of list(answer['sections'])) {
+    out.push(`## ${String(section['heading'] ?? '')}`, '');
+    for (const block of list(section['blocks'])) {
+      const cites = block['cites'] as string[];
+      for (const c of cites) sources.add(c);
+      if (block['kind'] === 'code') {
+        const r = resolveCite('src', cites[0]!, paths);
+        if (r?.kind !== 'src') continue;
+        const body = redactSecretPairs(readFileSync(r.file, 'utf8').split('\n').slice(r.from - 1, r.to).join('\n'));
+        const fence = '`'.repeat(Math.max(3, ...[...body.matchAll(/`+/gu)].map((m) => m[0].length + 1)));
+        out.push(fence, `// ${r.cite}`, body, fence, '');
+      } else {
+        out.push(`${String(block['text'])} *(${cites.join('; ')})*`, '');
+      }
+    }
+  }
+  return { markdown: out.join('\n').trim(), sources: [...sources].slice(0, 10) };
+}
 
 // Keeps only journey steps and rules whose cite resolves; "unverified" items always go. A reading that lost a step
 // loses its diagrams, which may show that step, and an emptied reading goes. Rewrites `product` in place.
