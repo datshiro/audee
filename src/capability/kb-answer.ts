@@ -4,11 +4,13 @@ import { execFile } from 'node:child_process';
 import { readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { answerPageVisibleTexts, checkAnswerPage, failedText, kbAnswerFileName, kbQueryFileReply, kbQueryWithheldReply, kbTopicLine } from '../render/html.js';
+import type { Event } from '../events.js';
+import { answerPageVisibleTexts, checkAnswerPage, failedText, kbAnswerFileName, kbConfluenceLine, kbQueryFileReply, kbQueryNotKnownReply, kbQueryWithheldReply, kbRemovedLine, kbTopicLine } from '../render/html.js';
 import { leaksSecret } from '../render/secrets.js';
 import type { RunResult } from '../runner/run.js';
 import type { KbPaths } from '../fence/profiles.js';
 import { KB_ANSWER_SCHEMA } from './kb-answer-schema.js';
+import { gateProduct } from './kb-evidence.js';
 import { keepOutput, sessionEvent } from './session.js';
 import type { CapabilityContext, CapabilityOutcome } from './types.js';
 
@@ -146,13 +148,15 @@ export async function productOutcome(ctx: CapabilityContext, dir: string, result
   if (s['status'] === 'failed') return failed('kb_query session could not finish (see its notes in output.json)');
   if (s['mode'] !== 'product') return failed('answer came back in tech mode');
   const product = s['product'] as Obj;
-  if (list(product['readings']).length === 0) return failed('product answer has no readings');
   keepOutput(dir, result);
   const question = readFileSync(join(dir, 'question.txt'), 'utf8');
   const known = Object.values(ctx.secrets);
   const meta = [str(s['topic']), str(s['answer']), question, ...(s['sources'] as string[]), ...(s['notes'] as string[]), ...(s['missing'] as string[])];
   if (leaksSecret([...answerTexts(product), ...meta], known)) return withheld();
+  if (list(product['readings']).length === 0) return notKnownOutcome(ctx, base, str(s['topic']), 'model found no evidence', 0);
   checkReasonSources(product, paths.wiki);
+  const gate = gateProduct(product, paths);
+  if (list(product['readings']).length === 0) return notKnownOutcome(ctx, base, str(s['topic']), 'no claim survived the evidence check', gate.removed);
   writeFileSync(join(dir, 'answer.json'), JSON.stringify(s), { mode: 0o600 });
   let page: string;
   try {
@@ -168,5 +172,11 @@ export async function productOutcome(ctx: CapabilityContext, dir: string, result
   if (unsafe !== undefined) return failed(`rendered page failed the safety check (${unsafe})`, false); // a fixed word
   if (leaksSecret(answerPageVisibleTexts(page), known)) return withheld();
   const file = { name: kbAnswerFileName(ctx.job.messageId ?? ''), content: page };
-  return { reply: { html: kbQueryFileReply + kbTopicLine(str(s['topic']), ctx.job.input ?? ''), file }, event: { ...base, kind, status: 'done' }, removeAfterReply: dir };
+  const html = kbQueryFileReply + kbTopicLine(str(s['topic']), ctx.job.input ?? '') + kbRemovedLine(gate.removed) + kbConfluenceLine(gate.confluenceDates);
+  return { reply: { html, file }, event: { ...base, kind, status: 'done', itemsKept: gate.kept, itemsRemoved: gate.removed }, removeAfterReply: dir };
+}
+
+// Nothing checked answers the question: say so instead of guessing. The folder stays with output.json for the owner.
+export function notKnownOutcome(ctx: CapabilityContext, base: Partial<Event>, topic: string, reason: string, itemsRemoved: number): CapabilityOutcome {
+  return { reply: { html: kbQueryNotKnownReply + kbTopicLine(topic, ctx.job.input ?? '') }, event: { ...base, kind: 'kb_query', status: 'not_known', reason, itemsKept: 0, itemsRemoved } };
 }

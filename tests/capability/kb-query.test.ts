@@ -246,6 +246,19 @@ describe('kb_query', () => {
     expect(kbQueryPrompt('/kb', paths, false, 'tech')).not.toContain(rule);
   });
 
+  it('asks for checkable cites and allows a product answer to abstain', () => {
+    const paths = { wiki: '/kb/kb-mcp/wiki', querySkill: '/kb/.agents/skills/kb-query', scoutSkill: '/kb/.agents/skills/kb-scout', repos: ['/kb/.kb-ref-worktrees/pusher'] };
+    const cite = "<service>/<path>:<line> or <service>/<path>:<from>-<to>, where <service> is the checkout's folder name";
+    const abstain = 'If neither the KB\n  nor the source covers the question, return no readings and say in "missing" what you could not find.';
+    const removed = 'audee removes\n"unverified" items and any item whose cite does not resolve';
+    const product = kbQueryPrompt('/kb', paths, false, 'product');
+    for (const want of [cite, abstain, removed]) expect(product).toContain(want);
+    expect(product).not.toContain('Leave "missing" empty');
+    const tech = kbQueryPrompt('/kb', paths, false, 'tech');
+    expect(tech).toContain(cite);
+    expect(tech).not.toContain(abstain);
+  });
+
   it('kb_query cannot ask the requester back', () => {
     const status = (kbQuerySchema['properties'] as Record<string, { enum?: string[] }>)['status'];
     expect(status?.enum).toEqual(['done', 'failed']);

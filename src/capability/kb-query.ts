@@ -92,7 +92,10 @@ Answer it with the kb-query skill in {querySkill} (SKILL.md and references/). Wh
 - The KB workspace REPO is {kb}; skip workspace resolution. Its wiki is {wiki}.{interservice}
   Its inbox/ (unreviewed drafts) and people/ folders are off limits, and kb_search is unavailable: find docs
   with Grep and Glob over the wiki, and read service docs with kb_read_doc.
-  Service source is only in these clean checkouts, one per service: {repos}. Cite paths relative to them.
+  Service source is only in these clean checkouts, one per service: {repos}. Cite source as
+  <service>/<path>:<line> or <service>/<path>:<from>-<to>, where <service> is the checkout's folder name; this
+  replaces the skill's repo-relative rule, and a cite without the service prefix is discarded. Cite wiki docs by
+  their path inside the wiki.
 - You have no Bash, Edit or Write, so run no script or shell command the skill names: no cache lookup, no
   lint, no blob hashing. Where the skill offers a cheap path that needs a script, take the full plan instead.
 - The KB stays unchanged: never call kb-enrich, kb_enrich or kb_save, and skip every step that writes a cache,
@@ -115,7 +118,8 @@ question gets a Vietnamese topic), no links and no names of people. Example: "Lu
 
 const kbQueryProductInstructions = kbQuerySharedInstructions + `  If the question is ambiguous or the topic search matches several docs, pick the most likely readings (at most 4)
   and give each its own entry in "product.readings". If the question is too broad to pick readings, give one
-  overview reading of what the KB covers and 3 to 5 narrower questions in "product.follow_ups". Leave "missing" empty.
+  overview reading of what the KB covers and 3 to 5 narrower questions in "product.follow_ups". If neither the KB
+  nor the source covers the question, return no readings and say in "missing" what you could not find.
 - Never quote credentials, tokens, passwords, keys or connection strings, even if a file shows one.
 This answer's mode is product.
 "mode" must be "product" and "answer" must be "" whatever the question looks like; a broad or end-to-end question still gets readings, never a Markdown answer.
@@ -127,7 +131,8 @@ Respect the limit in each field's description. Set purpose.recorded true only wh
 product/, specs/, roadmap/ or explanatory/ states why it works this way, with that doc's wiki-relative path in
 purpose.source; code, comments and commit messages never count, and never infer a reason. Mark each journey step
 and rule "src" (checked in source; cite path:line), "kb" (only the KB says it; cite the doc) or "unverified" (cite
-empty). Put repo-relative paths you cited in "sources" (at most 10). When something you cannot fix stops you (a
+empty). Only state what you read. An item you did not check in source or a KB doc is left out; audee removes
+"unverified" items and any item whose cite does not resolve. Put repo-relative paths you cited in "sources" (at most 10). When something you cannot fix stops you (a
 tool is denied, the KB is unreadable), answer status "failed" and say why in "notes". At most 5 notes, each under
 250 characters. Always set "topic": what the question asks, at most 12 words, in the same language as the question
 (a Vietnamese question gets a Vietnamese topic), no links and no names of people.`;

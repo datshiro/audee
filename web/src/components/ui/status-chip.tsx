@@ -1,6 +1,6 @@
 const DANGER = ['failed', 'error', 'errored', 'crashed', 'rejected'];
 const WARN = ['cancelled', 'canceled', 'timeout', 'timed_out', 'denied', 'skipped', 'limit', 'cooldown', 'busy', 'duplicate', 'over_budget', 'removed'];
-const OK = ['done', 'posted', 'classified', 'completed', 'ok', 'handled', 'answered', 'replied', 'success', 'queued_ok'];
+const OK = ['done', 'posted', 'classified', 'completed', 'ok', 'handled', 'answered', 'replied', 'success', 'queued_ok', 'not_known'];
 const INFO = ['started', 'running', 'queued', 'pending', 'claimed', 'retrying'];
 
 export function toneOf(status: string): 'danger' | 'warn' | 'ok' | 'info' | 'plain' {

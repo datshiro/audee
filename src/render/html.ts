@@ -69,7 +69,14 @@ export function kbTopicLine(topic: string | undefined, question: string): string
 function clipWords(w: string[]): string {
   return w.length <= maxKBTopicWords ? w.join(' ') : w.slice(0, maxKBTopicWords).join(' ') + '…';
 }
-export const kbQueryPendingReply = 'Bạn đang có một câu hỏi <b>kb_query</b> chưa xong, đợi có câu trả lời rồi hỏi tiếp nhé.';
+export const kbQueryNotKnownReply = '🤖 <b>Mình chưa tìm thấy nguồn đáng tin trong KB hay code cho câu này</b>, nên mình không trả lời để tránh nói sai.';
+export function kbRemovedLine(n: number): string {
+  return n === 0 ? '' : `<br>Đã bỏ ${n} ý chưa kiểm chứng được trong code hoặc KB.`;
+}
+export function kbConfluenceLine(dates: string[]): string {
+  return dates.length === 0 ? '' : `<br>Một phần câu trả lời dựa trên bản sao Confluence đồng bộ ngày ${dates.join(', ')}; nội dung gốc có thể đã đổi.`;
+}
+export const kbQueryPendingReply ='Bạn đang có một câu hỏi <b>kb_query</b> chưa xong, đợi có câu trả lời rồi hỏi tiếp nhé.';
 export const kbQueryClipped = '… (câu trả lời dài hơn, đã cắt bớt; hỏi hẹp lại để xem chi tiết)';
 export const maxKBQuerySources = maxNotes;
 export const maxKBQuerySourceChar = 200;
