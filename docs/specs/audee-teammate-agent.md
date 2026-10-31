@@ -340,6 +340,9 @@ The review session ends with `REVIEW_STATUS: ready|blocked|unreviewable: <reason
 four templates: `✅ MR sẵn sàng merge, mình đã approve`, `✅ MR sẵn sàng merge, chờ Đạt approve: <why>`,
 `⛔ MR chưa merge được: <reason>`, and `⚠️ Chưa đánh giá được MR: <reason>`. The session never approves:
 `mcp__gitlab__approve_mr` stays in the review fence.
+With `review.post_findings: true`, the session answers the skill's High-risk question with "Post the acknowledgement",
+so a clean High-risk MR gets its PASS comment (which states the 2 human approvals) and ends `ready` instead of
+`unreviewable`. Added 2026-10-28 after apollo-portal MR 530 passed with 0 findings but the author saw nothing.
 Finishing: the review session's input stays open while background work (the review workflow) runs. When a turn ends
 with no background work left and without the two closing lines, audee sends the same session one follow-up turn
 telling it to finish (review the diff itself if the workflow failed), publish and print the closing lines. Added
