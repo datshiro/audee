@@ -549,11 +549,11 @@ describe('iam_trace capability', () => {
   });
 
   it('TestIamTracePromptLooksUpTheCampaignJourney', () => {
-    const campaign: IamTraceRequest = { ...DAY, target: '2114622278003490816', kind: 'campaign', users: ['u1'] };
-    const both: IamTraceRequest = { ...campaign, journey: '2114622279181455360' };
+    const campaign: IamTraceRequest = { ...DAY, target: '2100000000000000303', kind: 'campaign', users: ['u1'] };
+    const both: IamTraceRequest = { ...campaign, journey: '2100000000000000808' };
     const journey: IamTraceRequest = { ...DAY, target: '777000222', kind: 'journey', users: ['u1'] };
     const bare: IamTraceRequest = { ...DAY, target: '555000111', users: ['u1'] };
-    expect(iamTracePrompt(campaign)).toContain('first call campaign_journey with campaignId 2114622278003490816 and since "24h"');
+    expect(iamTracePrompt(campaign)).toContain('first call campaign_journey with campaignId 2100000000000000303 and since "24h"');
     for (const r of [both, journey, bare]) expect(iamTracePrompt(r)).not.toContain('first call campaign_journey');
   });
 

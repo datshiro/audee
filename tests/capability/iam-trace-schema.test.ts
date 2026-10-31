@@ -73,8 +73,8 @@ describe('validateRequest', () => {
   });
 
   it('takes a journey id as the target when there is no campaign', () => {
-    const { request } = validateRequest(ex({ target: { id: '', kind: 'unknown' }, journey_id: '2112496888072355840' }), 'journeyInfo id 2112496888072355840 UID: u1 RID: r2', now);
-    expect(request).toMatchObject({ target: '2112496888072355840', kind: 'journey', users: ['u1', 'r2'] });
+    const { request } = validateRequest(ex({ target: { id: '', kind: 'unknown' }, journey_id: '2100000000000000404' }), 'journeyInfo id 2100000000000000404 UID: u1 RID: r2', now);
+    expect(request).toMatchObject({ target: '2100000000000000404', kind: 'journey', users: ['u1', 'r2'] });
     expect(request?.journey).toBeUndefined();
   });
 
@@ -103,9 +103,9 @@ describe('validateRequest', () => {
   });
 
   it('keeps ids behind labels, inside links and before trailing punctuation', () => {
-    const message = 'UID:abc1 RID: r2. xem https://hub.example/apollo/campaign/2114622278003490816?tab=flow nhé';
-    const { request } = validateRequest(ex({ target: { id: '2114622278003490816', kind: 'campaign' }, users: [{ id: 'abc1', kind: 'user' }, { id: 'r2', kind: 'role' }] }), message, now);
-    expect(request).toMatchObject({ target: '2114622278003490816', kind: 'campaign', users: ['abc1', 'r2'] });
+    const message = 'UID:abc1 RID: r2. xem https://hub.example/apollo/campaign/2100000000000000303?tab=flow nhé';
+    const { request } = validateRequest(ex({ target: { id: '2100000000000000303', kind: 'campaign' }, users: [{ id: 'abc1', kind: 'user' }, { id: 'r2', kind: 'role' }] }), message, now);
+    expect(request).toMatchObject({ target: '2100000000000000303', kind: 'campaign', users: ['abc1', 'r2'] });
   });
 
   it('reads a bare id beside a journey id as the campaign', () => {
