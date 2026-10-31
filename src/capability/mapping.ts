@@ -5,10 +5,12 @@ import { join, sep } from 'node:path';
 import { expandHome } from '../config/load.js';
 import { GDS_CONTRACT_TOOL, PROBE_CACHED_REF, PROBE_DEGRADED_PAYLOAD, PROBE_PAYLOAD } from '../fence/constants.js';
 import { buildOptions } from '../fence/profiles.js';
-import { mappingFailedReply, mappingReplyHTML, mappingTooLongReply, type MappingResult } from '../render/html.js';
+import { mappingFailedReply, mappingMissingReply, mappingWithheldReply, type MappingResult, noteList } from '../render/html.js';
+import { checkMappingPage, mappingFileName, mappingNotice, mappingPage, mappingPageVisibleTexts, mappingTexts } from '../render/mapping-page.js';
+import { leaksSecret } from '../render/secrets.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
-import { capabilityConfig, freshDir, keepOutput, keepResult, messageDir, sessionEvent, sessionInput } from './session.js';
-import type { Capability, CapabilityOutcome, Reply } from './types.js';
+import { capabilityConfig, freshDir, keepOutput, messageDir, sessionEvent, sessionInput } from './session.js';
+import type { Capability, CapabilityOutcome } from './types.js';
 
 // mapping.go:63-105 mappingInstructions
 export const mappingInstructions = `
@@ -55,10 +57,10 @@ broken. need_input is only for information the requester can give.
 When something the requester cannot fix stops you (a tool or command is denied, the probe cannot run or keeps
 failing), answer status "failed" and say why in notes.
 Otherwise answer status "done" with codeMapping, sampleMessage and supportedOutputFields exactly as in the
-payload that passed the probe. In "notes" (language of the request) put the probe summary line, the
-identity verdict, every assumption you made, and every non-PASS line you could not fix.
-On "done", leave "missing" empty and put anything the requester should confirm in "notes".
-Write at most 8 notes, each under 250 characters: the probe summary line first, the identity verdict second.`;
+payload that passed the probe. Write the following in the language of the request: "probeSummary" is the probe
+summary line, "identityVerdict" the identity verdict, "assumptions" every assumption you made, "toConfirm" anything
+the requester should confirm, and "notes" every non-PASS line you could not fix.
+On "done", leave "missing" empty. Each list holds at most 8 items, each under 250 characters.`;
 
 // mapping.go:107-110
 export function mappingPrompt(template: string, skill: string): string {
@@ -74,6 +76,10 @@ export const mappingSchema: Record<string, unknown> = {
     codeMapping: { type: 'string' },
     sampleMessage: { type: 'string' },
     supportedOutputFields: { type: 'array', items: { type: 'object' } },
+    probeSummary: { type: 'string' },
+    identityVerdict: { type: 'string' },
+    assumptions: { type: 'array', items: { type: 'string' } },
+    toConfirm: { type: 'array', items: { type: 'string' } },
     notes: { type: 'array', items: { type: 'string' } },
     missing: { type: 'array', items: { type: 'string' } },
   },
@@ -95,11 +101,18 @@ export function parseMappingOutput(result: RunResult): MappingResult {
     codeMapping: typeof s['codeMapping'] === 'string' ? s['codeMapping'] : '',
     sampleMessage: typeof s['sampleMessage'] === 'string' ? s['sampleMessage'] : '',
     supportedOutputFields: Array.isArray(s['supportedOutputFields']) ? s['supportedOutputFields'] : [],
+    probeSummary: typeof s['probeSummary'] === 'string' ? s['probeSummary'] : '',
+    identityVerdict: typeof s['identityVerdict'] === 'string' ? s['identityVerdict'] : '',
+    assumptions: stringList(s['assumptions']),
+    toConfirm: stringList(s['toConfirm']),
     notes: stringList(s['notes']),
     missing: stringList(s['missing']),
   };
   if (m.status === 'done' && (m.codeMapping === '' || m.sampleMessage === '' || (m.supportedOutputFields ?? []).length === 0)) {
     throw new Error('code mapping is done but lacks codeMapping, sampleMessage or supportedOutputFields');
+  }
+  if (m.status === 'done' && ((m.probeSummary ?? '').trim() === '' || (m.identityVerdict ?? '').trim() === '')) {
+    throw new Error('code mapping is done but lacks probeSummary or identityVerdict');
   }
   if (m.status === 'failed') throw new Error('code mapping session could not finish (see its notes in output.json)');
   if (m.status === 'need_input' && (m.missing ?? []).length === 0) throw new Error('code mapping needs input but does not say what is missing');
@@ -163,15 +176,6 @@ export function setPruneProbeWorktrees(fn: typeof pruneProbeWorktrees): void {
   pruneProbeWorktrees = fn;
 }
 
-// mapping.go:286-295 sendMappingFile: a short notice plus the two fields as a JSON file the flow shares.
-export function mappingFile(messageId: string, res: MappingResult, now = new Date()): NonNullable<Reply['file']> {
-  const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-  return {
-    name: `codemapping-${messageId}-${stamp}.json`,
-    content: JSON.stringify({ codeMapping: res.codeMapping ?? '', supportedOutputFields: res.supportedOutputFields ?? [] }, null, 2),
-  };
-}
-
 export const mapping: Capability = async (ctx) => {
   const cap = capabilityConfig(ctx);
   const started = Date.now();
@@ -218,14 +222,32 @@ export const mapping: Capability = async (ctx) => {
     keepOutput(dir, result, (e as Error).message);
     return fail((e as Error).message, result);
   }
-  if (res.status !== 'done') keepOutput(dir, result);
-  const event = { ...sessionEvent(result, Date.now() - started), kind: 'code_mapping', status: res.status, msgId: messageId };
-  const [html, fits] = mappingReplyHTML(res);
-  if (!fits) {
-    keepResult(dir, res);
-    return { reply: { html: mappingTooLongReply, file: mappingFile(messageId, res) }, notifyOwner: `code mapping too long for chat, sent as a file: ${dir}`, event };
+  const event = { ...sessionEvent(result, Date.now() - started), kind: 'code_mapping', msgId: messageId };
+  if (res.status !== 'done') {
+    keepOutput(dir, result); // the folder and output.json stay for the owner
+    return { reply: { html: mappingMissingReply + noteList(res.missing ?? []) }, event: { ...event, status: res.status } };
   }
-  if (res.status !== 'done') return { reply: { html }, event }; // the folder and output.json stay for the owner
-  for (const d of [dir, tmp]) rmSync(d, { recursive: true, force: true });
-  return { reply: { html }, event };
+  const known = Object.values(ctx.secrets);
+  const withheld = (): CapabilityOutcome => ({
+    reply: { html: mappingWithheldReply },
+    notifyOwner: `code mapping withheld: it looks like it holds a credential: ${dir}`,
+    event: { ...event, status: 'withheld', reason: 'result looks like it holds a credential' },
+  });
+  const request = ctx.job.input ?? '';
+  if (leaksSecret(mappingTexts(request, res), known)) {
+    keepOutput(dir, result);
+    return withheld();
+  }
+  const page = mappingPage(request, res);
+  const unsafe = checkMappingPage(page);
+  if (unsafe !== undefined) {
+    keepOutput(dir, result, 'rendered page failed the safety check');
+    return fail(`rendered page failed the safety check (${unsafe})`, result); // a fixed word
+  }
+  if (leaksSecret(mappingPageVisibleTexts(page), known)) {
+    keepOutput(dir, result);
+    return withheld();
+  }
+  rmSync(tmp, { recursive: true, force: true });
+  return { reply: { html: mappingNotice(res), file: { name: mappingFileName(messageId), content: page } }, event: { ...event, status: 'done' }, removeAfterReply: dir };
 };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerPageVisibleTexts, checkAnswerPage, clip, decodeEntities, deniedText, escapeHTML, fitAnswer, kbAnswerFileName, kbAnswerPage, kbQueryReplyHTML, kbTopicLine, mappingReplyHTML, maxNotes, maxReplyChars, replyHTML, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../../src/render/html.js';
+import { answerPageVisibleTexts, checkAnswerPage, clip, decodeEntities, deniedText, escapeHTML, fitAnswer, kbAnswerFileName, kbAnswerPage, kbQueryReplyHTML, kbTopicLine, maxNotes, maxReplyChars, replyHTML, reviewBlockedReply, reviewReadyWaitReply, reviewUnreviewableReply } from '../../src/render/html.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runeLength } from '../../src/render/text.js';
@@ -39,23 +39,6 @@ describe('reply html', () => {
     const got = replyHTML(head, 'https://gitlab.example.com/g/p/-/merge_requests/5?a=1&b="2"');
     const want = head + '<br><a href="https://gitlab.example.com/g/p/-/merge_requests/5?a=1&amp;b=&#34;2&#34;">https://gitlab.example.com/g/p/-/merge_requests/5?a=1&amp;b=&#34;2&#34;</a>';
     expect(got).toBe(want);
-  });
-
-  // ciel/mapping_test.go:107
-  it('TestMappingReplyHTML', () => {
-    const [html, fits] = mappingReplyHTML({ status: 'done', codeMapping: 'parts[2] >= 1 && x < "<script>"\nnext', sampleMessage: 'a', supportedOutputFields: [{ name: 'Level' }] });
-    expect(fits).toBe(true);
-    expect(html).toContain('<pre>"parts[2] &gt;= 1 &amp;&amp; x &lt; \\"&lt;script&gt;\\"\\nnext"</pre>');
-    expect(html).not.toContain('<script>');
-
-    const [missingHtml] = mappingReplyHTML({ status: 'need_input', missing: Array.from({ length: 11 }, () => 'item') });
-    expect(count(missingHtml, '<li>')).toBe(maxNotes);
-
-    const [doneHtml] = mappingReplyHTML({ status: 'done', codeMapping: 'x', sampleMessage: 'a|sample', notes: ['probe ok'], missing: ['confirm productCode'], supportedOutputFields: [{}] });
-    for (const unwanted of ['a|sample', 'probe ok', 'confirm productCode', 'sampleMessage']) expect(doneHtml).not.toContain(unwanted);
-
-    const [, tooLongFits] = mappingReplyHTML({ status: 'done', codeMapping: 'x'.repeat(30000), sampleMessage: 'a', supportedOutputFields: [{}] });
-    expect(tooLongFits).toBe(false);
   });
 
   // ciel/kbquery_test.go:407
