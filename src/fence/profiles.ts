@@ -22,6 +22,7 @@ export type ProfileInput = {
   seatbelt: boolean;
   apiKeyHelper?: string;
   configDir?: string; // absolute; only when not ~/.claude, whose ~/.claude.json REVIEW_EXTRA_DENIED covers
+  system?: string; // classifier only: another task on the same fence (the iam_trace request extractor)
 };
 
 function required<T>(value: T | undefined, name: string, profile: ProfileName): T {
@@ -117,12 +118,14 @@ export function buildOptions(input: ProfileInput): Options {
     }
     case 'classifier': {
       Object.assign(options, {
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: CLASSIFY_SYSTEM },
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: input.system ?? CLASSIFY_SYSTEM },
         disallowedTools: [...CLASSIFY_DENIED_TOOLS],
         strictMcpConfig: true,
         mcpServers: {},
         hooks: gate({ denyTools: [...CLASSIFY_DENIED_TOOLS] }),
       } satisfies Options);
+      // The extractor reads one message from its prompt and needs no tool, not even Read.
+      if (input.system !== undefined) Object.assign(options, { tools: [], extraArgs: { restricted: null }, permissionMode: 'dontAsk', settingSources: [] } satisfies Options);
       break;
     }
     case 'mcp_read': {
@@ -158,6 +161,7 @@ export function buildOptions(input: ProfileInput): Options {
           argGuard: {
             [IAM_TRACE_FILTERED_TOOL]: { filter: unsafeFilter },
             [`mcp__${IAM_TRACE_SERVER}__trace_key`]: { key: unsafeId },
+            [`mcp__${IAM_TRACE_SERVER}__campaign_journey`]: { campaignId: unsafeId },
             [`mcp__${IAM_TRACE_SERVER}__trace_identity`]: { userId: unsafeId, roleId: unsafeId, gameId: unsafeId, serverId: unsafeId },
           },
         }),

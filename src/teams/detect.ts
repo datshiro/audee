@@ -8,6 +8,7 @@ import { type ChatMessage, sender } from './message.js';
 const TAG_RE = /<[^>]*>/gu;
 const SPACE_RE = /[\s\p{Zs}]+/gu;
 const HREF_RE = /href="([^"]+)"/gu;
+const MENTION_RE = /<at\b[^>]*>.*?<\/at>/gisu;
 const LINE_BREAK_RE = /<br\s*\/?>|<\/(?:p|div|pre|li)>/giu;
 const NAMED_ENTITIES: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'", nbsp: ' ' };
 
@@ -88,14 +89,16 @@ export function tokenRe(token: string): RegExp {
   return new RegExp(`(?:^|${WORD_EDGE})${escapeRegExp(token)}(?:${WORD_EDGE}|$)`, 'iu');
 }
 
-export type Trigger = { capability: string; token: string };
+// whole: the request is the whole message without @mention names, wherever the word stands; it counts as empty without a
+// digit, since every id it could carry has one.
+export type Trigger = { capability: string; token: string; whole?: boolean };
 
 // kb_query, the fixed iam_trace word and every mcp_read capability's trigger word.
 export function triggersOf(cfg: Config): Trigger[] {
   const out: Trigger[] = [{ capability: 'kb_query', token: 'kb_query' }];
   for (const [name, cap] of Object.entries(cfg.capabilities)) {
     if (cap.profile === 'mcp_read' && cap.trigger !== undefined) out.push({ capability: name, token: cap.trigger });
-    if (cap.profile === 'iam_trace') out.push({ capability: name, token: 'iam_trace' });
+    if (cap.profile === 'iam_trace') out.push({ capability: name, token: 'iam_trace', whole: true });
   }
   return out;
 }
@@ -141,6 +144,10 @@ export class Detector {
       const match = tokenRe(t.token).exec(text);
       if (match === null) continue;
       if (!(this.mentionsMe(m) || this.namesAlias(text))) return undefined;
+      if (t.whole === true) {
+        const request = requestText({ ...m, body: { ...m.body, content: (m.body.content ?? '').replace(MENTION_RE, '') } });
+        return { capability: t.capability, question: /\d/u.test(request) ? request : '' };
+      }
       const question = text.slice(match.index + match[0].length).trim().replace(/^[:\-– ]+/u, '');
       return { capability: t.capability, question };
     }

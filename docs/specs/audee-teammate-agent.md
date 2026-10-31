@@ -1,7 +1,7 @@
 ---
 title: audee teammate agent
 status: completed
-last_verified: 2026-10-28
+last_verified: 2026-10-31
 claude_code_version: 2.1.302
 ---
 # audee teammate agent
@@ -32,7 +32,7 @@ Started 2026-10-17 under launchd (`com.audee.agent`, shadow mode, owner only, on
 - Review that posts nothing (departure from Ciel, which told only the owner): with `post_findings: true` the session leaves one short comment on the MR saying why, and the requester gets a chat reply with the reason (hidden if it looks like a secret, links defanged, capped at 300 characters).
 
 ## kb_query answers
-Departure from Ciel: the model writes the answer in Markdown and a `done` answer is sent as an HTML page through the
+Departure from Ciel: audee builds the answer's Markdown from the model's cited blocks (see Grounded answers) and a `done` answer is sent as an HTML page through the
 outbox file flow (`kb-answer-<message id>-<yyyymmdd-hhmmss>.html` in OneDrive `/Ciel/files`); the chat gets a one-line
 notice and the share link. The page is rendered with markdown-it with raw HTML, links and images off, links in the
 text defanged, and a CSP that allows only inline styles; the secret check reads both the Markdown and the rendered text. `need_input`,
@@ -46,7 +46,7 @@ The topic passes the same secret check as the answer.
 
 ### Product answers (`default_mode`)
 `capabilities.kb_query.default_mode` picks the answer style when the question has no flag: `tech` (the default, the
-Markdown page above, with today's schema; its prompt only adds a line stating the mode) or `product`. audee decides the mode itself: `--tech`,
+Markdown page above, built from `KB_TECH_SCHEMA`; its prompt adds a line stating the mode) or `product`. audee decides the mode itself: `--tech`,
 `--full` or `--code-flow` (any dash a chat client turns `--` into) always mean tech, and `--tech` is stripped from
 `question.txt`. Rollback for product answers is setting `default_mode: tech`.
 
@@ -55,7 +55,7 @@ A product answer is written for a product manager. The session fills contract kb
 The page has a summary and purpose, the player/operator journey, rules and edge cases, configurable settings, and
 steps or decision diagrams as inline SVG. `<kb_dir>/kb-mcp/kb-mcp render-answer` builds it, run from the job folder
 with only `PATH`, `LANG` and `TMPDIR`. audee keeps its own guarantees whatever that binary does:
-- the result must match the pinned contract and say `mode: product`, with at least one reading;
+- the result must match the pinned contract and say `mode: product`; no reading left gives `not_known` (below);
 - a recorded reason must cite a wiki doc under `product/`, `specs/`, `roadmap/` or `explanatory/` that exists inside
   the wiki, otherwise the page says the reason is not recorded;
 - every string is checked for secrets before rendering, together with the pairs the page shows apart (a setting and
@@ -63,9 +63,60 @@ with only `PATH`, `LANG` and `TMPDIR`. audee keeps its own guarantees whatever t
 - the page may only use the renderer's elements and attributes, the exact CSP `default-src 'none'; style-src
   'unsafe-inline'`, and a stylesheet without `url(` or `@import`;
 - the page's visible text, SVG labels included and every entity decoded, gets the secret check again.
-Event and owner reasons are fixed strings (`renderer failed`, `answer mode mismatch`, …); renderer output stays in
+Event and owner reasons are fixed strings (`renderer failed`, `answer came back in tech mode`, …); renderer output stays in
 the job folder. `audee doctor` checks `render-answer` and that the KB contract equals the pinned copy, only when
 `default_mode` is `product`.
+
+### Grounded answers
+audee decides what reaches the reader; the model's own `src`/`kb`/`unverified` marks are not trusted.
+- **Evidence gate.** Every product journey step and rule, and every tech block, must cite something audee resolves
+  itself: source as `<service>/<path>:<line>` or `<service>/<path>:<from>-<to>` (the checkout's folder name, a file
+  inside it, the range inside the file and at most 200 lines), a wiki doc by its path inside the wiki (`kb-mcp/wiki/`
+  and a leading `src:`/`kb:` label are tolerated). The session's own denials apply to the given and the resolved path
+  (`realpathSync.native`), matched case-insensitively and with `*` matching dot names, and any dot file or folder is
+  refused, so a cite cannot reach `.env`, `.git`, repo config globs, `inbox/` or `people/`, including through a symlink
+  or a case variant such as `.ENV`. This also refuses readable files under dot folders such as `.github/workflows/`. Items that fail,
+  and every `unverified` item, are removed, not badged; a product reading that lost a step loses its diagrams. The
+  reply adds `Đã bỏ N ý chưa kiểm chứng được trong code hoặc KB.` when N > 0; N counts claims removed from the answer,
+  not ledger entries the quote check dropped. Product `sources` become the kept cites.
+- **`not_known`.** When the model returns nothing, or nothing survives, the requester gets `Mình chưa tìm thấy nguồn
+  đáng tin trong KB hay code cho câu này…` with event status `not_known` (fixed reasons `model found no evidence`,
+  `no claim survived the evidence check`, `no evidence survived the quote check`). Events carry `items_kept` and
+  `items_removed` (written even when 0).
+- **Confluence copies.** Confluence is read only through the synced wiki copies (`source: confluence` in their front
+  matter). When a kept item cites one, the reply says `Một phần câu trả lời dựa trên bản sao Confluence đồng bộ ngày
+  <last_synced>; nội dung gốc có thể đã đổi.`
+- **Gather and synthesise (`synth_model`).** With `capabilities.kb_query.synth_model` set, an answer takes two
+  sessions. A gather session on `model` and the unchanged `kb_read` fence returns an evidence ledger (cite, quote of
+  1–15 lines copied from the cited place, a short note that never reaches synthesis), with 70% of the budget and of
+  the time left after the checkout sync. audee keeps an entry only
+  when its cite resolves and its quote (whitespace aside, at least 20 characters) appears within 3 lines of the cited
+  range, or anywhere in a cited doc; it adds up to 40 surrounding lines it reads itself, redacts secret-named values,
+  and runs the secret check over all of it before writing `evidence.json`. No entry left gives `not_known` without a
+  second session. A tool-less session on `synth_model` (the `classifier` profile with a system prompt) then writes the
+  answer from the question and that pack alone, fenced and escaped as data, citing evidence ids; audee maps each id
+  to its real cite, removes items citing anything else, and runs the gate again. Below $0.05 or 60 s left after
+  gathering, the job fails with `no budget or time left for synthesis`. The event sums both runs. Without
+  `synth_model`, kb_query keeps one session plus the gate: removing the key is the rollback.
+- **Tech answers.** Tech mode fills `KB_TECH_SCHEMA` (sections of `text` and `code` blocks, each with cites). A text
+  block stays when one of its cites resolves; a code block stays when its one source cite resolves to at most 15
+  lines, and audee copies those lines from the file (secret-named values redacted) instead of taking code from the
+  model; a text block that holds a code fence, indented code or a heading line is removed. audee writes the Markdown,
+  with each text block's cites on a line after it. `mcp_read` keeps `mcpReadSchema` and its
+  outcome unchanged. A tech question about a feature the KB shows to be absent may come back `done` with a cited
+  "does not exist" page instead of `not_known` (verified 2026-10-31 on the machine-translation trap).
+- **Evaluation (2026-10-31).** A live eval (`tests/live/kb-query-eval.live.test.ts`, `KB_EVAL=1`) runs 10 baseline
+  questions and 4 traps: a feature that does not exist, a figure that is not recorded, a fact only in a Confluence copy
+  and a "why" with no recorded reason. With gather on `claude-haiku-5-5` and synthesis on `claude-sonnet-5-5`: all 10
+  baseline questions answered in product mode with 110 kept `src`/`kb` items (the single-session haiku baseline had
+  125 items, none checked); the first two traps `not_known`; the Confluence trap carried its sync date; the "why" trap
+  had no recorded reason; every kept cite resolved (`tests/live/kb-cites-check.live.test.ts`, `KB_EVAL_CITES=1`);
+  median $0.048 and p90 211 s per answer. The quote spike on haiku verified 45 of 46 quotes. Graded against the
+  cited code and docs (blind draft over both sheets, contested verdicts re-verified independently), the
+  wrong-or-unsupported rate fell from P0 = 10.9% (15 of 138 claims) to P1 = 2.5% (3 of 118), within the targets of
+  half of P0 and at most 10%.
+- **Residual risk.** A file under a valid cite can carry text written to steer the synthesis model. The evidence is
+  fenced and escaped as data and the model has no tools, but the text itself is not filtered.
 
 ## code_mapping page
 Departure from Ciel (2026-10-28): a `done` code mapping is sent as an HTML page through the outbox file flow
@@ -93,27 +144,36 @@ summary, the identity verdict and the share link. The `<pre>` chat reply and the
 Traces one Apollo in-app message (IAM) on prod for given users and sends a timeline page. Opt-in: the capability is
 commented out in `config.example.yaml`; at most one capability may use profile `iam_trace`, under any name (events and
 owner notices carry that name as their kind).
-- Trigger: the word is fixed, `iam_trace <campaignId|journeyId> <userId|roleId>[,...] [dd/mm hh:mm]`; users are
-  comma-separated, at most 5, taken only from the token after the id. An mcp_read trigger may not be `iam_trace`. The
-  grant is the capability's name (`iam_trace` in the example config) or `*` in `people[].can`. audee parses the request
-  in code before any session. The datetime may stand anywhere after the users, with words after it (`25/10 9:30 nhé`):
-  `h:mm` or `hh:mm`, seconds ignored, optionally `dd/mm/yyyy`. Each of these gets a Vietnamese need_input reply and no
-  session runs: a missing or malformed id; more than 5 users; an id-like word (one holding a digit) right after the
-  users, taken for a user missing its comma; a date or time that cannot be read as `dd/mm hh:mm` (a date without a time,
-  a time without a date, `9h30`, impossible values), which never falls back to the last 24 hours; a time later today or
-  a future `dd/mm/yyyy`; a datetime outside the last 165 hours (log retention is 7 days). Any other future `dd/mm` is
-  read as last year's. A bare `iam_trace` gets the usage line.
-  Pasted messages work too (added 2026-10-26 after a colleague's first test): when the text holds a campaign link
-  (`/campaign/<id>`) or `campaignId:`, a `journeyInfo` id or `journeyId:`, or `UID:` / `RID:` / `userId:` / `roleId:`
-  lines, audee reads only values of those shapes (ids of at most 64 safe characters, campaign and journey ids of 6 to 25
-  digits) and ignores every other word; the campaign id is the target, and a journey id found with it is passed to the
-  sessions as `journeyId`. A date in such a message counts only as `dd/mm hh:mm`, so timestamps in pasted JSON are
-  ignored. A message with users but no campaign or journey, or with an id but no users, gets a need_input reply for the
-  missing part only.
-- Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by two sessions are the defaults of every
+- Trigger: the word `iam_trace` is fixed but may stand anywhere in a message that @mentions or names the user
+  (changed 2026-10-30, after `... đã send IAM chưa iam_trace` got the usage line). An mcp_read trigger may not be
+  `iam_trace`. The grant is the capability's name (`iam_trace` in the example config) or `*` in `people[].can`. The job
+  input is the whole message without @mention names; a message with no digit left gets the usage line and no job.
+  The request is read by an extractor session before any trace: the classifier fence with its own system prompt and no
+  tool at all (`tools: []`, `--restricted`, `dontAsk`, no setting sources, no MCP), `classifier.model`/`effort`/
+  `timeout`/`auth` (its model may exist only behind that auth), a JSON schema, and only the current message plus the
+  job's `requestedAt` as send time (never chat history). `<` and `>` in the message are replaced so it cannot close its
+  data block. The extractor's cost and time are extra to `budget_usd` and `timeout`, which still cover the trace and the verifier, counted from when the request is validated. It returns the target (campaign, journey or unknown), a journey id beside a campaign, the users
+  (user, role or unknown) and a time normalised to `YYYY-MM-DD HH:mm` ICT (a `T`, seconds, which are dropped, or `+07:00` (or `+0700`) are read too; any other zone does not parse) from any wording (`hôm qua 9h`, `25/10
+  09:30`, read day/month). audee trusts none of it: an id survives only if it is at most 64 safe characters and equals
+  a whole word of the message (words split on spaces, quotes, brackets, commas, `=` and URL separators, trailing
+  punctuation dropped, `UID:abc` also yields `abc`, `dd/mm[/yy]` and `hh:mm` spans blanked first), so a dash-group of
+  `4QX2-TMBV-8NRC`, the `2026` of `2026-10-25`, the day or month of a `dd/mm` or the minutes of an `hh:mm` never
+  passes; a lone journey id becomes the target and a bare id beside a journey id the campaign; users are de-duplicated
+  and never the target. The model's time words are quoted in a reply only when the message holds them. A `dd/mm`
+  without a year that the model placed after today is read as last year's while that is still in the logs. A rejected
+  request keeps the model's output in the job folder. Each of these gets a
+  Vietnamese need_input reply and no trace runs: no target; no user; more than 5 users; a time that does not parse or
+  does not exist, is later than now, or is outside the last 165 hours (log retention is 7 days). No time means the last
+  24 hours. An extractor that throws or returns no valid object fails the job with a fixed reason. The id's kind is
+  passed to the sessions (`campaignId`, `journeyId`, or "find out from the logs" for a bare id) and the page header
+  names it. A campaign with no journey id given is resolved first with `campaign_journey` (added 2026-10-29), which
+  reads journey-trigger's `GetJourneyByID` lines: the journey whose send nodes name exactly that campaign, newest
+  first. It retries once over 168h on no-match, then falls back to the players' lines and says the journey was not
+  confirmed. No database is read.
+- Cost and lane: `per_person_limit` 1, `budget_usd` 4 and `timeout` 20m shared by the trace and the verifier are the defaults of every
   capability on profile `iam_trace`, whatever its name; values set in config win. The example config gives it its own lane, `iam_trace` with concurrency 1. The trace gets 65%
   of each; the verifier gets the budget left after the trace's actual cost and the time left, and is skipped below $0.30
-  or 2 minutes. Lane: a trace can hold its slot for up to 20 minutes, so it runs in its own lane (concurrency 1) and never queues
+  or 2 minutes. Lane: a trace can hold its slot for `classifier.timeout` plus `timeout` (23 minutes with the defaults), so it runs in its own lane (concurrency 1) and never queues
   kb_query or mcp_read jobs; it still counts against `max_concurrent`, so a running trace leaves one fewer global slot.
 - Window: without a datetime every tool call passes `since 24h` (the tools default to 1h). With a datetime the window
   runs from 30 minutes before to 3 hours after it (clipped to now) as `_time:(<start>Z, <end>Z)` with parentheses, and
@@ -125,7 +185,7 @@ owner notices carry that name as their kind).
   filter that is missing, not a string or blank; holds a comment (`#`), a line break, unbalanced parentheses, an
   unterminated string, a malformed escape inside double quotes or a backslash inside single quotes; or holds `[ ] { } |`
   or a backslash outside a string. `"`, `'` and backtick all delimit strings, so any character inside one is allowed. It
-  also guards the ids that land in a LogsQL phrase (`unsafeId`): `trace_key` `key` and `trace_identity` `userId`,
+  also guards the ids that land in a LogsQL phrase (`unsafeId`): `trace_key` `key`, `campaign_journey` `campaignId` and `trace_identity` `userId`,
   `roleId`, `gameId` and `serverId` must be at most 128 characters matching `^[A-Za-z0-9_.:@|-]+$`; an empty or null id
   counts as absent (the MCP treats it so) and is the MCP's to refuse.
 - Reduced fidelity (owner decision 2026-10-26): the iam-trace MCP drops structured log fields on purpose, so only a
@@ -179,7 +239,7 @@ owner notices carry that name as their kind).
 - Tags (2026-10-26, timeline redesign): the trace tags each point with `journey` (an id, empty for client kinds) and
   `outcome` (`pass`, `block`, `info`) and returns a short `conclusion` (2-4 bullets); a point's `label` is a short name of at most 24 characters that says what the step does in the data flow ("Event trigger", "Evaluate điều kiện", "Enrichment: role", "Validation: country", "CDP: …", "Frequency check", "Gửi IAM"), never a service name, URL or id; a point's `result` (at most 20 characters) is what the step returned or decided as the line prints it, shown under the node's time, and a check that printed no result shows "không in kết quả" (with the reduced-fidelity MCP most results are not printed); an API call is one point at the request time with the response in the evidence; the verifier schema is unchanged
   and never touches them. audee validates the tags: an unsafe journey id becomes empty, the conclusion is capped at 4
-  bullets, a journey tag equal to the campaign (when the request names the journey too), a requested user or a role id becomes empty, a trace holds at most 60 points per user (several journeys per user). After verification a server point's
+  bullets, a journey tag equal to the campaign (when the request names it as a campaign or names the journey too), a requested user or a role id becomes empty, a trace holds at most 60 points per user (several journeys per user). After verification a server point's
   journey counts as seen only when its own evidence carries the journey id (as a whole token) or shares a `traceId`
   (`traceId`, `trace_id`, with or without escaped quotes) with another point whose evidence does; otherwise, or with no
   journey tag, the point is shown as inferred with a fixed Vietnamese reason. On real traces most lines may carry
@@ -355,12 +415,12 @@ allow and deny lists (`src/fence/gate.ts`). Lists are in `src/fence/constants.ts
 
 | Profile | Used by | Tools | MCP | Notable denials |
 |---|---|---|---|---|
-| `classifier` | message triage | none needed | none | Bash, Edit, Write, Web, Agent, Workflow, gitlab |
+| `classifier` | message triage; with its own system prompt, the iam_trace extractor | none needed; the extractor gets none at all (`tools: []`, `--restricted`, `dontAsk`, no settings) | none | Bash, Edit, Write, Web, Agent, Workflow, gitlab |
 | `review` | review | Claude Code defaults, `permissionMode: auto`, user/project settings | gitlab, kb | approve/merge/ship/update/create MR, play/retry jobs, `git push`, env/ps/security, KB writes, `~/.claude.json`, `~/.ssh`, `~/.audee`, `sh -c`-style shells, `pgrep`, `ScheduleWakeup` |
 | `mapping` | code_mapping | Read, Glob, Grep, Edit, Write, Bash; `--restricted` | none loaded; the GDS data-contract tool is allowed | reads outside the folder; Bash only the exact probe commands; edits to the pinned skill |
 | `kb_read` | kb_query | Read, Glob, Grep, Agent; `--restricted` | kb (read-only tools) | KB writes, `kb_search`, Skill, secret-shaped files, wiki inbox/people, repo config/secret globs |
 | `mcp_read` | opt-in (Grafana) | none built in | configured server, listed read tools only | every write tool of that server |
-| `iam_trace` | iam_trace | none built in; `--restricted` | iam-trace: `trace_identity`, `trace_key`, `search_logs`, `list_services` (fixed in `IAM_TRACE_TOOLS`, never from config or dashboard); the gate also guards the `search_logs` filter and the trace ids | every other tool; Bash, Read, other MCP servers; a `search_logs` filter that is missing or blank, holds a comment, a line break, unbalanced parentheses, an unterminated string or a malformed escape, or holds `[ ] { } \|` or a backslash outside a string (`"`, `'` and backtick delimit strings); a `trace_key` `key` or `trace_identity` `userId`/`roleId`/`gameId`/`serverId` over 128 characters or outside `[A-Za-z0-9_.:@\|-]` (empty or null counts as absent) |
+| `iam_trace` | iam_trace | none built in; `--restricted` | iam-trace: `trace_identity`, `trace_key`, `search_logs`, `campaign_journey`, `list_services` (fixed in `IAM_TRACE_TOOLS`, never from config or dashboard); the gate also guards the `search_logs` filter and the trace ids | every other tool; Bash, Read, other MCP servers; a `search_logs` filter that is missing or blank, holds a comment, a line break, unbalanced parentheses, an unterminated string or a malformed escape, or holds `[ ] { } \|` or a backslash outside a string (`"`, `'` and backtick delimit strings); a `trace_key` `key`, `campaign_journey` `campaignId` or `trace_identity` `userId`/`roleId`/`gameId`/`serverId` over 128 characters or outside `[A-Za-z0-9_.:@\|-]` (empty or null counts as absent) |
 
 Fences verified live on Claude Code 2.1.302 / Agent SDK 0.3.302 (see Fence baseline); the `iam_trace` fence is not
 yet verified live (see iam_trace). `doctor` fails when the SDK or the bundled Claude Code is a

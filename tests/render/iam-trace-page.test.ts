@@ -47,8 +47,8 @@ describe('iam_trace replies', () => {
     expect(emptyText('grafana')).toBe(kbQueryEmptyReply);
   });
 
-  it('the usage reply says users are comma-separated', () => {
-    expect(iamTraceUsageReply).toContain('cách nhau bằng dấu phẩy');
+  it('the usage reply says free wording is fine', () => {
+    expect(iamTraceUsageReply).toContain('viết tự nhiên cũng được');
   });
 
   it('the missing reply escapes and defangs each item and ends with the usage', () => {
@@ -362,13 +362,13 @@ describe('iam trace PO summary', () => {
 
   it('names players and journeys by their full ids', () => {
     const sample = sampleTrace();
-    const other = { ...(sample.users[1] as MergedTrace['users'][number]), id: '3585990158190706689', user_id: '3585990158190706689', role_id: '145137010184634371' };
+    const other = { ...(sample.users[1] as MergedTrace['users'][number]), id: '3400000000000000606', user_id: '3400000000000000606', role_id: '140000000000000707' };
     const two: MergedTrace = { ...sample, users: [sample.users[0] as MergedTrace['users'][number], other] };
     const po = poOf(iamTracePage(SAMPLE_REQUEST, two));
-    expect(po).toContain('<h3>Người chơi 3585990158190706689</h3>');
+    expect(po).toContain('<h3>Người chơi 3400000000000000606</h3>');
     expect(po).toContain(`<li>Journey ${JOURNEY}:</li>`);
     expect(po).not.toMatch(/…\d/u);
-    expect(iamTraceNotice(SAMPLE_REQUEST, two)).toContain('3585990158190706689: ');
+    expect(iamTraceNotice(SAMPLE_REQUEST, two)).toContain('3400000000000000606: ');
   });
 
   it('names the game team when a channel type is missing', () => {

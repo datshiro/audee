@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolvePerson } from '../../src/authz/people.js';
 import { answerMode, answerSchemaMatches, renderAnswerPage, setRenderAnswerPage } from '../../src/capability/kb-answer.js';
 import { KB_ANSWER_SCHEMA } from '../../src/capability/kb-answer-schema.js';
-import { kbQuery, kbQueryDir, kbQueryDirs, kbQuerySchema, setKbRefSync } from '../../src/capability/kb-query.js';
+import { kbQuery, kbQueryDir, kbQueryDirs, setKbRefSync } from '../../src/capability/kb-query.js';
+import { KB_TECH_SCHEMA } from '../../src/capability/kb-tech-schema.js';
 import type { CapabilityContext } from '../../src/capability/types.js';
 import type { Job } from '../../src/queue/job.js';
-import { checkAnswerPage, kbQueryEmptyReply, kbQueryFileReply, kbQueryWithheldReply } from '../../src/render/html.js';
+import { eventLine, type Event } from '../../src/events.js';
+import { checkAnswerPage, kbQueryEmptyReply, kbQueryFileReply, kbQueryNotKnownReply, kbQueryWithheldReply } from '../../src/render/html.js';
 import type { RunInput, RunResult } from '../../src/runner/run.js';
 import { testConfig } from '../helpers/test-config.js';
 
@@ -22,13 +24,14 @@ type Obj = Record<string, unknown>;
 const productAnswer = (): Obj => JSON.parse(fixture('product-vi.json')) as Obj;
 const reading = (a: Obj): Obj => ((a['product'] as Obj)['readings'] as Obj[])[0] as Obj;
 
-// A KB with one checkout and the wiki doc product-vi.json cites as its recorded reason.
+// A KB with the checkouts and the wiki doc product-vi.json cites.
 function testKB(): string {
   const kb = join(mkdtempSync(join(tmpdir(), 'audee-kb-')), 'kb');
-  for (const d of ['kb-mcp/wiki/explanatory/flows', '.claude/skills/kb-scout', '../agents/kb-query', '.kb-ref-worktrees/pusher']) mkdirSync(join(kb, d), { recursive: true, mode: 0o700 });
+  for (const d of ['kb-mcp/wiki/explanatory/flows', '.claude/skills/kb-scout', '../agents/kb-query', '.kb-ref-worktrees/pusher', '.kb-ref-worktrees/journey-node/internal']) mkdirSync(join(kb, d), { recursive: true, mode: 0o700 });
   symlinkSync('../../../agents/kb-query', join(kb, '.claude/skills/kb-query'));
   writeFileSync(join(kb, 'kb-mcp/wiki/explanatory/flows/iam-frequency-check.md'), '# IAM frequency check\n');
-  writeFileSync(join(kb, 'kb.yaml'), 'wiki_dir: ./kb-mcp/wiki\nrepos:\n  - path: ../pusher\n    name: pusher\nref_policy:\n  worktree_root: .kb-ref-worktrees\n');
+  writeFileSync(join(kb, '.kb-ref-worktrees/journey-node/internal/check.go'), Array.from({ length: 30 }, (_, i) => `// line ${i + 1}`).join('\n') + '\n');
+  writeFileSync(join(kb, 'kb.yaml'), 'wiki_dir: ./kb-mcp/wiki\nrepos:\n  - path: ../pusher\n    name: pusher\n  - path: ../journey-node\n    name: journey-node\nref_policy:\n  worktree_root: .kb-ref-worktrees\n');
   return kb;
 }
 
@@ -88,16 +91,17 @@ describe('kb_query product answers', () => {
     expect(reading(rendered[0] as Obj)['purpose']).toMatchObject({ recorded: true, source: 'explanatory/flows/iam-frequency-check.md' });
   });
 
-  it('keeps today\'s schema and prompt in tech mode', async () => {
+  it('uses the tech schema and prompt in tech mode', async () => {
+    const tech = { status: 'done', topic: 'how', lang: 'en', title: 'How', sections: [{ heading: 'How', blocks: [{ kind: 'text', text: 'x', cites: ['journey-node/internal/check.go:1'] }] }], notes: [], missing: [] };
     for (const [input, mode] of [['how? --tech', 'product'], ['how?', 'tech'], ['how?', 'none']] as const) {
-      const h = harness({ status: 'done', answer: 'x', sources: [], notes: [], missing: [] }, input, mode);
+      const h = harness(tech, input, mode);
       const out = await kbQuery(h.ctx);
       expect(out.event.status, String(out.event.reason)).toBe('done');
-      expect(h.inputs[0]?.options.outputFormat).toEqual({ type: 'json_schema', schema: kbQuerySchema });
+      expect(h.inputs[0]?.options.outputFormat).toEqual({ type: 'json_schema', schema: KB_TECH_SCHEMA });
       expect(h.inputs[0]?.prompt).not.toContain('mode is product');
       expect(rendered).toHaveLength(0);
     }
-    const h = harness({ status: 'done', answer: 'x', sources: [], notes: [], missing: [] }, 'how? --tech', 'product');
+    const h = harness(tech, 'how? --tech', 'product');
     await kbQuery(h.ctx);
     expect(readFileSync(join(h.dir, 'question.txt'), 'utf8')).toBe('how?');
   });
@@ -121,15 +125,67 @@ describe('kb_query product answers', () => {
 
   it('refuses an answer in the wrong mode or shape', async () => {
     const tech = { ...productAnswer(), mode: 'tech' };
-    const empty = productAnswer();
-    (empty['product'] as Obj)['readings'] = [];
     const extra = { ...productAnswer(), html: '<b>x</b>' };
-    for (const [s, reason] of [[tech, 'answer mode mismatch'], [empty, 'product answer has no readings'], [extra, 'answer does not match the contract']] as const) {
+    for (const [s, reason] of [[tech, 'answer came back in tech mode'], [extra, 'answer does not match the contract']] as const) {
       const out = await kbQuery(harness(s).ctx);
       expect(out.event.status).toBe('failed');
       expect(out.event.reason).toBe(reason);
     }
     expect(rendered).toHaveLength(0);
+  });
+
+  it('answers not_known when the model found nothing, keeping its output', async () => {
+    const empty = productAnswer();
+    (empty['product'] as Obj)['readings'] = [];
+    const h = harness(empty);
+    const out = await kbQuery(h.ctx);
+    expect(out.event).toMatchObject({ status: 'not_known', reason: 'model found no evidence', itemsKept: 0, itemsRemoved: 0 });
+    expect(out.reply?.html.startsWith(kbQueryNotKnownReply)).toBe(true);
+    expect(out.reply?.file).toBeUndefined();
+    expect(out.removeAfterReply).toBeUndefined();
+    expect(existsSync(join(h.dir, 'output.json'))).toBe(true);
+    expect(eventLine(out.event as Event)).toContain('"items_kept":0');
+    expect(rendered).toHaveLength(0);
+  });
+
+  it('withholds an empty answer whose topic holds a secret', async () => {
+    const empty: Obj = { ...productAnswer(), topic: 'token sk-live-0123456789abcdef' };
+    (empty['product'] as Obj)['readings'] = [];
+    const out = await kbQuery(harness(empty, undefined, 'product', { KEY: 'sk-live-0123456789abcdef' }).ctx);
+    expect(out.event.status).toBe('withheld');
+  });
+
+  it('answers not_known when no claim survives the evidence check, without claim text in the event', async () => {
+    const a = productAnswer();
+    const texts: string[] = [];
+    for (const r of (a['product'] as Obj)['readings'] as Obj[]) {
+      for (const k of ['journey', 'rules']) {
+        for (const item of r[k] as Obj[]) {
+          item['evidence'] = 'src';
+          item['cite'] = 'journey-node/internal/nope.go:1';
+          texts.push(item['text'] as string);
+        }
+      }
+    }
+    const out = await kbQuery(harness(a).ctx);
+    expect(out.event).toMatchObject({ status: 'not_known', reason: 'no claim survived the evidence check', itemsKept: 0, itemsRemoved: texts.length });
+    expect(out.reply?.html.startsWith(kbQueryNotKnownReply)).toBe(true);
+    const json = JSON.stringify(out.event);
+    for (const x of texts) expect(json).not.toContain(x);
+    expect(rendered).toHaveLength(0);
+  });
+
+  it('says how many claims it removed and when a Confluence copy was synced', async () => {
+    const a = productAnswer();
+    const r = reading(a);
+    r['rules'] = [...(r['rules'] as Obj[]), { kind: 'default', text: 'synced rule', evidence: 'kb', cite: 'explanatory/flows/churn.md' }, { kind: 'default', text: 'bad cite', evidence: 'src', cite: 'pusher/none.go:1' }];
+    const h = harness(a);
+    writeFileSync(join(h.kb, 'kb-mcp/wiki/explanatory/flows/churn.md'), '---\nsource: confluence\nlast_synced: 2026-05-20T07:34:23Z\n---\n# Churn\n');
+    const out = await kbQuery(h.ctx);
+    expect(out.event).toMatchObject({ status: 'done', itemsKept: 5, itemsRemoved: 2 }); // the unverified step and the bad cite
+    expect(out.reply?.html).toContain('Đã bỏ 2 ý');
+    expect(out.reply?.html).toContain('bản sao Confluence đồng bộ ngày 2026-05-20');
+    expect(reading(rendered[0] as Obj)['diagrams']).toEqual([]);
   });
 
   it('withholds a secret the page would show apart', async () => {

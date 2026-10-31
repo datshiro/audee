@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CLASSIFY_SYSTEM, IAM_TRACE_TOOLS } from '../../src/fence/constants.js';
+import { CLASSIFY_SYSTEM, IAM_EXTRACT_SYSTEM, IAM_TRACE_TOOLS } from '../../src/fence/constants.js';
 import { loadMcpServers } from '../../src/fence/mcp-servers.js';
 import { buildOptions, type ProfileInput } from '../../src/fence/profiles.js';
 import { captureSession, flagValues, hasFlag } from '../helpers/capture-argv.js';
@@ -107,6 +107,18 @@ describe('fence superset of Ciel', () => {
     expect(flagValues(argv, '--allowedTools')).toEqual(tools.map((t) => `mcp__grafana__${t}`));
     expect(flagValues(argv, '--disallowedTools')).toContain('mcp__grafana__update_dashboard');
     expect(mcpKeys(argv)).toEqual(['grafana']);
+  });
+  it('TestIamTraceExtractorArgs', async () => {
+    const { argv, init } = await captureSession(buildOptions({ ...INPUTS['classifier']!, system: IAM_EXTRACT_SYSTEM }));
+    expect(hasFlag(argv, '--restricted')).toBe(true);
+    expect(flagValues(argv, '--permission-mode')[0]).toBe('dontAsk');
+    expect(hasFlag(argv, '--tools')).toBe(true);
+    expect(flagValues(argv, '--tools')).toEqual([]);
+    expect(hasFlag(argv, '--mcp-config')).toBe(false);
+    expect(JSON.stringify(init)).not.toContain(JSON.stringify(CLASSIFY_SYSTEM.slice(0, 40)).slice(1, -1));
+    const { argv: triage } = await capture('classifier');
+    expect(hasFlag(triage, '--restricted')).toBe(false);
+    expect(hasFlag(triage, '--tools')).toBe(false);
   });
   it('TestIamTraceArgs', async () => {
     const { argv } = await capture('iamtrace');

@@ -1,0 +1,16 @@
+[
+  { "id": "Q1", "kind": "baseline", "trap": null, "question": "Giới hạn tần suất popup (IAM) hoạt động thế nào và tại sao lại có giới hạn này?" },
+  { "id": "Q2", "kind": "baseline", "trap": null, "question": "How does campaign approval work, and why does a campaign need approval before it runs?" },
+  { "id": "Q3", "kind": "baseline", "trap": null, "question": "Khi dừng một email campaign đang chạy thì người chơi sẽ nhận được gì và chuyện gì xảy ra với email đã lên lịch?" },
+  { "id": "Q4", "kind": "baseline", "trap": null, "question": "What is the difference between scheduled and realtime in-app campaigns, and when should an operator pick each?" },
+  { "id": "Q5", "kind": "baseline", "trap": null, "question": "Tin nhắn trong App Inbox hết hạn như thế nào? Operator cấu hình được gì?" },
+  { "id": "Q6", "kind": "baseline", "trap": null, "question": "How does a journey get disabled, and what happens to players already inside it?" },
+  { "id": "Q7", "kind": "baseline", "trap": null, "question": "Phân khúc người chơi (segment) được tạo theo hai cách nào và vì sao lại có hai cách?" },
+  { "id": "Q8", "kind": "baseline", "trap": null, "question": "How does a push notification campaign reach the player end to end, and what can make a player not receive it?" },
+  { "id": "Q9", "kind": "baseline", "trap": null, "question": "Promotion play (lucky wheel) chạy thế nào từ lúc người chơi bấm đến lúc nhận quà?" },
+  { "id": "Q10", "kind": "baseline", "trap": null, "question": "How are SDK tracking metrics (open, click) collected for in-app messages, and how fast do they show up?" },
+  { "id": "T1", "kind": "trap", "trap": "T1", "question": "Tính năng tự động dịch (machine translation) nội dung campaign sang ngôn ngữ của người chơi hoạt động thế nào?" },
+  { "id": "T2", "kind": "trap", "trap": "T2", "question": "Độ trễ p99 khi gửi push notification tới người chơi là bao nhiêu mili giây?" },
+  { "id": "T3", "kind": "trap", "trap": "T3", "question": "Vì sao việc retarget những người chơi đã churn vĩnh viễn (không hoạt động hơn một năm) lại có rủi ro?" },
+  { "id": "T4", "kind": "trap", "trap": "T4", "question": "Tại sao thời gian giao tin in-app (TTL) bị giới hạn tối đa 30 ngày (2592000 giây)?" }
+]
