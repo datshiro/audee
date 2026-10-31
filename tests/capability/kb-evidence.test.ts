@@ -71,7 +71,8 @@ describe('kb_query evidence gate', () => {
     for (const bad of ['portal-service/.ENV:1', 'portal-service/.deploy/values-prod.yaml:1', 'portal-service/.circleci/config.yml:1', 'portal-service/SECRETS/dev.yaml:1', 'portal-service/Application-prod.yml:1', 'portal-service/.git:1']) {
       expect(resolveCite('src', bad, paths), bad).toBeUndefined();
     }
-    for (const bad of ['INBOX/x.md', 'People/y.md', 'inbox/.d.md']) expect(resolveCite('kb', bad, paths), bad).toBeUndefined();
+    writeFileSync(join(paths.wiki, 'inbox/a\nb.md'), '# d\n');
+    for (const bad of ['INBOX/x.md', 'People/y.md', 'inbox/.d.md', 'inbox/a\nb.md']) expect(resolveCite('kb', bad, paths), bad).toBeUndefined();
   });
 
   it('resolves a wiki cite with or without the wiki prefix, never into inbox or people', () => {

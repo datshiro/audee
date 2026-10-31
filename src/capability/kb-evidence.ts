@@ -34,7 +34,7 @@ function globRegex(glob: string): RegExp {
       re += glob[i]!.replace(/[.+?^${}()|[\]\\]/gu, '\\$&');
     }
   }
-  return new RegExp(`^${re}$`, 'iu');
+  return new RegExp(`^${re}$`, 'isu'); // s: a name holding a newline is still inside its folder
 }
 
 const SRC_DENIED_RE = SRC_DENIED.map(globRegex);
@@ -133,7 +133,7 @@ const list = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : []);
 const resolveAny = (cite: string, paths: KbPaths): ResolvedCite | undefined => resolveCite('src', cite, paths) ?? resolveCite('kb', cite, paths);
 
 // A text line that would render as a code block or a heading: code is copied by audee, never typed by the model.
-const TYPED_BLOCK = /^(?: {4}|\t|\s*(?:```|~~~|#))/mu;
+const TYPED_BLOCK = /^(?: {4}|\t|\s*(?:```|~~~|#{1,6}(?:\s|$)))/mu;
 
 // Keeps a text block with at least one resolving cite (its other cites go) and a code block whose one source cite
 // resolves to at most MAX_TECH_CODE_LINES lines; drops emptied sections. Rewrites `answer` in place.

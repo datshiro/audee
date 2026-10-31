@@ -54,8 +54,8 @@ describe('kb_query tech answers', () => {
 
   it('refuses text blocks that carry typed code or headings, and flattens headings', () => {
     const cite = ['portal-service/x.go:2'];
-    const a = answer([{ heading: 'H\n\n# Injected', blocks: [text('```go\nfunc x() {}\n```', cite), text('# Title', cite), text('    indented code', cite), text('- a list\n- **bold** item', cite)] }]);
-    expect(gateTech(a, paths)).toMatchObject({ kept: 1, removed: 3 });
+    const a = answer([{ heading: 'H\n\n# Injected', blocks: [text('```go\nfunc x() {}\n```', cite), text('# Title', cite), text('    indented code', cite), text('- a list\n- **bold** item', cite), text('#1 priority is the cap', cite)] }]);
+    expect(gateTech(a, paths)).toMatchObject({ kept: 2, removed: 3 });
     expect(techMarkdown(a, paths).markdown.startsWith('## H # Injected\n')).toBe(true);
   });
 
