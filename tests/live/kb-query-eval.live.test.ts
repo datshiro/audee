@@ -1,6 +1,7 @@
 // Live eval of kb_query over the baseline and trap questions. Costs money: runs only with KB_EVAL=1.
 // KB_EVAL_OUT=<dir> (required), KB_EVAL_MODEL (default claude-haiku-5-5), KB_EVAL_IDS=Q1,T1 (optional subset),
-// KB_EVAL_SYNTH_MODEL (optional: the tool-less writer of the split), KB_EVAL_MODE=tech (default product).
+// KB_EVAL_SYNTH_MODEL (optional: the tool-less writer of the split), KB_EVAL_MODE=tech (default product),
+// KB_EVAL_QUESTIONS=<file> (optional: a questions file of the fixture's shape, to replay other questions).
 // Never prints answer text: the console gets `id status cost durationMs` only.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,7 +18,9 @@ type Summary = { questions: Obj[]; medianCostUsd: number | null; p90DurationMs: 
 
 const enabled = process.env['KB_EVAL'] === '1';
 const ids = process.env['KB_EVAL_IDS']?.split(',').map((s) => s.trim()).filter((s) => s !== '');
-const selected = questions.filter((x) => ids === undefined || ids.includes(x.id));
+const questionsFile = process.env['KB_EVAL_QUESTIONS'];
+const pool: { id: string; question: string }[] = questionsFile !== undefined && questionsFile !== '' ? JSON.parse(readFileSync(questionsFile, 'utf8')) : questions;
+const selected = pool.filter((x) => ids === undefined || ids.includes(x.id));
 
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
