@@ -55,12 +55,31 @@ function resolveKb(cite: string, paths: KbPaths): ResolvedCite | undefined {
   return file === undefined ? undefined : { kind: 'kb', cite: rel, file };
 }
 
-// A model cite as a checked location, or undefined. Never throws.
+// A model cite as a checked location, or undefined. Never throws. A leading "src:" or "kb:" label is the model echoing
+// the evidence kind, not part of the path.
 export function resolveCite(kind: 'src' | 'kb', cite: string, paths: KbPaths): ResolvedCite | undefined {
+  const bare = cite.trim().replace(/^(?:src|kb):\s*/u, '');
   try {
-    return kind === 'src' ? resolveSrc(cite, paths) : resolveKb(cite, paths);
+    return kind === 'src' ? resolveSrc(bare, paths) : resolveKb(bare, paths);
   } catch {
     return undefined;
+  }
+}
+
+const MIN_QUOTE_CHARS = 20;
+const QUOTE_SLACK_LINES = 3;
+const squash = (s: string): string => s.replace(/\s+/gu, ' ').trim();
+
+// The quote appears at the cited place, whitespace aside: within a few lines of a source range, anywhere in a doc.
+export function checkQuote(r: ResolvedCite, quote: string): boolean {
+  const q = squash(quote);
+  if (q.length < MIN_QUOTE_CHARS) return false;
+  try {
+    const text = readFileSync(r.file, 'utf8');
+    const haystack = r.kind === 'kb' ? text : text.split('\n').slice(Math.max(1, r.from - QUOTE_SLACK_LINES) - 1, r.to + QUOTE_SLACK_LINES).join('\n');
+    return squash(haystack).includes(q);
+  } catch {
+    return false;
   }
 }
 

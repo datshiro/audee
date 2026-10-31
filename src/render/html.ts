@@ -76,7 +76,7 @@ export function kbRemovedLine(n: number): string {
 export function kbConfluenceLine(dates: string[]): string {
   return dates.length === 0 ? '' : `<br>Một phần câu trả lời dựa trên bản sao Confluence đồng bộ ngày ${dates.join(', ')}; nội dung gốc có thể đã đổi.`;
 }
-export const kbQueryPendingReply ='Bạn đang có một câu hỏi <b>kb_query</b> chưa xong, đợi có câu trả lời rồi hỏi tiếp nhé.';
+export const kbQueryPendingReply = 'Bạn đang có một câu hỏi <b>kb_query</b> chưa xong, đợi có câu trả lời rồi hỏi tiếp nhé.';
 export const kbQueryClipped = '… (câu trả lời dài hơn, đã cắt bớt; hỏi hẹp lại để xem chi tiết)';
 export const maxKBQuerySources = maxNotes;
 export const maxKBQuerySourceChar = 200;

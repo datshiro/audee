@@ -134,14 +134,30 @@ export function setPrintAnswerSchema(fn: typeof printAnswerSchema): void {
 export const answerSchemaMatches = (printed: unknown): boolean => JSON.stringify(printed) === JSON.stringify(KB_ANSWER_SCHEMA);
 
 // The outcome of a product-mode session. Event and owner reasons are fixed strings: answer text never reaches them.
-export async function productOutcome(ctx: CapabilityContext, dir: string, result: RunResult, started: number, kbDir: string, paths: KbPaths): Promise<CapabilityOutcome> {
+// One event for every session a job ran: the first run's session id, the sum of their cost, turns and tool uses.
+export function runsEvent(runs: RunResult[], durationMs: number): Partial<Event> {
+  const base = sessionEvent(runs[0], durationMs);
+  if (runs.length < 2) return base;
+  return {
+    ...base,
+    costUsd: runs.reduce((s, r) => s + (r.costUsd ?? 0), 0),
+    numTurns: runs.reduce((s, r) => s + (r.turns ?? 0), 0),
+    toolUses: runs.flatMap((r) => r.toolUses),
+    denials: runs.flatMap((r) => r.denials),
+  };
+}
+
+export const withheldOutcome = (dir: string, base: Partial<Event>): CapabilityOutcome => ({ reply: { html: kbQueryWithheldReply }, notifyOwner: `kb_query answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind: 'kb_query', status: 'withheld', reason: 'answer looks like it holds a credential' } });
+
+// `extra` carries the split's earlier sessions, for the event, and the items they already removed.
+export async function productOutcome(ctx: CapabilityContext, dir: string, result: RunResult, started: number, kbDir: string, paths: KbPaths, extra: { runs: RunResult[]; removedBefore: number } = { runs: [], removedBefore: 0 }): Promise<CapabilityOutcome> {
   const kind = 'kb_query';
-  const base = sessionEvent(result, Date.now() - started);
+  const base = runsEvent([result, ...extra.runs], Date.now() - started);
   const failed = (reason: string, keep = true): CapabilityOutcome => {
     if (keep) keepOutput(dir, result, reason);
     return { reply: { html: failedText(kind) }, notifyOwner: `kb_query failed: ${reason}: ${dir}`, event: { ...base, kind, status: 'failed', reason } };
   };
-  const withheld = (): CapabilityOutcome => ({ reply: { html: kbQueryWithheldReply }, notifyOwner: `kb_query answer withheld: it looks like it holds a credential: ${dir}`, event: { ...base, kind, status: 'withheld', reason: 'answer looks like it holds a credential' } });
+  const withheld = (): CapabilityOutcome => withheldOutcome(dir, base);
   if (result.isError) return failed('kb_query reported an error');
   const s = result.structured;
   if (!isObj(s) || !matches(s, KB_ANSWER_SCHEMA)) return failed('answer does not match the contract');
@@ -153,10 +169,11 @@ export async function productOutcome(ctx: CapabilityContext, dir: string, result
   const known = Object.values(ctx.secrets);
   const meta = [str(s['topic']), str(s['answer']), question, ...(s['sources'] as string[]), ...(s['notes'] as string[]), ...(s['missing'] as string[])];
   if (leaksSecret([...answerTexts(product), ...meta], known)) return withheld();
-  if (list(product['readings']).length === 0) return notKnownOutcome(ctx, base, str(s['topic']), 'model found no evidence', 0);
+  if (list(product['readings']).length === 0) return notKnownOutcome(ctx, base, str(s['topic']), 'model found no evidence', extra.removedBefore);
   checkReasonSources(product, paths.wiki);
   const gate = gateProduct(product, paths);
-  if (list(product['readings']).length === 0) return notKnownOutcome(ctx, base, str(s['topic']), 'no claim survived the evidence check', gate.removed);
+  const removed = extra.removedBefore + gate.removed;
+  if (list(product['readings']).length === 0) return notKnownOutcome(ctx, base, str(s['topic']), 'no claim survived the evidence check', removed);
   writeFileSync(join(dir, 'answer.json'), JSON.stringify(s), { mode: 0o600 });
   let page: string;
   try {
@@ -172,8 +189,8 @@ export async function productOutcome(ctx: CapabilityContext, dir: string, result
   if (unsafe !== undefined) return failed(`rendered page failed the safety check (${unsafe})`, false); // a fixed word
   if (leaksSecret(answerPageVisibleTexts(page), known)) return withheld();
   const file = { name: kbAnswerFileName(ctx.job.messageId ?? ''), content: page };
-  const html = kbQueryFileReply + kbTopicLine(str(s['topic']), ctx.job.input ?? '') + kbRemovedLine(gate.removed) + kbConfluenceLine(gate.confluenceDates);
-  return { reply: { html, file }, event: { ...base, kind, status: 'done', itemsKept: gate.kept, itemsRemoved: gate.removed }, removeAfterReply: dir };
+  const html = kbQueryFileReply + kbTopicLine(str(s['topic']), ctx.job.input ?? '') + kbRemovedLine(removed) + kbConfluenceLine(gate.confluenceDates);
+  return { reply: { html, file }, event: { ...base, kind, status: 'done', itemsKept: gate.kept, itemsRemoved: removed }, removeAfterReply: dir };
 }
 
 // Nothing checked answers the question: say so instead of guessing. The folder stays with output.json for the owner.

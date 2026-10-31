@@ -1,5 +1,6 @@
 // Live eval of kb_query over the baseline and trap questions. Costs money: runs only with KB_EVAL=1.
-// KB_EVAL_OUT=<dir> (required), KB_EVAL_MODEL (default claude-haiku-5-5), KB_EVAL_IDS=Q1,T1 (optional subset).
+// KB_EVAL_OUT=<dir> (required), KB_EVAL_MODEL (default claude-haiku-5-5), KB_EVAL_IDS=Q1,T1 (optional subset),
+// KB_EVAL_SYNTH_MODEL (optional: the tool-less writer of the split).
 // Never prints answer text: the console gets `id status cost durationMs` only.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -95,7 +96,8 @@ describe.skipIf(!enabled)('kb_query eval (live)', () => {
     it(q.id, async () => {
       const out = outDir();
       const model = process.env['KB_EVAL_MODEL'] ?? 'claude-haiku-5-5';
-      const cfg = testConfig({ kbDir: KB_DIR, kbDefaultMode: 'product', kbModel: model });
+      const synth = process.env['KB_EVAL_SYNTH_MODEL'];
+      const cfg = testConfig({ kbDir: KB_DIR, kbDefaultMode: 'product', kbModel: model, ...(synth !== undefined && synth !== '' ? { kbSynthModel: synth } : {}) });
       const person = resolvePerson(cfg, 'teams:owner');
       if (person === undefined) throw new Error('no owner');
       const messageId = `eval${Date.now()}${q.id}`;

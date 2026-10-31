@@ -42,6 +42,12 @@ describe('kb_query evidence gate', () => {
     }
   });
 
+  it('reads a cite the model labelled with its kind as the bare cite', () => {
+    expect(resolveCite('src', 'src: portal-service/internal/x.go:2-3', paths)).toEqual(resolveCite('src', 'portal-service/internal/x.go:2-3', paths));
+    expect(resolveCite('kb', 'kb: explanatory/a.md', paths)).toEqual(resolveCite('kb', 'explanatory/a.md', paths));
+    expect(resolveCite('kb', 'kb: explanatory/a.md', paths)).toBeDefined();
+  });
+
   it('refuses a source cite without a known checkout prefix', () => {
     expect(resolveCite('src', 'internal/x.go:2', paths)).toBeUndefined();
     expect(resolveCite('src', 'nope/x.go:1', paths)).toBeUndefined();

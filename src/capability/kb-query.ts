@@ -12,7 +12,11 @@ import { leaksSecret } from '../render/secrets.js';
 import { runeLength, runeSlice } from '../render/text.js';
 import { sessionEnv } from '../runner/env.js';
 import { InterruptedError, type RunResult } from '../runner/run.js';
-import { type AnswerMode, answerMode, productOutcome } from './kb-answer.js';
+import type { McpServerConfig, Options } from '@anthropic-ai/claude-agent-sdk';
+import type { Capability as CapabilityConfig } from '../config/schema.js';
+import { type AnswerMode, answerMode, matches, notKnownOutcome, productOutcome, runsEvent, withheldOutcome } from './kb-answer.js';
+import { GATHER_SCHEMA, type Gathered, parseGather } from './kb-gather.js';
+import { buildEvidencePack, KB_SYNTH_SYSTEM, mapSynthCites, PRODUCT_FIELD_RULES, synthPrompt } from './kb-synth.js';
 import { KB_ANSWER_SCHEMA } from './kb-answer-schema.js';
 import { capabilityConfig, freshDir, keepOutput, keepResult, messageDir, sessionEvent, sessionInput } from './session.js';
 import type { Capability, CapabilityContext, CapabilityOutcome } from './types.js';
@@ -125,9 +129,7 @@ This answer's mode is product.
 "mode" must be "product" and "answer" must be "" whatever the question looks like; a broad or end-to-end question still gets readings, never a Markdown answer.
 Set "mode" to "product", leave "answer" empty, and fill "product" for a product
 manager who knows Apollo's features but not its code, following the skill's product skeleton where it has one.
-Write every text field in the language of the question and set "lang". Text fields are plain text: no HTML, no
-Markdown, no links, no file paths and no function, service or env var names; "**bold**" is the only markup.
-Respect the limit in each field's description. Set purpose.recorded true only when a sentence in a wiki doc under
+` + PRODUCT_FIELD_RULES + ` Set purpose.recorded true only when a sentence in a wiki doc under
 product/, specs/, roadmap/ or explanatory/ states why it works this way, with that doc's wiki-relative path in
 purpose.source; code, comments and commit messages never count, and never infer a reason. Mark each journey step
 and rule "src" (checked in source; cite path:line), "kb" (only the KB says it; cite the doc) or "unverified" (cite
@@ -140,10 +142,28 @@ tool is denied, the KB is unreadable), answer status "failed" and say why in "no
 // kbquery.go:226-230
 // The skill answers product questions by default; the stated mode line overrides it, so a tech prompt says so too.
 export function kbQueryPrompt(kbDir: string, paths: KbPaths, interservice: boolean, mode: AnswerMode = 'tech'): string {
+  return fillPrompt(mode === 'product' ? kbQueryProductInstructions : kbQueryInstructions + "\nThis answer's mode is tech.", kbDir, paths, interservice);
+}
+
+function fillPrompt(text: string, kbDir: string, paths: KbPaths, interservice: boolean): string {
   const line = interservice ? ' INTERSERVICE.md is ./INTERSERVICE.md.' : '';
-  return (mode === 'product' ? kbQueryProductInstructions : kbQueryInstructions + "\nThis answer's mode is tech.")
-    .replaceAll('{kb}', kbDir).replaceAll('{wiki}', paths.wiki).replaceAll('{repos}', paths.repos.join(', '))
+  return text.replaceAll('{kb}', kbDir).replaceAll('{wiki}', paths.wiki).replaceAll('{repos}', paths.repos.join(', '))
     .replaceAll('{querySkill}', paths.querySkill).replaceAll('{scoutSkill}', paths.scoutSkill).replaceAll('{interservice}', line);
+}
+
+const kbGatherInstructions = kbQuerySharedInstructions + `- Never quote credentials, tokens, passwords, keys or connection strings, even if a file shows one.
+Do not write an answer. Collect the evidence a writer needs to answer the question, in "ledger".
+For each piece return one ledger entry: id E1, E2, ...; kind "src" or "kb"; cite in the form above; quote = 1 to 15
+consecutive lines copied exactly from the cited place, at most 1200 characters, unchanged (no edits, no ellipsis);
+about = at most 200 characters saying what the quote shows. Prefer source over KB docs for behaviour. Read the KB
+first to find where to look. If nothing covers the question, return an empty ledger and say what is missing in
+"missing". When something you cannot fix stops you (a tool is denied, the KB is unreadable), answer status "failed"
+and say why in "notes". Always set "topic": what the question asks, at most 12 words, in the same language as the
+question, no links and no names of people; set "lang" to that language.`;
+
+// The gather session of the split: the same overrides as an answer session, but it returns evidence, not an answer.
+export function gatherPrompt(kbDir: string, paths: KbPaths, interservice: boolean): string {
+  return fillPrompt(kbGatherInstructions, kbDir, paths, interservice);
 }
 
 // kbquery.go:231-237
@@ -229,6 +249,63 @@ export function readOnlyOutcome(ctx: CapabilityContext, kind: string, dir: strin
   return { ...outcome, removeAfterReply: dir };
 }
 
+const GATHER_SHARE = 0.7;
+export const MIN_SYNTH_BUDGET_USD = 0.05;
+export const MIN_SYNTH_MS = 60_000;
+
+type SplitInput = {
+  ctx: CapabilityContext; cap: CapabilityConfig; synthModel: string; dir: string; kbDir: string; paths: KbPaths;
+  mcpServers: Record<string, McpServerConfig>; question: string; interservice: boolean; started: number;
+};
+
+// A product answer in two sessions: the gather session (kb_read fence) collects quoted evidence, audee keeps what it
+// finds at the cited place, and a tool-less session writes the answer from that alone. Every reason is a fixed string.
+async function splitProduct({ ctx, cap, synthModel, dir, kbDir, paths, mcpServers, question, interservice, started }: SplitInput): Promise<CapabilityOutcome> {
+  const budget = cap.budget_usd;
+  const failed = (reason: string, runs: RunResult[]): CapabilityOutcome => ({ reply: { html: failedText('kb_query') }, notifyOwner: `kb_query failed: ${reason}: ${dir}`, event: { ...runsEvent(runs, Date.now() - started), kind: 'kb_query', status: 'failed', reason } });
+  const run = async (options: Options, prompt: string, timeoutMs: number): Promise<RunResult | Error> => {
+    try {
+      return await ctx.run({ ...sessionInput(ctx, cap, options, prompt), timeoutMs });
+    } catch (e) {
+      if (e instanceof InterruptedError) throw e;
+      return e as Error;
+    }
+  };
+  const gatherOptions = buildOptions({ profile: 'kb_read', cwd: dir, mcpServers, kbPaths: paths, schema: GATHER_SCHEMA, model: cap.model, ...(budget !== undefined ? { budgetUsd: budget * GATHER_SHARE } : {}), seatbelt: cap.seatbelt });
+  const gatherRes = await run(gatherOptions, gatherPrompt(kbDir, paths, interservice), Math.floor(cap.timeout * GATHER_SHARE));
+  if (gatherRes instanceof Error) {
+    keepOutput(dir, undefined, gatherRes.message);
+    return failed(gatherRes.message, []);
+  }
+  let gathered: Gathered;
+  try {
+    gathered = parseGather(gatherRes);
+  } catch (e) {
+    keepOutput(dir, gatherRes, (e as Error).message);
+    return failed((e as Error).message, [gatherRes]);
+  }
+  keepOutput(dir, gatherRes);
+  writeFileSync(join(dir, 'gather.json'), JSON.stringify(gatherRes.structured), { mode: 0o600 });
+  const pack = buildEvidencePack(gathered.ledger, paths);
+  const base = runsEvent([gatherRes], Date.now() - started);
+  const texts = [gathered.topic, ...gathered.notes, ...gathered.missing, ...pack.entries.flatMap((e) => [e.cite, e.about, e.quote, e.context])];
+  if (leaksSecret(texts, Object.values(ctx.secrets))) return withheldOutcome(dir, base);
+  if (pack.entries.length === 0) return notKnownOutcome(ctx, base, gathered.topic, 'no evidence survived the quote check', pack.dropped);
+  writeFileSync(join(dir, 'evidence.json'), JSON.stringify(pack.entries), { mode: 0o600 });
+  const remainingUsd = budget === undefined ? undefined : budget - (gatherRes.costUsd ?? budget * GATHER_SHARE);
+  const remainingMs = cap.timeout - (Date.now() - started); // kbRefSync's time counts too
+  if ((remainingUsd !== undefined && remainingUsd < MIN_SYNTH_BUDGET_USD) || remainingMs < MIN_SYNTH_MS) return failed('no budget or time left for synthesis', [gatherRes]);
+  const synthOptions = buildOptions({ profile: 'classifier', system: KB_SYNTH_SYSTEM, cwd: dir, mcpServers: {}, schema: KB_ANSWER_SCHEMA, model: synthModel, ...(remainingUsd !== undefined ? { budgetUsd: remainingUsd } : {}), seatbelt: false });
+  const synthRes = await run(synthOptions, synthPrompt(question, pack.entries, gathered.lang), remainingMs);
+  if (synthRes instanceof Error) {
+    keepOutput(dir, undefined, synthRes.message);
+    return failed(synthRes.message, [gatherRes]);
+  }
+  let removedBefore = pack.dropped;
+  if (matches(synthRes.structured, KB_ANSWER_SCHEMA)) removedBefore += mapSynthCites(synthRes.structured as Record<string, unknown>, pack.entries).removed;
+  return productOutcome(ctx, dir, synthRes, started, kbDir, paths, { runs: [gatherRes], removedBefore });
+}
+
 export const kbQuery: Capability = async (ctx) => {
   const cap = capabilityConfig(ctx);
   const kbDir = expandHome(cap.kb_dir ?? '~/.claude/kb');
@@ -239,12 +316,13 @@ export const kbQuery: Capability = async (ctx) => {
   await kbRefSync(kbDir, ctx.signal);
   let dir: string;
   let paths: KbPaths;
+  let mcpServers: Record<string, McpServerConfig>;
   let options;
   let interservice = false;
   try {
     dir = kbQueryDir(ctx.dataDir, ctx.job.messageId);
     paths = kbQueryDirs(kbDir);
-    const mcpServers = loadMcpServers(['kb'], ctx.secrets, ctx.userConfigPath);
+    mcpServers = loadMcpServers(['kb'], ctx.secrets, ctx.userConfigPath);
     freshDir(dir);
     writeFileSync(join(dir, 'question.txt'), question, { mode: 0o600 });
     // Copied, since the session may not read the KB root it lives in.
@@ -257,6 +335,9 @@ export const kbQuery: Capability = async (ctx) => {
     });
   } catch (e) {
     return fail((e as Error).message);
+  }
+  if (mode === 'product' && cap.synth_model !== undefined) {
+    return splitProduct({ ctx, cap, synthModel: cap.synth_model, dir, kbDir, paths, mcpServers, question, interservice, started });
   }
   let result: RunResult;
   try {

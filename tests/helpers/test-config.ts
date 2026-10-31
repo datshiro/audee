@@ -17,6 +17,7 @@ export type TestConfigOptions = {
   kbDir?: string;
   kbDefaultMode?: 'tech' | 'product';
   kbModel?: string;
+  kbSynthModel?: string;
   mcpRead?: { name: string; trigger: string; mcp: string[]; tools: string[] };
   iamTrace?: { enabled?: boolean; seatbelt?: boolean; perPersonLimit?: number };
   review?: { prompt?: string; postFindings?: boolean; workdir?: string; routes?: Array<{ match: string; prompt: string }>; seatbelt?: boolean; autoApprove?: boolean };
@@ -83,7 +84,7 @@ channels:
 capabilities:
   review: { ${review} }
   code_mapping: { ${mapping} }
-  kb_query: { profile: kb_read, lane: kb${o.kbPerPersonLimit !== undefined ? `, per_person_limit: ${o.kbPerPersonLimit}` : ''}${o.kbDir !== undefined ? `, kb_dir: ${o.kbDir}` : ''}${o.kbDefaultMode !== undefined ? `, default_mode: ${o.kbDefaultMode}` : ''}${o.kbModel !== undefined ? `, model: ${q(o.kbModel)}` : ''} }
+  kb_query: { profile: kb_read, lane: kb${o.kbPerPersonLimit !== undefined ? `, per_person_limit: ${o.kbPerPersonLimit}` : ''}${o.kbDir !== undefined ? `, kb_dir: ${o.kbDir}` : ''}${o.kbDefaultMode !== undefined ? `, default_mode: ${o.kbDefaultMode}` : ''}${o.kbModel !== undefined ? `, model: ${q(o.kbModel)}` : ''}${o.kbSynthModel !== undefined ? `, synth_model: ${q(o.kbSynthModel)}` : ''} }
 ${mcpRead}${iamTrace}keychain_env: ${JSON.stringify(o.keychainEnv ?? {})}
 mcp_servers: ${JSON.stringify(o.mcpServers ?? {})}
 `;
