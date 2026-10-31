@@ -63,7 +63,7 @@ with only `PATH`, `LANG` and `TMPDIR`. audee keeps its own guarantees whatever t
 - the page may only use the renderer's elements and attributes, the exact CSP `default-src 'none'; style-src
   'unsafe-inline'`, and a stylesheet without `url(` or `@import`;
 - the page's visible text, SVG labels included and every entity decoded, gets the secret check again.
-Event and owner reasons are fixed strings (`renderer failed`, `answer mode mismatch`, …); renderer output stays in
+Event and owner reasons are fixed strings (`renderer failed`, `answer came back in tech mode`, …); renderer output stays in
 the job folder. `audee doctor` checks `render-answer` and that the KB contract equals the pinned copy, only when
 `default_mode` is `product`.
 

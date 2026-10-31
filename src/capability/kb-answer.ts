@@ -144,7 +144,7 @@ export async function productOutcome(ctx: CapabilityContext, dir: string, result
   const s = result.structured;
   if (!isObj(s) || !matches(s, KB_ANSWER_SCHEMA)) return failed('answer does not match the contract');
   if (s['status'] === 'failed') return failed('kb_query session could not finish (see its notes in output.json)');
-  if (s['mode'] !== 'product') return failed('answer mode mismatch');
+  if (s['mode'] !== 'product') return failed('answer came back in tech mode');
   const product = s['product'] as Obj;
   if (list(product['readings']).length === 0) return failed('product answer has no readings');
   keepOutput(dir, result);

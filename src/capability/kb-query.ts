@@ -118,6 +118,7 @@ const kbQueryProductInstructions = kbQuerySharedInstructions + `  If the questio
   overview reading of what the KB covers and 3 to 5 narrower questions in "product.follow_ups". Leave "missing" empty.
 - Never quote credentials, tokens, passwords, keys or connection strings, even if a file shows one.
 This answer's mode is product.
+"mode" must be "product" and "answer" must be "" whatever the question looks like; a broad or end-to-end question still gets readings, never a Markdown answer.
 Set "mode" to "product", leave "answer" empty, and fill "product" for a product
 manager who knows Apollo's features but not its code, following the skill's product skeleton where it has one.
 Write every text field in the language of the question and set "lang". Text fields are plain text: no HTML, no

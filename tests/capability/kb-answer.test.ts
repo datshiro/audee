@@ -124,7 +124,7 @@ describe('kb_query product answers', () => {
     const empty = productAnswer();
     (empty['product'] as Obj)['readings'] = [];
     const extra = { ...productAnswer(), html: '<b>x</b>' };
-    for (const [s, reason] of [[tech, 'answer mode mismatch'], [empty, 'product answer has no readings'], [extra, 'answer does not match the contract']] as const) {
+    for (const [s, reason] of [[tech, 'answer came back in tech mode'], [empty, 'product answer has no readings'], [extra, 'answer does not match the contract']] as const) {
       const out = await kbQuery(harness(s).ctx);
       expect(out.event.status).toBe('failed');
       expect(out.event.reason).toBe(reason);

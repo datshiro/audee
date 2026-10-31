@@ -239,6 +239,13 @@ describe('kb_query', () => {
     expect(p).not.toContain('need_input');
   });
 
+  it('keeps a product answer in product mode whatever the question looks like', () => {
+    const paths = { wiki: '/kb/kb-mcp/wiki', querySkill: '/kb/.agents/skills/kb-query', scoutSkill: '/kb/.agents/skills/kb-scout', repos: ['/kb/.kb-ref-worktrees/pusher'] };
+    const rule = '"mode" must be "product" and "answer" must be "" whatever the question looks like';
+    expect(kbQueryPrompt('/kb', paths, false, 'product')).toContain(rule);
+    expect(kbQueryPrompt('/kb', paths, false, 'tech')).not.toContain(rule);
+  });
+
   it('kb_query cannot ask the requester back', () => {
     const status = (kbQuerySchema['properties'] as Record<string, { enum?: string[] }>)['status'];
     expect(status?.enum).toEqual(['done', 'failed']);
