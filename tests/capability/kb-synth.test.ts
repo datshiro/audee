@@ -7,8 +7,8 @@ import { resolvePerson } from '../../src/authz/people.js';
 import { renderAnswerPage, setRenderAnswerPage } from '../../src/capability/kb-answer.js';
 import { KB_ANSWER_SCHEMA } from '../../src/capability/kb-answer-schema.js';
 import { GATHER_SCHEMA } from '../../src/capability/kb-gather.js';
-import { kbQuery, kbQueryDir, setKbRefSync } from '../../src/capability/kb-query.js';
-import { synthPrompt } from '../../src/capability/kb-synth.js';
+import { kbQuery, kbQueryDir, kbQueryPrompt, setKbRefSync } from '../../src/capability/kb-query.js';
+import { synthPrompt, techSynthPrompt } from '../../src/capability/kb-synth.js';
 import type { CapabilityContext } from '../../src/capability/types.js';
 import type { Job } from '../../src/queue/job.js';
 import { kbQueryNotKnownReply } from '../../src/render/html.js';
@@ -153,6 +153,20 @@ describe('kb_query gather and synthesise', () => {
     await kbQuery(h.ctx);
     expect(h.inputs).toHaveLength(1);
     expect(h.inputs[0]?.options.outputFormat).toEqual({ type: 'json_schema', schema: KB_ANSWER_SCHEMA });
+  });
+
+  it('holds every claim to what its own cite shows, with or without synthesis', () => {
+    const flat = (p: string): string => p.replaceAll(/\s+/gu, ' ');
+    const paths = { wiki: '/kb/w', querySkill: '/kb/q', scoutSkill: '/kb/s', repos: [] };
+    const entries = [{ id: 'E1', kind: 'src' as const, cite: 'a/b.go:1-1', about: '', quote: 'q', context: '' }];
+    for (const p of [synthPrompt('q?', entries, 'vi'), kbQueryPrompt('/kb', paths, false, 'product')].map(flat)) {
+      for (const want of ['keeping the conditions it states', 'its certainty', 'A journey step stays a step players or operators see', 'becomes several rules, each citing its own', '"summary" only restates what the steps and rules say', '"default" empty unless one shows the value']) {
+        expect(p).toContain(want);
+      }
+    }
+    for (const p of [techSynthPrompt('q?', entries, 'vi'), kbQueryPrompt('/kb', paths, false, 'tech')].map(flat)) {
+      expect(p).toContain('every statement is shown by one of its cites, keeping the conditions and certainty they state, and a part none shows is left out');
+    }
   });
 
   it('fences the evidence so a quote cannot close its block', () => {
