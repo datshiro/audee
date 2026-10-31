@@ -111,8 +111,10 @@ audee decides what reaches the reader; the model's own `src`/`kb`/`unverified` m
   baseline questions answered in product mode with 110 kept `src`/`kb` items (the single-session haiku baseline had
   125 items, none checked); the first two traps `not_known`; the Confluence trap carried its sync date; the "why" trap
   had no recorded reason; every kept cite resolved (`tests/live/kb-cites-check.live.test.ts`, `KB_EVAL_CITES=1`);
-  median $0.048 and p90 211 s per answer. The quote spike on haiku verified 45 of 46 quotes. The hand-graded
-  wrong-or-unsupported rate before (P0) and after (P1) is the owner's to grade.
+  median $0.048 and p90 211 s per answer. The quote spike on haiku verified 45 of 46 quotes. Graded against the
+  cited code and docs (blind draft over both sheets, contested verdicts re-verified independently), the
+  wrong-or-unsupported rate fell from P0 = 10.9% (15 of 138 claims) to P1 = 2.5% (3 of 118), within the targets of
+  half of P0 and at most 10%.
 - **Residual risk.** A file under a valid cite can carry text written to steer the synthesis model. The evidence is
   fenced and escaped as data and the model has no tools, but the text itself is not filtered.
 
