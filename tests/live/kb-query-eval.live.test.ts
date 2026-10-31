@@ -19,8 +19,22 @@ type Summary = { questions: Obj[]; medianCostUsd: number | null; p90DurationMs: 
 const enabled = process.env['KB_EVAL'] === '1';
 const ids = process.env['KB_EVAL_IDS']?.split(',').map((s) => s.trim()).filter((s) => s !== '');
 const questionsFile = process.env['KB_EVAL_QUESTIONS'];
-const pool: { id: string; question: string }[] = questionsFile !== undefined && questionsFile !== '' ? JSON.parse(readFileSync(questionsFile, 'utf8')) : questions;
-const selected = pool.filter((x) => ids === undefined || ids.includes(x.id));
+const selected = (enabled && questionsFile !== undefined && questionsFile !== '' ? replayQuestions(questionsFile) : questions).filter((x) => ids === undefined || ids.includes(x.id));
+
+// A questions file of the fixture's shape; ids name output folders, so they must be unique.
+function replayQuestions(file: string): { id: string; question: string }[] {
+  const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+  if (!Array.isArray(parsed)) throw new Error(`${file}: expected an array of {id, question}`);
+  const seen = new Set<string>();
+  return parsed.map((q: unknown, i) => {
+    const o = typeof q === 'object' && q !== null ? (q as Record<string, unknown>) : {};
+    const { id, question } = o;
+    if (typeof id !== 'string' || !/^[\w-]+$/u.test(id) || typeof question !== 'string' || question.trim() === '') throw new Error(`${file}: entry ${i} needs a plain string id and a non-empty question`);
+    if (seen.has(id)) throw new Error(`${file}: id ${id} appears twice`);
+    seen.add(id);
+    return { id, question };
+  });
+}
 
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -65,10 +79,22 @@ function gradingRows(id: string, answer: Obj | undefined): string[] {
   const product = isObj(answer['product']) ? answer['product'] : {};
   return list(product['readings']).flatMap((reading, r) => {
     const rd = isObj(reading) ? reading : {};
-    return (['journey', 'rules'] as const).flatMap((name) => list(rd[name]).map((item, i) => {
+    const items = (['journey', 'rules'] as const).flatMap((name) => list(rd[name]).map((item, i) => {
       const it = isObj(item) ? item : {};
-      return [id, r, name, i, it['evidence'], it['cite'], it['text'], ''].map(csv).join(',');
+      return [id, r, name, i, it['evidence'], it['cite'], it['text'], ''];
     }));
+    // The uncited fields are graded against the reading's kept cites, since nothing else backs them.
+    const cites = [...new Set(items.map((row) => String(row[5] ?? '')))].join('; ');
+    const purpose = isObj(rd['purpose']) ? rd['purpose'] : {};
+    const derived = [
+      [id, r, 'summary', 0, 'derived', cites, rd['summary'], ''],
+      ...list(rd['config']).map((item, i) => {
+        const c = isObj(item) ? item : {};
+        return [id, r, 'config', i, 'derived', cites, `${String(c['setting'] ?? '')} | ${String(c['where'] ?? '')} | default: ${String(c['default'] ?? '')}`, ''];
+      }),
+      ...(purpose['recorded'] === true ? [[id, r, 'purpose', 0, 'kb', purpose['source'], purpose['text'], '']] : []),
+    ];
+    return [...items, ...derived].map((row) => row.map(csv).join(','));
   });
 }
 

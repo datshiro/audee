@@ -19,7 +19,7 @@ import { type AnswerMode, answerMode, matches, notKnownOutcome, productOutcome, 
 import { gateTech, techMarkdown } from './kb-evidence.js';
 import { KB_TECH_SCHEMA } from './kb-tech-schema.js';
 import { GATHER_SCHEMA, type Gathered, parseGather } from './kb-gather.js';
-import { buildEvidencePack, KB_SYNTH_SYSTEM, KB_TECH_SYNTH_SYSTEM, mapSynthCites, mapTechCites, PRODUCT_FIELD_RULES, synthPrompt, techBlockRules, techSynthPrompt } from './kb-synth.js';
+import { buildEvidencePack, KB_SYNTH_SYSTEM, KB_TECH_SYNTH_SYSTEM, mapSynthCites, mapTechCites, PRODUCT_FIELD_RULES, productClaimRules, synthPrompt, techBlockRules, techSynthPrompt } from './kb-synth.js';
 import { KB_ANSWER_SCHEMA } from './kb-answer-schema.js';
 import { capabilityConfig, freshDir, keepOutput, keepResult, messageDir, sessionEvent, sessionInput } from './session.js';
 import type { Capability, CapabilityContext, CapabilityOutcome } from './types.js';
@@ -138,7 +138,7 @@ manager who knows Apollo's features but not its code, following the skill's prod
 product/, specs/, roadmap/ or explanatory/ states why it works this way, with that doc's wiki-relative path in
 purpose.source; code, comments and commit messages never count, and never infer a reason. Mark each journey step
 and rule "src" (checked in source; cite <service>/<path>:<line>), "kb" (only the KB says it; cite the doc) or "unverified" (cite
-empty). Only state what you read. An item you did not check in source or a KB doc is left out; audee removes
+empty). Only state what you read. ` + productClaimRules('source range or KB doc') + ` An item you did not check in source or a KB doc is left out; audee removes
 "unverified" items and any item whose cite does not resolve. Leave "sources" empty: audee fills it. When something you cannot fix stops you (a
 tool is denied, the KB is unreadable), answer status "failed" and say why in "notes". At most 5 notes, each under
 250 characters. Always set "topic": what the question asks, at most 12 words, in the same language as the question
