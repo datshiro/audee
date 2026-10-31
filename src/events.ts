@@ -24,6 +24,8 @@ export type Event = {
   toolUses?: string[];
   denials?: string[];
   token?: boolean; // shadow: the intent came from a trigger word, not the classifier
+  itemsKept?: number; // kb_query: claims that passed audee's evidence check
+  itemsRemoved?: number; // kb_query: claims audee removed
 };
 
 export const eventsPath = (dataDir: string): string => join(dataDir, 'events.jsonl');
@@ -35,6 +37,7 @@ const CIEL_OMITEMPTY: Array<[keyof Event, string]> = [
 ];
 const AUDEE_FIELDS: Array<[keyof Event, string]> = [
   ['shadow', 'shadow'], ['principal', 'principal'], ['allowed', 'allowed'], ['toolUses', 'tool_uses'], ['denials', 'denials'], ['token', 'token'],
+  ['itemsKept', 'items_kept'], ['itemsRemoved', 'items_removed'],
 ];
 
 export function eventLine(e: Event, now = new Date()): string {

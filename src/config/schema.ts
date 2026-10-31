@@ -44,6 +44,7 @@ const Capability = z.strictObject({
   mcp: z.array(z.string()).optional(),
   tools: z.array(z.string()).optional(),
   default_mode: z.enum(['tech', 'product']).optional(), // kb_query: the answer style when the question has no --tech
+  synth_model: z.string().optional(), // kb_query: tool-less model that writes the answer from checked evidence; unset keeps one session
 });
 
 // Ciel's per-capability defaults (config.go loadConfig), keyed by capability name; iam_trace's also go to any capability
