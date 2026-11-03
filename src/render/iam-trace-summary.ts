@@ -4,7 +4,7 @@ import { type CheckedPoint, ictTime, type PointKind } from '../capability/iam-tr
 import { checkChannels, missingChannelTexts } from './iam-trace-channels.js';
 import { KIND_VI, type LayoutPlayer, UNKNOWN_JOURNEY } from './iam-trace-layout.js';
 
-export type VerdictKind = 'received' | 'sent_wrong_channel' | 'sent_no_client' | 'blocked' | 'unclear';
+export type VerdictKind = 'received' | 'sent_wrong_channel' | 'sent_no_client' | 'stopped_after_check' | 'blocked' | 'unclear';
 export type PoAction = { cause: string; owner: string; next: string };
 export type PoSummary = { verdict: { kind: VerdictKind; text: string }; story: string[]; actions: PoAction[] };
 
@@ -14,6 +14,7 @@ export const PO_TIME_NOTE = 'Giờ là lúc kho log nhận dòng log, có thể 
 const MAX_LANES = 3;
 const MAX_NODES = 12;
 const RESULT_KINDS = new Set<PointKind>(['check_call', 'condition', 'frequency']);
+const SERVER_KINDS = new Set<PointKind>(['trigger', 'wait_end', 'check_call', 'condition', 'frequency', 'send']);
 const PO_OWNER = 'PO hoặc operator của campaign';
 const GAME_SDK = 'Team game / SDK';
 
@@ -79,6 +80,10 @@ export function poSummary(player: LayoutPlayer): PoSummary {
   const check = checkChannels(player.points);
   const blocks = seen.filter((p) => p.outcome === 'block');
   const block = blocks[0];
+  // The newest server step is a check whose response the log does not print: the run stopped there, and only the
+  // run's history can say why. Any seen block is older, so it explains an earlier run, not this one.
+  const last = seen.filter((p) => SERVER_KINDS.has(p.kind)).at(-1);
+  const stopped = send === undefined && last?.kind === 'check_call' && last.result.trim() === '' ? last : undefined;
 
   let verdict: PoSummary['verdict'];
   if (send !== undefined && receipt !== undefined) {
@@ -87,6 +92,9 @@ export function poSummary(player: LayoutPlayer): PoSummary {
     verdict = { kind: 'sent_wrong_channel', text: `Apollo đã gửi lúc ${clock(send)}, nhưng game client đăng ký sai kênh nên popup không tới được người chơi; chưa ghi nhận phía game client.` };
   } else if (send !== undefined) {
     verdict = { kind: 'sent_no_client', text: `Apollo đã gửi lúc ${clock(send)}; chưa ghi nhận phía game client.` };
+  } else if (stopped !== undefined) {
+    const earlier = blocks.length > 0 ? ` Trước đó người chơi đã bị chặn ${blocks.length} lần trong khoảng tra.` : '';
+    verdict = { kind: 'stopped_after_check', text: `Journey dừng sau bước ${businessStep(stopped.kind, stopped.label)} lúc ${clock(stopped)}: log không in kết quả của bước này và không ghi nhận bước nào sau đó.${earlier}` };
   } else if (block !== undefined) {
     const result = block.result.trim() !== '' ? `: ${block.result.trim()}` : '';
     const others = blocks.length > 1 ? ` Còn ${blocks.length - 1} lần chặn khác.` : '';
@@ -102,6 +110,7 @@ export function poSummary(player: LayoutPlayer): PoSummary {
     else if (block.kind === 'frequency') actions.push({ cause: 'Vượt giới hạn tần suất gửi', owner: PO_OWNER, next: 'Kiểm tra cấu hình tần suất gửi của campaign.' });
     else actions.push({ cause: 'Người chơi không thỏa điều kiện của journey', owner: PO_OWNER, next: 'Kiểm tra lại điều kiện và cấu hình journey/campaign.' });
   }
+  if (verdict.kind === 'stopped_after_check') actions.push({ cause: 'Journey dừng sau một bước kiểm tra, log không in kết quả', owner: 'Apollo dev', next: 'Xem Temporal history của workflow ở mốc Event trigger (Chi tiết kỹ thuật) để biết kết quả điều kiện; nếu dữ liệu CDP trả về trống, hỏi team CDP/GIO.' });
   if (verdict.kind === 'sent_wrong_channel') actions.push({ cause: 'Game client đăng ký sai game hoặc sai kênh', owner: GAME_SDK, next: 'Kiểm tra game SDK khởi tạo đúng game và đăng ký đúng kênh.' });
   for (const cause of missingChannelTexts(check)) actions.push({ cause, owner: GAME_SDK, next: 'Kiểm tra SDK đăng ký đủ kênh real time và one time.' });
   if (verdict.kind === 'sent_no_client') actions.push({ cause: 'Apollo đã gửi nhưng chưa ghi nhận phía game client', owner: 'Team game', next: 'Kiểm tra game client có nhận và hiển thị IAM không.' });

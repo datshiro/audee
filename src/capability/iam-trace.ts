@@ -87,6 +87,7 @@ Points, one line each, with the kind in brackets. You see only a log line's mess
 - [wait_end] "wait operation completed".
 - [check_call] "[TRACE] <API name> call request" with its "receive response done": ONE point per call, at the request time; "result" is what the response line prints (status, value, country); the evidence is the request line, then " || ", then the response line. Label it by purpose (enrichment, validation, CDP), not by the API name.
 - [condition] "condition evaluation result". When the message prints a target node, that is the NEXT node, so a result whose target is B is the outcome of node A's condition.
+- [condition] workflow-worker-journey "past behavior is not satisfied": the run did not pass the condition into its next node, outcome "block", result empty. The line prints no user, journey or node: it belongs to the run whose check_call shares its traceId, and to that run's journey. trace_identity does not return it, so once the players' runs are known, call search_logs "past behavior is not satisfied" AND "<id>" for each resolved user id and role id over the window.
 - [frequency] "condition into frequency_check_*" (pass) or "frequency check rejected".
 - [send] "[TRACE] SendInAppMessage call request" and the message-delivery "/api/v1/message/send" for this campaign.
 - [delivered] the message-delivery ack for the roleId around the send second; an absent ack is not_recorded, never "not delivered".
@@ -113,7 +114,7 @@ Reading rules:
 Output rules:
 - status "done": one users entry per requested id, with "id" exactly as requested and "user_id"/"role_id" as resolved or empty; at most 60 points per user.
 - "finding": 1-2 Vietnamese sentences, at most 300 characters.
-- "conclusion": 2-4 Vietnamese bullets, each under 250 characters: which journey sent the IAM or blocked the user and why, and what the client logs show. Only what the points support; say "không ghi nhận" for what is missing. Empty array for status need_input or failed.
+- "conclusion": 2-4 Vietnamese bullets, each under 250 characters: which journey sent the IAM or blocked the user and why, and what the client logs show. Only what the points support; say "không ghi nhận" for what is missing. When a run's last line is a check_call that prints no result and nothing follows it, say the journey stopped after that step and its result is not in the logs, and whether the same step was followed by "past behavior is not satisfied" in the user's other runs. Empty array for status need_input or failed.
 - status "need_input": Vietnamese "missing", only when the logs cannot tell which IAM or user is meant.
 - status "failed": Vietnamese "notes", when list_services shows no services or a tool is denied.
 - "notes": at most 5, each under 250 characters, in Vietnamese.`;

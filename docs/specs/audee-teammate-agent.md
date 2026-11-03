@@ -196,7 +196,11 @@ owner notices carry that name as their kind).
   message prints it, otherwise the point is inferred (from what ran next) or "không ghi nhận" (never "không xảy ra").
   Eleven point kinds: server kinds trigger, wait_end, check_call, condition, frequency, send; client kinds delivered,
   publish, subscribe, sdk_event, inbox. Temporal rows and external business points are out of scope; the page says
-  "Temporal không kiểm tra".
+  "Temporal không kiểm tra". workflow-worker-journey's "past behavior is not satisfied" is a condition block tied to
+  its run by traceId; trace_identity does not return it, so the prompt has the session search_logs that phrase AND
+  each resolved user and role id (added 2026-11-03: the line existed for four earlier runs of a traced player and the
+  trace never saw it). The iam-trace MCP ships neither the line's own `ts` nor a response body, so a check call's
+  result (for example a CDP value with source fallback) cannot reach the page; that is a request to apollo/kb.
 - Subscription check (added 2026-10-26 after the owner compared the page with the reference doc): a `publish` point is
   message-delivery publishing the message to a channel, a `subscribe` point is one SDK session subscribing (at most 8,
   or one not_recorded point when no subscribe line exists); both carry the channel copied from the entry's `channel` field (the evidence is the message text plus
@@ -278,7 +282,11 @@ owner notices carry that name as their kind).
   (`/inbox/messages/read`; inbox counts do not count); the owner counts the ack as receipt. A receipt timed before the
   send is ignored; one with no usable time is kept and prints `?`. "mở" is an SDK open/read or an inbox mark-read.
   Then "Apollo đã gửi …, nhưng game client đăng ký sai kênh …" when the channel verdict is game or mismatch; then
-  "Apollo đã gửi …; chưa ghi nhận phía game client"; then "Bị chặn tại bước …" at the earliest seen block ("Còn N lần
+  "Apollo đã gửi …; chưa ghi nhận phía game client"; then "Journey dừng sau bước … lúc …" when there is no seen send
+  and the newest seen server step is a check call whose result the log does not print ("Trước đó người chơi đã bị chặn
+  N lần …" when older seen blocks exist; owner: an Apollo developer, who reads the run's Temporal history and asks
+  CDP/GIO when the CDP data is empty; added 2026-11-03 after a trace answered "Chưa rõ" where CDP had returned no
+  register date); then "Bị chặn tại bước …" at the earliest seen block ("Còn N lần
   chặn khác" when there are more), where a seen send rejected by its line counts as a block, not a send; otherwise
   "Chưa rõ" (with or without an inferred send). A seen send wins over any seen block, in its own journey or another.
   Verdicts ignore the verification state, so an unverified trace still gets one. The text never says "Không nhận" or

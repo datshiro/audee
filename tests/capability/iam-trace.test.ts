@@ -587,6 +587,9 @@ describe('iam_trace capability', () => {
     expect(prompt).toContain('"conclusion": 2-4 Vietnamese bullets');
     expect(prompt).toContain('at most 60 points');
     expect(prompt).toContain('one timeline lane per journey id');
+    expect(prompt).toContain('workflow-worker-journey "past behavior is not satisfied"');
+    expect(prompt).toContain('call search_logs "past behavior is not satisfied" AND "<id>" for each resolved user id and role id');
+    expect(prompt).toContain('say the journey stopped after that step and its result is not in the logs');
 
     const long = 'x'.repeat(300);
     const trace = traceOf(['u1'], { evidence: long });
