@@ -112,6 +112,7 @@ Reading rules:
 - For a missing line write "không ghi nhận", never "không xảy ra".
 
 Output rules:
+- "journey": the journey id you traced as the request's: the requested journeyId, the one campaign_journey returned, or, when it found none, the one you took from the players' lines (the conclusion then says it was not confirmed); empty only when you found no journey. audee answers the PO for that journey only.
 - status "done": one users entry per requested id, with "id" exactly as requested and "user_id"/"role_id" as resolved or empty; at most 60 points per user.
 - "finding": 1-2 Vietnamese sentences, at most 300 characters.
 - "conclusion": 2-4 Vietnamese bullets, each under 250 characters: which journey sent the IAM or blocked the user and why, and what the client logs show. Only what the points support; say "không ghi nhận" for what is missing. When a run's last line is a check_call that prints no result and nothing follows it, say the journey stopped after that step and its result is not in the logs, and whether the same step was followed by "past behavior is not satisfied" in the user's other runs. Empty array for status need_input or failed.

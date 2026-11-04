@@ -1,6 +1,6 @@
 // The PO summary of one player: a verdict, the steps in business words and who acts next. audee derives it only from
 // seen points, in fixed Vietnamese; the only model text it copies is a step's label and result. Raw text: the page escapes.
-import { type CheckedPoint, ictTime, type PointKind } from '../capability/iam-trace-schema.js';
+import { type CheckedPoint, ictTime, JOURNEY_UNPROVEN_WHY, type PointKind, rowOf } from '../capability/iam-trace-schema.js';
 import { checkChannels, missingChannelTexts } from './iam-trace-channels.js';
 import { KIND_VI, type LayoutPlayer, UNKNOWN_JOURNEY } from './iam-trace-layout.js';
 
@@ -68,8 +68,25 @@ function story(player: LayoutPlayer, receipt: CheckedPoint | undefined, open: Ch
   return lines;
 }
 
+export const JOURNEY_TAG_NOTE = 'Dòng log không ghi journey id; audee gắn theo journey đã tra.';
+
+// The verdict answers for the requested journey when the trace names one: another journey's send or block, even on the
+// same traceId, is another campaign's. There a line the verifier kept but whose text names no journey still counts,
+// with a note, since the session tagged it to the journey it traced.
+function verdictPoints(player: LayoutPlayer): { points: CheckedPoint[]; tagged: (p: CheckedPoint | undefined) => boolean } {
+  const server = player.points.filter((p) => rowOf(p.kind) === 'server');
+  if (player.focus === '' || !server.some((p) => p.journey === player.focus)) return { points: player.points, tagged: () => false };
+  const tagged = (p: CheckedPoint | undefined): boolean => p !== undefined && p.state === 'inferred' && p.why === JOURNEY_UNPROVEN_WHY;
+  const points = player.points
+    .filter((p) => rowOf(p.kind) === 'client' || p.journey === player.focus)
+    .map((p) => (tagged(p) ? { ...p, state: 'seen' as const } : p));
+  const unproven = new Set(server.filter((p) => p.journey === player.focus && tagged(p)).map((p) => p.ref));
+  return { points, tagged: (p) => p !== undefined && unproven.has(p.ref) };
+}
+
 export function poSummary(player: LayoutPlayer): PoSummary {
-  const seen = byTime(player.points.filter((p) => p.state === 'seen'));
+  const scoped = verdictPoints(player);
+  const seen = byTime(scoped.points.filter((p) => p.state === 'seen'));
   // A send the line shows as rejected is a block, not a send.
   const send = seen.find((p) => p.kind === 'send' && p.outcome !== 'block');
   const sentMs = send !== undefined ? msOf(send) : undefined;
@@ -102,9 +119,11 @@ export function poSummary(player: LayoutPlayer): PoSummary {
     const others = blocks.length > 1 ? ` Còn ${blocks.length - 1} lần chặn khác.` : '';
     verdict = { kind: 'blocked', text: `Bị chặn tại bước ${businessStep(block.kind, block.label)}${result}, lúc ${clock(block)}.${others}` };
   } else {
-    const inferred = player.points.some((p) => p.kind === 'send' && p.state === 'inferred');
+    const inferred = scoped.points.some((p) => p.kind === 'send' && p.state === 'inferred');
     verdict = { kind: 'unclear', text: inferred ? 'Chưa rõ: Apollo có thể đã gửi (suy ra) nhưng không có dòng log gửi trực tiếp.' : 'Chưa rõ: không ghi nhận bước Apollo gửi IAM trong khoảng đã tra.' };
   }
+
+  if (scoped.tagged(send ?? stopped ?? block)) verdict = { ...verdict, text: `${verdict.text} ${JOURNEY_TAG_NOTE}` };
 
   const actions: PoAction[] = [];
   if (verdict.kind === 'blocked' && block !== undefined) {

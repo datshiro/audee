@@ -69,6 +69,7 @@ const pt = (kind: TracePoint['kind'], state: TracePoint['state'], time: string, 
 function traceOf(ids: string[], over: { finding?: string; evidence?: string } = {}): TraceResult {
   return {
     status: 'done',
+    journey: '',
     finding: over.finding ?? 'IAM đã được gửi và client đã nhận.',
     conclusion: ['Journey J1 đã gửi IAM.'],
     users: ids.map((id) => ({
@@ -372,7 +373,7 @@ describe('iam_trace capability', () => {
   });
 
   it('TestIamTraceSessionNeedInput', async () => {
-    const structured = { status: 'need_input', finding: '', conclusion: [], users: [], missing: ['không rõ <b>IAM</b>'], notes: [] };
+    const structured = { status: 'need_input', journey: '', finding: '', conclusion: [], users: [], missing: ['không rõ <b>IAM</b>'], notes: [] };
     const { ctx, inputs, dir } = harness({ trace: traceRun(structured), verify: VERIFY_OK });
     const outcome = await iamTrace(ctx);
     expect(inputs).toHaveLength(1);
@@ -401,7 +402,7 @@ describe('iam_trace capability', () => {
     const hidden = [{ ref: 'u1-p2', verdict: 'CORRECTED', time: '2026-10-26T01:00:05Z', source_field: '_time', evidence: 'ok J1', state: 'seen', why: `token ${SERVER_TOKEN}` }, { ref: 'u1-p1', verdict: 'CONFIRMED' }, { ref: 'u1-p3', verdict: 'CONFIRMED' }];
     const unseen = await iamTrace(harness({ trace: TRACE_OK, verify: verifyRun(hidden) }).ctx);
     expect(unseen.reply?.html).toBe(iamTraceWithheldReply);
-    const missing = { status: 'need_input', finding: '', conclusion: [], users: [], missing: [`token ${SERVER_TOKEN}`], notes: [] };
+    const missing = { status: 'need_input', journey: '', finding: '', conclusion: [], users: [], missing: [`token ${SERVER_TOKEN}`], notes: [] };
     const needInput = await iamTrace(harness({ trace: traceRun(missing), verify: VERIFY_OK }).ctx);
     expect(needInput.reply?.html).toBe(iamTraceWithheldReply);
   });
@@ -493,7 +494,7 @@ describe('iam_trace capability', () => {
       { name: 'trace throws', o: { trace: sentinelError, verify: VERIFY_OK }, replyClean: true },
       { name: 'trace contract', o: { trace: traceRun({ ...traceOf(ids), extra: 'USER-SENTINEL-2' }), verify: VERIFY_OK }, replyClean: true },
       { name: 'withheld', o: { trace: traceRun(traceOf(ids, { evidence: 'USER-SENTINEL-2 glsa_abcdefghijklmnopqrstuvwxyz' })), verify: VERIFY_OK }, replyClean: true },
-      { name: 'session need_input', o: { trace: traceRun({ status: 'need_input', finding: 'CAMP-SENTINEL-1', conclusion: [], users: [], missing: ['USER-SENTINEL-2?'], notes: [] }), verify: VERIFY_OK }, replyClean: false },
+      { name: 'session need_input', o: { trace: traceRun({ status: 'need_input', journey: '', finding: 'CAMP-SENTINEL-1', conclusion: [], users: [], missing: ['USER-SENTINEL-2?'], notes: [] }), verify: VERIFY_OK }, replyClean: false },
       { name: 'request incomplete', o: { trace: ok, verify: VERIFY_OK, input: 'CAMP-SENTINEL-1' }, replyClean: false },
       { name: 'setup failed', o: { trace: ok, verify: VERIFY_OK, userConfigPath: missingConfig }, replyClean: true },
       { name: 'render failed', o: { trace: ok, verify: (dir: string) => { mkdirSync(join(dir, 'page.html')); return VERIFY_OK; } }, replyClean: true },
@@ -592,6 +593,7 @@ describe('iam_trace capability', () => {
     expect(prompt).toContain('say the journey stopped after that step and its result is not in the logs');
     expect(prompt).toContain('when the entry has a "ts" field, copy it exactly into "time" and set "source_field" to "ts"');
     expect(prompt).toContain('When the entry has a "check" field');
+    expect(prompt).toContain('"journey": the journey id you traced as the request\'s');
     expect(prompt).toContain('end the evidence with " check=" and that field');
     expect(prompt).toContain('its check field prints it (satisfied false is a block)');
 
