@@ -59,10 +59,10 @@ function windowRule(req: IamTraceRequest, since: string): string {
   return lines.join('\n');
 }
 
-const TIME_RULE = 'Time: copy the entry time exactly as the tool shows it into "time" and set "source_field" to "_time". Only when the message text itself prints a time, copy that printed value instead and name it as printed in "source_field". Never convert time zones; audee converts.';
+const TIME_RULE = 'Time: when the entry has a "ts" field, copy it exactly into "time" and set "source_field" to "ts": it is when the line was written. Otherwise copy the entry time exactly as the tool shows it and set "source_field" to "_time"; only when the message text itself prints a time, copy that printed value instead and name it as printed in "source_field". Never convert time zones; audee converts.';
 const JOURNEY_RULE = 'Journey: every server point carries "journey", the id of the journey it belongs to, copied from its own log line (the workflow id journey-<journeyId>-<userId>|<time>, a journeyId or journeyInfo id, an API path /journeys/<id>). A line that prints no journey id but shares a traceId with a line that does belongs to that journey: keep the traceId text in the evidence. audee shows a point as inferred unless its own evidence or a same-traceId evidence of another point carries the journey id; if you can only guess the journey, tag the guess and say so in "why". Leave "journey" empty for delivered, publish, subscribe, sdk_event and inbox points.';
 const LABEL_RULE = 'Label: a short name of at most 24 characters that says what the step does in the data flow, not which service ran it: "Event trigger", "Evaluate điều kiện", "Enrichment: role" or "Enrichment: user" (loading player data), "Validation: country" (a gate or eligibility check), "CDP: <what>" (a CDP or external API call), "Frequency check", "Gửi IAM". Never a service name, URL, path, id or sentence: those belong in the evidence. Name the same step the same way every time, so repeats collapse.';
-const RESULT_RULE = 'Result: at most 20 characters, what the step returned or decided, copied from what the line prints ("đạt", "> 175 ✓", "country OT", "lần đầu ✓", "đã gửi rồi", "HTTP 200"). When the line prints no result, leave it empty and never guess one; the page then says "không in kết quả". Empty on not_recorded points.';
+const RESULT_RULE = 'Result: at most 20 characters, what the step returned or decided, copied from what the line prints ("đạt", "> 175 ✓", "country OT", "lần đầu ✓", "đã gửi rồi", "HTTP 200"). When the entry has a "check" field (what the line decided, read by the tool from the line\'s own fields), take the result from it: a CDP check_call\'s feature value and source such as "0 (fallback)", with the feature in the label ("CDP: register_at"); a condition\'s satisfied flag or stop reason. Then end the evidence with " check=" and that field, so the verifier can see it. When neither the line nor its check prints a result, leave it empty and never guess one; the page then says "không in kết quả". Empty on not_recorded points.';
 const CHANNEL_RULE = 'Channel: set "channel" only on publish and subscribe points, copied exactly from the entry\'s "channel" field (the tools return it beside the message for lines that name a Centrifugo channel; the message text itself is often just "subscribe"); leave it empty on every other point. The evidence of a publish or subscribe point is the message text, then " channel=", then that channel, so audee can check it. audee compares the published channel with the subscribed ones itself. Put the publish and subscribe points under the same player entry, with both "user_id" and "role_id" filled. Do not state the verdict in a point; say it in the conclusion only when the lines show both.';
 const OUTCOME_RULE = 'Outcome: "block" when the point stops the user there (condition false, frequency rejected, excluded by a gate), "pass" when a check passed or an action succeeded (send accepted), "info" otherwise.';
 const EVIDENCE_RULE = 'Evidence: one line verbatim, at most 600 characters. Replace the value of every token, key, secret or password field with <redacted>. Never quote push tokens or credentials.';
@@ -82,11 +82,12 @@ ${requestBlock(req)}
 
 ${windowRule(req, req.since)}
 ${journeyLookupRule(req, req.since)}
-Points, one line each, with the kind in brackets. You see only a log line's message text, its entry time, its detail and, for lines that name a Centrifugo channel, its "channel" field, so match a point only on what those show.
+Points, one line each, with the kind in brackets. You see only a log line's message text, its entry time, its own "ts" when the tool ships it, its detail, its "check" field (a check's result) and, for lines that name a Centrifugo channel, its "channel" field, so match a point only on what those show.
 - [trigger] "journey workflow executed"; the workflow id journey-<journeyId>-<userId>|<event time> also carries it.
 - [wait_end] "wait operation completed".
 - [check_call] "[TRACE] <API name> call request" with its "receive response done": ONE point per call, at the request time; "result" is what the response line prints (status, value, country); the evidence is the request line, then " || ", then the response line. Label it by purpose (enrichment, validation, CDP), not by the API name.
 - [condition] "condition evaluation result". When the message prints a target node, that is the NEXT node, so a result whose target is B is the outcome of node A's condition.
+- [condition] workflow-worker-journey "past behavior is not satisfied": the run did not pass the condition into its next node, outcome "block", result empty. The line prints no user, journey or node: it belongs to the run whose check_call shares its traceId, and to that run's journey. trace_identity does not return it, so once the players' runs are known, call search_logs "past behavior is not satisfied" AND "<id>" for each resolved user id and role id over the window.
 - [frequency] "condition into frequency_check_*" (pass) or "frequency check rejected".
 - [send] "[TRACE] SendInAppMessage call request" and the message-delivery "/api/v1/message/send" for this campaign.
 - [delivered] the message-delivery ack for the roleId around the send second; an absent ack is not_recorded, never "not delivered".
@@ -106,14 +107,14 @@ Reading rules:
 - ${CHANNEL_RULE}
 - ${OUTCOME_RULE}
 - States: seen = a line you retrieved shows it in its message text. inferred = no line shows it, but what ran next proves it (for example, worker lines lost after a wait: the next node's call or the message-delivery send proves the check passed); say why in "why". not_recorded = no line found; time and evidence empty.
-- A condition outcome or an SDK event name is seen only if the message prints it; otherwise the point is inferred (what ran next proves it; say why) or not_recorded.
+- A condition outcome or an SDK event name is seen only if the message or its check field prints it (satisfied false is a block); otherwise the point is inferred (what ran next proves it; say why) or not_recorded.
 - Cross-check every SDK read against inbox mark-read. An inbox read with no SDK event is its own [inbox] point. Out-app opt-in/opt-out events are push-permission events; leave them out.
 - For a missing line write "không ghi nhận", never "không xảy ra".
 
 Output rules:
 - status "done": one users entry per requested id, with "id" exactly as requested and "user_id"/"role_id" as resolved or empty; at most 60 points per user.
 - "finding": 1-2 Vietnamese sentences, at most 300 characters.
-- "conclusion": 2-4 Vietnamese bullets, each under 250 characters: which journey sent the IAM or blocked the user and why, and what the client logs show. Only what the points support; say "không ghi nhận" for what is missing. Empty array for status need_input or failed.
+- "conclusion": 2-4 Vietnamese bullets, each under 250 characters: which journey sent the IAM or blocked the user and why, and what the client logs show. Only what the points support; say "không ghi nhận" for what is missing. When a run's last line is a check_call that prints no result and nothing follows it, say the journey stopped after that step and its result is not in the logs, and whether the same step was followed by "past behavior is not satisfied" in the user's other runs. Empty array for status need_input or failed.
 - status "need_input": Vietnamese "missing", only when the logs cannot tell which IAM or user is meant.
 - status "failed": Vietnamese "notes", when list_services shows no services or a tool is denied.
 - "notes": at most 5, each under 250 characters, in Vietnamese.`;

@@ -211,7 +211,7 @@ ${channelSection(players)}
 ${inferredSection(players)}
 <section><h2>Bằng chứng</h2>
 <table><thead><tr><th>Mốc</th><th>Giờ (ICT)</th><th>Trường</th><th>Trạng thái</th><th>Bằng chứng</th></tr></thead><tbody>${players.flatMap((pl) => pl.points.map((p) => tableRow(p, pl, players.length > 1))).join('')}</tbody></table></section>
-<footer><h3>Ghi chú</h3><ul>${notes}<li>Giờ là giờ kho log (_time), có thể lệch so với lúc dòng log được ghi.</li>${marked ? '<li>† giờ in trong nội dung dòng log, khác giờ kho log.</li>' : ''}<li>* suy ra: không có dòng log trực tiếp, suy từ bước chạy sau hoặc từ liên kết journey.</li><li>Không gồm Temporal và các mốc nghiệp vụ của team khác.</li></ul></footer>
+<footer><h3>Ghi chú</h3><ul>${notes}<li>Giờ ${marked ? 'không có † ' : ''}là giờ kho log (_time), có thể lệch so với lúc dòng log được ghi.</li>${marked ? '<li>† giờ ghi trong chính dòng log (trường ts, hoặc giờ in trong nội dung), không phải giờ kho log.</li>' : ''}<li>* suy ra: không có dòng log trực tiếp, suy từ bước chạy sau hoặc từ liên kết journey.</li><li>Không gồm Temporal và các mốc nghiệp vụ của team khác.</li></ul></footer>
 </main>
 </body>
 </html>

@@ -115,9 +115,9 @@ describe('iam trace page', () => {
     const timeline = between(page, '<h2>Timeline</h2>', '<h2>Kiểm tra kênh');
     expect(timeline).toContain('>08:00:00<');
     expect(timeline).not.toContain('≈');
-    expect(page).toContain('Giờ là giờ kho log (_time)');
+    expect(page).toContain('Giờ không có † là giờ kho log (_time)');
     expect(timeline).toContain('08:02:03 †');
-    expect(page).toContain('† giờ in trong nội dung dòng log');
+    expect(page).toContain('† giờ ghi trong chính dòng log (trường ts');
     expect(page).toContain('<td>25/10 08:02:03.123 †</td>');
     expect(page).toContain('<td>25/10 08:00:00</td>');
     expect(page).toContain('<td>?</td>');
