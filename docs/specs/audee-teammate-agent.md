@@ -199,8 +199,12 @@ owner notices carry that name as their kind).
   "Temporal không kiểm tra". workflow-worker-journey's "past behavior is not satisfied" is a condition block tied to
   its run by traceId; trace_identity does not return it, so the prompt has the session search_logs that phrase AND
   each resolved user and role id (added 2026-11-03: the line existed for four earlier runs of a traced player and the
-  trace never saw it). The iam-trace MCP ships neither the line's own `ts` nor a response body, so a check call's
-  result (for example a CDP value with source fallback) cannot reach the page; that is a request to apollo/kb.
+  trace never saw it). From apollo-debug-mcp branch `feature/log-tools-ts-and-check` (2026-11-04) the log tools ship
+  the line's own `ts` and a `check` field: an allowlisted, redacted projection of what the line decided (HTTP status
+  and CDP features as `name=value(source)`, a node's id, isSatisfied, stopReason), never the body. The prompt takes
+  `time` from `ts` with source_field `ts` when present (the page marks it †, "giờ ghi trong chính dòng log"), takes a
+  check call's or condition's result from `check`, and ends the evidence with ` check=<field>` so the verifier sees it.
+  Against an MCP build without these fields the prompt falls back to `_time` and an empty result.
 - Subscription check (added 2026-10-26 after the owner compared the page with the reference doc): a `publish` point is
   message-delivery publishing the message to a channel, a `subscribe` point is one SDK session subscribing (at most 8,
   or one not_recorded point when no subscribe line exists); both carry the channel copied from the entry's `channel` field (the evidence is the message text plus
@@ -283,10 +287,11 @@ owner notices carry that name as their kind).
   send is ignored; one with no usable time is kept and prints `?`. "mở" is an SDK open/read or an inbox mark-read.
   Then "Apollo đã gửi …, nhưng game client đăng ký sai kênh …" when the channel verdict is game or mismatch; then
   "Apollo đã gửi …; chưa ghi nhận phía game client"; then "Journey dừng sau bước … lúc …" when there is no seen send
-  and the newest seen server step is a check call whose result the log does not print ("Trước đó người chơi đã bị chặn
-  N lần …" when older seen blocks exist; owner: an Apollo developer, who reads the run's Temporal history and asks
-  CDP/GIO when the CDP data is empty; added 2026-11-03 after a trace answered "Chưa rõ" where CDP had returned no
-  register date); then "Bị chặn tại bước …" at the earliest seen block ("Còn N lần
+  and the newest seen server step is a check call, with its result when the line prints one ("bước này trả về …") and
+  "log không in kết quả" otherwise ("Trước đó người chơi đã bị chặn N lần …" when older seen blocks exist; owner: an
+  Apollo developer, who compares the result with the journey's condition, reads the run's Temporal history and asks
+  CDP/GIO when the CDP data is empty or fallback; added 2026-11-03 after a trace answered "Chưa rõ" where CDP had
+  returned no register date); then "Bị chặn tại bước …" at the earliest seen block ("Còn N lần
   chặn khác" when there are more), where a seen send rejected by its line counts as a block, not a send; otherwise
   "Chưa rõ" (with or without an inferred send). A seen send wins over any seen block, in its own journey or another.
   Verdicts ignore the verification state, so an unverified trace still gets one. The text never says "Không nhận" or
@@ -302,7 +307,7 @@ owner notices carry that name as their kind).
   owner found confusing (2026-10-28); the section shows no evidence or channel names. Times are still the log store's, which the
   section says can lag, without a minute figure. The notice starts with one verdict line per player. Limits: a model
   label can still carry a technical word into the story; an inferred send loses to a seen block in another journey.
-  Times from inside the log line need the iam-trace MCP to return a parsed `ts` (a request to apollo/kb, not done).
+  Times from inside the log line come from the MCP's `ts` field when it ships one.
 - Events: status (`done`, `need_input`, `withheld`, `failed`, `unverified`), a fixed reason, cost, duration, turns and
   tool names only; never traced ids, message text or log lines. The job folder `iamtrace/<message id>` is deleted after
   a verified page is delivered, kept otherwise, and expires with the other scratch folders; a rerun or retry wipes a

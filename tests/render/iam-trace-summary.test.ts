@@ -58,7 +58,7 @@ const CASES: Case[] = [
     kind: 'stopped_after_check',
     text: 'Journey dừng sau bước Tra dữ liệu CDP (role state) lúc 16:58:46: log không in kết quả của bước này và không ghi nhận bước nào sau đó.',
     owners: ['Apollo dev'],
-    cause: 'Journey dừng sau một bước kiểm tra, log không in kết quả',
+    cause: 'Journey dừng sau một bước kiểm tra',
   },
   {
     name: 'stopped after a check, blocked at it in earlier runs',
@@ -72,11 +72,13 @@ const CASES: Case[] = [
     owners: ['Apollo dev'],
   },
   {
-    name: 'a check with a printed result is not a stop',
-    points: [point({ kind: 'check_call', label: 'CDP: role state', result: 'HTTP 200', time: at('10:00:00') })],
-    kind: 'unclear',
+    name: 'stopped after a check that prints its result',
+    points: [point({ kind: 'check_call', label: 'CDP: register_at', result: '0 (fallback)', source_field: 'ts', time: at('16:58:43') })],
+    kind: 'stopped_after_check',
+    text: 'Journey dừng sau bước Tra dữ liệu CDP (register_at) lúc 16:58:43: bước này trả về 0 (fallback) và không ghi nhận bước nào sau đó.',
     owners: ['Apollo dev'],
   },
+  { name: 'a check followed by a send is not a stop', points: [point({ kind: 'check_call', label: 'CDP: register_at', time: at('09:59:59') }), send()], kind: 'sent_no_client', owners: ['Team game'] },
   {
     name: 'a block after the check wins',
     points: [point({ kind: 'check_call', label: 'CDP: role state', time: at('10:00:00') }), point({ kind: 'condition', label: 'Evaluate điều kiện', outcome: 'block', time: at('10:00:01') })],
