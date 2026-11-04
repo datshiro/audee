@@ -31,7 +31,7 @@ export type LayoutNode = {
   count: number;
 };
 export type LayoutLane = { title: string; journey: string; sub: string; nodes: LayoutNode[]; points: CheckedPoint[] }; // journey: the full id, empty for the client lane or an unknown journey
-export type LayoutPlayer = { ids: string[]; userId: string; roleId: string; journeys: LayoutLane[]; client: LayoutLane; points: CheckedPoint[] };
+export type LayoutPlayer = { ids: string[]; userId: string; roleId: string; journeys: LayoutLane[]; client: LayoutLane; points: CheckedPoint[]; focus: string }; // focus: the requested journey id, empty when not known
 
 export const UNKNOWN_JOURNEY = 'Journey chưa rõ';
 export const CLIENT_LANE = 'Client';
@@ -192,8 +192,10 @@ function laneOf(title: string, points: CheckedPoint[], journey = ''): LayoutLane
 
 // The requested journey first, the others by their first time; a point with no journey id goes to the requested
 // journey, else the first one seen, else a lane of its own.
-function journeyLanes(req: IamTraceRequest, server: CheckedPoint[]): LayoutLane[] {
-  const asked = [req.journey, req.kind === 'campaign' ? undefined : req.target].filter((id): id is string => id !== undefined);
+export const askedJourneys = (req: IamTraceRequest, trace: MergedTrace): string[] =>
+  [req.journey, req.kind === 'campaign' ? undefined : req.target, trace.journey].filter((id): id is string => id !== undefined && id !== '');
+
+function journeyLanes(asked: string[], req: IamTraceRequest, server: CheckedPoint[]): LayoutLane[] {
   const seen = [...new Set(server.map((p) => p.journey).filter((j) => j !== ''))];
   const fallback = asked.find((id) => seen.includes(id)) ?? seen[0] ?? req.journey ?? '';
   const laneId = (p: CheckedPoint): string => (p.journey === '' ? fallback : p.journey);
@@ -208,9 +210,10 @@ function journeyLanes(req: IamTraceRequest, server: CheckedPoint[]): LayoutLane[
 }
 
 export function layoutTrace(req: IamTraceRequest, trace: MergedTrace): LayoutPlayer[] {
+  const asked = askedJourneys(req, trace);
   return mergePlayers(trace.users).map((player) => {
-    const journeys = journeyLanes(req, player.points.filter((p) => rowOf(p.kind) === 'server'));
+    const journeys = journeyLanes(asked, req, player.points.filter((p) => rowOf(p.kind) === 'server'));
     const client = laneOf(CLIENT_LANE, player.points.filter((p) => rowOf(p.kind) === 'client'));
-    return { ...player, journeys, client, points: [...journeys.flatMap((l) => l.points), ...client.points] };
+    return { ...player, journeys, client, points: [...journeys.flatMap((l) => l.points), ...client.points], focus: asked[0] ?? '' };
   });
 }

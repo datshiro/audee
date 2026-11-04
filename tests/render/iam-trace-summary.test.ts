@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { CheckedPoint, IamTraceRequest, MergedTrace } from '../../src/capability/iam-trace-schema.js';
+import { type CheckedPoint, type IamTraceRequest, JOURNEY_UNPROVEN_WHY, type MergedTrace } from '../../src/capability/iam-trace-schema.js';
 import { checkChannels, missingChannelTexts } from '../../src/render/iam-trace-channels.js';
 import { layoutTrace } from '../../src/render/iam-trace-layout.js';
-import { poSummary, type PoSummary, type VerdictKind } from '../../src/render/iam-trace-summary.js';
+import { JOURNEY_TAG_NOTE, poSummary, type PoSummary, type VerdictKind } from '../../src/render/iam-trace-summary.js';
 
 const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', window: '24 giờ gần nhất' };
 const at = (hhmmss: string): string => `2026-10-25T${String(Number(hhmmss.slice(0, 2)) - 7).padStart(2, '0')}${hhmmss.slice(2)}.000Z`;
@@ -127,6 +127,40 @@ describe('poSummary verdicts', () => {
       if (s.verdict.kind === 'blocked') expect(seen.some((p) => p.outcome === 'block')).toBe(true);
       if (s.verdict.kind === 'received') expect(seen.some((p) => p.kind === 'send') && seen.some(RECEIPT)).toBe(true);
     }
+  });
+});
+
+describe('poSummary for the requested journey', () => {
+  const JOURNEY: IamTraceRequest = { ...REQ, kind: 'campaign' };
+  const focused = (journey: string, ...points: CheckedPoint[]): PoSummary => layoutTrace(JOURNEY, { ...trace({ id: 'u1', points }), journey }).map(poSummary)[0] as PoSummary;
+  const unproven = (over: Partial<CheckedPoint> & Pick<CheckedPoint, 'kind'>): CheckedPoint => point({ state: 'inferred', why: JOURNEY_UNPROVEN_WHY, ...over });
+
+  it('counts lines whose text names no journey, with a note, and ignores another journey on the same trace', () => {
+    const s = focused(
+      'J1',
+      unproven({ ref: 'u1-p1', kind: 'trigger', label: 'Event trigger', time: at('11:50:22') }),
+      unproven({ ref: 'u1-p2', kind: 'check_call', label: 'CDP: role state', time: at('11:50:22') }),
+      unproven({ ref: 'u1-p3', kind: 'condition', label: 'Evaluate điều kiện', outcome: 'block', time: at('11:50:23') }),
+      unproven({ ref: 'u1-p4', kind: 'send', label: 'Gửi IAM', outcome: 'pass', journey: 'J2', time: at('11:50:24') }),
+    );
+    expect(s.verdict.kind).toBe('blocked');
+    expect(s.verdict.text).toBe(`Bị chặn tại bước Kiểm tra điều kiện, lúc 11:50:23. ${JOURNEY_TAG_NOTE}`);
+    expect(owners(s)).toEqual(['PO hoặc operator của campaign']);
+  });
+
+  it('a seen send in another journey is not this IAM', () => {
+    const s = focused('J1', point({ kind: 'trigger', label: 'Event trigger', time: at('10:00:00') }), send({ journey: 'J2' }));
+    expect(s.verdict.kind).toBe('unclear');
+    expect(s.verdict.text).toBe('Chưa rõ: không ghi nhận bước Apollo gửi IAM trong khoảng đã tra.');
+  });
+
+  it('keeps every journey when the trace names none, and when the named one has no point', () => {
+    for (const journey of ['', 'J9']) expect(focused(journey, send({ journey: 'J2' })).verdict.kind).toBe('sent_no_client');
+  });
+
+  it('an inferred point for another reason stays out of the verdict', () => {
+    const s = focused('J1', point({ kind: 'condition', label: 'Evaluate điều kiện', outcome: 'block', state: 'inferred', why: 'x', time: at('10:00:00') }));
+    expect(s.verdict.kind).toBe('unclear');
   });
 });
 

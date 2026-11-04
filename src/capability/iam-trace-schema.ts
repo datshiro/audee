@@ -249,9 +249,10 @@ const POINT_SCHEMA: Record<string, unknown> = {
 export const IAM_TRACE_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
-  required: ['status', 'finding', 'conclusion', 'users', 'missing', 'notes'],
+  required: ['status', 'journey', 'finding', 'conclusion', 'users', 'missing', 'notes'],
   properties: {
     status: { type: 'string', enum: ['done', 'need_input', 'failed'] },
+    journey: { type: 'string', description: 'the journey id you traced as the request\'s: the requested journeyId, or the one campaign_journey returned; empty when not known' },
     finding: { type: 'string', description: '1-2 Vietnamese sentences, at most 300 characters' },
     conclusion: { type: 'array', items: stringItem, description: `2-4 Vietnamese bullets, each at most ${MAX_CONCLUSION_CHARS} characters, what the trace shows` },
     users: {
@@ -301,7 +302,7 @@ export const IAM_VERIFY_SCHEMA: Record<string, unknown> = {
 
 export type TracePoint = { kind: PointKind; label: string; result: string; journey: string; outcome: PointOutcome; channel: string; time: string; source_field: string; evidence: string; state: PointState; why: string };
 export type TraceUser = { id: string; user_id: string; role_id: string; points: TracePoint[] };
-export type TraceResult = { status: 'done' | 'need_input'; finding: string; conclusion: string[]; users: TraceUser[]; missing: string[]; notes: string[] };
+export type TraceResult = { status: 'done' | 'need_input'; journey?: string; finding: string; conclusion: string[]; users: TraceUser[]; missing: string[]; notes: string[] };
 export type Verdict = { ref: string; verdict: 'CONFIRMED' | 'CORRECTED'; time?: string; source_field?: string; evidence?: string; state?: PointState; why?: string };
 
 export const INVALID_POINT_WHY = 'bằng chứng không hợp lệ';
@@ -388,7 +389,8 @@ export function parseTraceOutput(result: RunResult, request: IamTraceRequest): T
   });
   if (cut) notes.push(`Chỉ hiển thị ${MAX_POINTS_PER_USER} mốc đầu cho mỗi user.`);
   const conclusion = raw.conclusion.map((c) => c.trim()).filter((c) => c !== '').slice(0, MAX_CONCLUSION);
-  return { status: raw.status, finding: raw.finding, conclusion, users: out, missing: raw.missing, notes };
+  const journey = journeyTagOk(raw.journey ?? '', { id: '', user_id: '', role_id: '', points: [] }, request) ? (raw.journey ?? '') : '';
+  return { status: raw.status, journey, finding: raw.finding, conclusion, users: out, missing: raw.missing, notes };
 }
 
 export function parseVerifyOutput(result: RunResult): Verdict[] {
@@ -404,6 +406,7 @@ export function parseVerifyOutput(result: RunResult): Verdict[] {
 export type NumberedPoint = TracePoint & { ref: string; user: string };
 export type CheckedPoint = TracePoint & { ref: string; check: 'confirmed' | 'corrected' | 'unverified' };
 export type MergedTrace = {
+  journey?: string; // the journey the trace took as the request's, empty when not known
   finding: string;
   conclusion: string[];
   notes: string[];
@@ -468,5 +471,5 @@ export function mergeVerification(trace: TraceResult, verdicts: Verdict[] | unde
       counts = tally(users);
     }
   }
-  return { finding: trace.finding, conclusion: trace.conclusion, notes: trace.notes, verified: counts.confirmed + counts.corrected > 0, ...(reason !== undefined ? { reason } : {}), users, counts };
+  return { ...(trace.journey !== undefined ? { journey: trace.journey } : {}), finding: trace.finding, conclusion: trace.conclusion, notes: trace.notes, verified: counts.confirmed + counts.corrected > 0, ...(reason !== undefined ? { reason } : {}), users, counts };
 }

@@ -34,6 +34,7 @@ const REQ: IamTraceRequest = { target: 'C1', users: ['u1', 'r2'], since: '24h', 
 const point = (over: Partial<TracePoint> = {}): TracePoint => ({ kind: 'trigger', label: 'trigger', journey: 'J1', outcome: 'info', channel: '', result: '', time: '1761354123456', source_field: '_time', evidence: 'journey workflow executed J1', state: 'seen', why: '', ...over });
 const GOOD: TraceResult = {
   status: 'done',
+  journey: '',
   finding: 'IAM đã gửi.',
   conclusion: ['IAM đã gửi.'],
   users: [
@@ -342,7 +343,7 @@ describe('parseVerifyOutput', () => {
   });
 
   it('exposes both schemas as objects with required fields', () => {
-    expect(IAM_TRACE_SCHEMA['required']).toEqual(['status', 'finding', 'conclusion', 'users', 'missing', 'notes']);
+    expect(IAM_TRACE_SCHEMA['required']).toEqual(['status', 'journey', 'finding', 'conclusion', 'users', 'missing', 'notes']);
     expect(IAM_VERIFY_SCHEMA['required']).toEqual(['status', 'verdicts', 'notes']);
   });
 });

@@ -294,6 +294,12 @@ owner notices carry that name as their kind).
   returned no register date); then "Bị chặn tại bước …" at the earliest seen block ("Còn N lần
   chặn khác" when there are more), where a seen send rejected by its line counts as a block, not a send; otherwise
   "Chưa rõ" (with or without an inferred send). A seen send wins over any seen block, in its own journey or another.
+  Scope (2026-11-04, after a live trace answered "có thể đã gửi" from another campaign's sends on the same traceId):
+  the trace returns `journey`, the journey it took as the request's (requested, from campaign_journey, or from the
+  players' lines when campaign_journey found none). When the request or the trace names a journey that has points,
+  the verdict uses only that journey's server points plus the client points; a point there that is inferred only
+  because its line names no journey counts as seen, and the verdict then adds "Dòng log không ghi journey id; audee
+  gắn theo journey đã tra." With no named journey, or none with points, every journey counts as before.
   Verdicts ignore the verification state, so an unverified trace still gets one. The text never says "Không nhận" or
   "không xảy ra". The story lists up to 12 steps of up to 3 journeys, named from a fixed table (trigger, wait end,
   frequency, send, ack) and a label-prefix map (enrichment, validation, evaluate, cdp) with `Bước kiểm tra "<label>"`
