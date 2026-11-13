@@ -36,8 +36,10 @@ name), adding fqn set to its contractSourceFqn when {skill}/ledgers/*.json has a
 matches logs that share a multiplexed topic, so when that returns no contract, call again with bundle_code and
 fqn "kafka-gio.<log name>" and no log: a log with its own topic is found only that way. Never call with
 bundle_code alone: an unscoped answer is saved to a file you cannot read. Make at most 3 contract calls, and
-say the log is not in the contract only after both calls returned none. If the tool is missing or denied,
-answer need_input for the sample and schema.
+say the log is not in the contract only after both calls returned none. When the request spells the log name
+more than one way, look each spelling up instead of asking which is right. If the tool is missing, denied or
+needs authentication, answer status "failed" and say so in notes: the requester cannot fix that, so never ask
+them for the sample, schema, log name or game the contract would have given.
 A contract whose log_format is null is a table, not a Kafka log: answer need_input and say so.
 If the log has a contract, author from it as output-type-contract.md "From a GDS data contract" says. When
 log_format.kind is prefixed_json, follow {skill}/references/multiplexed-topic-guard.md: parse the envelope

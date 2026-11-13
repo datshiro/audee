@@ -24,8 +24,8 @@ const LIST_ITEM_RE = /[^\t\n\f\r "',;[\]]{8,}/gu;
 const AUTH_RE = /\b(?:Bearer|Basic)[\t\n\f\r ]+([A-Za-z0-9._~+/-]{16,}=*)/giu;
 const credential = (v: string): boolean => /[0-9=]/u.test(v);
 
-// kbquery.go:304 fieldAccessRe
-const FIELD_ACCESS_RE = /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$/u;
+// kbquery.go:304 fieldAccessRe, plus indexed access (parts[25]) as a code mapping reads a split log line
+const FIELD_ACCESS_RE = /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[\d+\])+$/u;
 
 // kbquery.go:299-301 secretValue
 function secretValue(v: string): boolean {
