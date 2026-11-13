@@ -67,6 +67,7 @@ export const PROBE_PAYLOAD = './eventsource.json';
 export const PROBE_DEGRADED_PAYLOAD = './eventsource-degraded.json';
 export const PROBE_CACHED_REF = 'refs/remotes/origin/staging';
 export const GDS_CONTRACT_TOOL = 'mcp__claude_ai_GDS_Connector__gds_liveops___data_contract';
+export const GDS_PRODUCT_SEARCH_TOOL = 'mcp__claude_ai_GDS_Connector__vnggames_product_search';
 
 export function probeCommands(skill: string): string[] {
   const rules: string[] = [];

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CLASSIFY_SYSTEM, IAM_EXTRACT_SYSTEM, IAM_TRACE_TOOLS } from '../../src/fence/constants.js';
+import { CLASSIFY_SYSTEM, GDS_PRODUCT_SEARCH_TOOL, IAM_EXTRACT_SYSTEM, IAM_TRACE_TOOLS } from '../../src/fence/constants.js';
 import { loadMcpServers } from '../../src/fence/mcp-servers.js';
 import { buildOptions, type ProfileInput } from '../../src/fence/profiles.js';
 import { captureSession, flagValues, hasFlag } from '../helpers/capture-argv.js';
@@ -36,14 +36,15 @@ function mcpKeys(argv: string[]): string[] {
   return Object.keys((JSON.parse(raw) as { mcpServers: Record<string, unknown> }).mcpServers).sort();
 }
 
-function expectSuperset(ciel: string[], sdk: string[]): void {
+// extraAllowed: tools audee allows beyond Ciel on purpose; every other --allowedTools value must match Ciel's.
+function expectSuperset(ciel: string[], sdk: string[], extraAllowed: string[] = []): void {
   for (const token of ciel) if (token.startsWith('--') && !NOT_COMPARED.has(token)) expect(hasFlag(sdk, token), token).toBe(true);
   const sdkDenied = flagValues(sdk, '--disallowedTools');
   for (const denied of flagValues(ciel, '--disallowedTools')) expect(sdkDenied, denied).toContain(denied);
   for (const flag of EXACT_LISTS) {
     const cielValues = flagValues(ciel, flag);
     if (cielValues.length === 0) expect(hasFlag(sdk, flag), flag).toBe(false);
-    else expect(new Set(flagValues(sdk, flag)), flag).toEqual(new Set(cielValues));
+    else expect(new Set(flagValues(sdk, flag)), flag).toEqual(new Set([...cielValues, ...(flag === '--allowedTools' ? extraAllowed : [])]));
   }
   for (const flag of FIRST_VALUE) {
     const cielValue = flagValues(ciel, flag)[0];
@@ -64,7 +65,7 @@ describe('fence superset of Ciel', () => {
   });
   it('TestMappingSupersetOfCiel', async () => {
     const { argv } = await capture('mapping');
-    expectSuperset(fixture('mapping'), argv);
+    expectSuperset(fixture('mapping'), argv, [GDS_PRODUCT_SEARCH_TOOL]);
     expect(hasFlag(argv, '--mcp-config')).toBe(false);
   });
   it('TestKBQuerySupersetOfCiel', async () => {
