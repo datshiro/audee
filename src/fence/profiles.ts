@@ -1,7 +1,7 @@
 import type { McpServerConfig, Options, Settings } from '@anthropic-ai/claude-agent-sdk';
 import type { ProfileName } from '../config/schema.js';
 import {
-  CLASSIFY_DENIED_TOOLS, CLASSIFY_SYSTEM, GDS_CONTRACT_TOOL, IAM_TRACE_FILTERED_TOOL, IAM_TRACE_SERVER, IAM_TRACE_TOOLS, KB_QUERY_DENIED, KB_QUERY_REPO_DENIED, KB_QUERY_TOOLS,
+  CLASSIFY_DENIED_TOOLS, CLASSIFY_SYSTEM, GDS_CONTRACT_TOOL, GDS_PRODUCT_SEARCH_TOOL, IAM_TRACE_FILTERED_TOOL, IAM_TRACE_SERVER, IAM_TRACE_TOOLS, KB_QUERY_DENIED, KB_QUERY_REPO_DENIED, KB_QUERY_TOOLS,
   KB_QUERY_WIKI_DENIED, MCP_WRITE_DENIED, REVIEW_DENIED_TOOLS, REVIEW_EXTRA_DENIED, REVIEW_JIRA_ALIAS, REVIEW_JIRA_READ_TOOLS, REVIEW_JIRA_WRITE_TOOLS, REVIEW_MCP_SERVERS, probeCommands,
 } from './constants.js';
 import { makeGate, unsafeFilter, unsafeId, type GateSpec } from './gate.js';
@@ -89,9 +89,9 @@ export function buildOptions(input: ProfileInput): Options {
         permissionMode: 'dontAsk',
         settingSources: [],
         additionalDirectories: [skill],
-        allowedTools: ['Edit(./**)', GDS_CONTRACT_TOOL, ...probes],
+        allowedTools: ['Edit(./**)', GDS_CONTRACT_TOOL, GDS_PRODUCT_SEARCH_TOOL, ...probes],
         disallowedTools: denied,
-        hooks: gate({ allowTools: [...MAPPING_TOOLS, GDS_CONTRACT_TOOL], exactBash: probes, denyTools: denied }),
+        hooks: gate({ allowTools: [...MAPPING_TOOLS, GDS_CONTRACT_TOOL, GDS_PRODUCT_SEARCH_TOOL], exactBash: probes, denyTools: denied }),
       } satisfies Options);
       break;
     }

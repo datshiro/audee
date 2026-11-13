@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { expandHome } from '../config/load.js';
-import { GDS_CONTRACT_TOOL, PROBE_CACHED_REF, PROBE_DEGRADED_PAYLOAD, PROBE_PAYLOAD } from '../fence/constants.js';
+import { GDS_CONTRACT_TOOL, GDS_PRODUCT_SEARCH_TOOL, PROBE_CACHED_REF, PROBE_DEGRADED_PAYLOAD, PROBE_PAYLOAD } from '../fence/constants.js';
 import { buildOptions } from '../fence/profiles.js';
 import { mappingFailedReply, mappingMissingReply, mappingWithheldReply, type MappingResult, noteList } from '../render/html.js';
 import { checkMappingPage, mappingFileName, mappingNotice, mappingPage, mappingPageVisibleTexts, mappingTexts } from '../render/mapping-page.js';
@@ -35,7 +35,10 @@ Call ${GDS_CONTRACT_TOOL} with bundle_code (the game, for example jus_vn) and lo
 name), adding fqn set to its contractSourceFqn when {skill}/ledgers/*.json has an entry for that log. log only
 matches logs that share a multiplexed topic, so when that returns no contract, call again with bundle_code and
 fqn "kafka-gio.<log name>" and no log: a log with its own topic is found only that way. Never call with
-bundle_code alone: an unscoped answer is saved to a file you cannot read. Make at most 3 contract calls, and
+bundle_code alone: an unscoped answer is saved to a file you cannot read. When the request names the game by a
+short name or title (ZSM, Zing Speed Mobile) rather than a bundle_code, find the bundle_code with
+${GDS_PRODUCT_SEARCH_TOOL} (at most 2 calls) instead of asking; count the game as missing only when no product
+or several fit. Make at most 3 contract calls, and
 say the log is not in the contract only after both calls returned none. When the request spells the log name
 more than one way, look each spelling up instead of asking which is right. If the tool is missing, denied or
 needs authentication, answer status "failed" and say so in notes: the requester cannot fix that, so never ask
