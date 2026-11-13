@@ -51,7 +51,7 @@ describe('code mapping', () => {
   // ciel/mapping_test.go:49
   it('TestMappingPrompt', () => {
     const p = mappingPrompt('Read {skill}/SKILL.md and follow it.', '/x/skill');
-    for (const want of ['./request.txt', 'need_input', '"failed"', 'bash /x/skill/scripts/probe-pipeline.sh ./eventsource.json\n', 'degraded variant in ./eventsource-degraded.json', '" --ref refs/remotes/origin/staging" appended', 'Read /x/skill/SKILL.md', 'mcp__claude_ai_GDS_Connector__gds_liveops___data_contract', '/x/skill/references/multiplexed-topic-guard.md', '/x/skill/ledgers/', 'fqn "kafka-gio.<log name>" and no log']) {
+    for (const want of ['./request.txt', 'need_input', '"failed"', 'bash /x/skill/scripts/probe-pipeline.sh ./eventsource.json\n', 'degraded variant in ./eventsource-degraded.json', '" --ref refs/remotes/origin/staging" appended', 'Read /x/skill/SKILL.md', 'mcp__claude_ai_GDS_Connector__gds_liveops___data_contract', '/x/skill/references/multiplexed-topic-guard.md', '/x/skill/ledgers/', 'fqn "kafka-gio.<log name>" and no log', 'needs authentication, answer status "failed"', 'look each spelling up']) {
       expect(p).toContain(want);
     }
     for (const placeholder of ['{skill}', '{payload}', '{degraded}', '{cachedRef}']) expect(p).not.toContain(placeholder);
