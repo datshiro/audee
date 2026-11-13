@@ -24,6 +24,9 @@ const CIEL_CASES: Array<[string, boolean]> = [
   ['accessToken := resp.AccessToken', false],
   ['use glpat-abcdefghijklmnopqrst', true],
   ['key sk-abcdefghijklmnopqrstuvwx', true],
+  ['"device_id": parts[25],', false],
+  ['"device_id": parts[2].trim()', false],
+  ['"device_id": "parts[25]x9aB8cD7"', true],
 ];
 
 describe('secret filter', () => {
