@@ -58,6 +58,16 @@ describe('gitlab-mr', () => {
     expect(noteHasPassAck({ author: { username: 'dat' } }, sha, 'dat')).toBe(false);
   });
 
+  it('never reads a needs-human-review note as a PASS acknowledgement', () => {
+    const body = [
+      '## Apollo MR Review — automated: needs human review ⚠️',
+      '**Verdict:** PASS · **Findings:** 0 critical / 0 blocker / 0 major / 0 minor',
+      '- `Dockerfile` — verdict-pass (head 0123456789)',
+      '_Automated review of head `0123456789`, base `aaaaaaaaaa` = main. Commits pushed after it are not covered._',
+    ].join('\n\n');
+    expect(noteHasPassAck({ body, author: { username: 'dat' } }, '0123456789abcdef', 'dat')).toBe(false);
+  });
+
   it('talks to the gitlab MCP server: reads the MR, pages discussions for the ack, approves with the sha', async () => {
     const fake = fakeServerConfig('ok');
     const gl = await connectGitLabMr({}, fake.userConfigPath);
