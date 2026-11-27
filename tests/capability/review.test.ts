@@ -232,6 +232,7 @@ describe('review', () => {
       expect(inline, `post=${post}`).toBe(post);
       expect(got.includes('still post one short comment'), `post=${post}`).toBe(post);
       expect(got.includes('the answer is "Post a needs-human-review note", never\n"Post the acknowledgement anyway"'), `post=${post}`).toBe(post);
+      expect(got.includes('already\nexists, post nothing more; that counts as posted.'), `post=${post}`).toBe(post);
     }
   });
 

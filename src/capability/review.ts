@@ -35,6 +35,8 @@ incomplete security scan blocks a review with no findings, the answer is "Post a
 "Post the acknowledgement anyway". Post every finding as an inline diff comment on its
 file and line (mcp__gitlab__post_review_findings with file and new_line); only a finding whose line is not in the
 diff may fall back to a general note. Then add one summary comment (mcp__gitlab__comment_mr).
+If the review skipped the acknowledgement or the needs-human-review note because one for the same head commit already
+exists, post nothing more; that counts as posted.
 If you end up posting nothing on the MR (for example a rule says to post nothing), still post one short comment
 with mcp__gitlab__comment_mr saying the review ran and why nothing was posted, unless GitLab is unreachable.
 That comment does not count as posting: finish with "REVIEW_POSTED: no: <the same reason>".
