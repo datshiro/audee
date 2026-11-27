@@ -30,9 +30,13 @@ make the MR unreviewable.
 // actions.go:28-32
 export const postFindingsAnswer = `Publishing: the user wants confirmed findings posted on the MR. If the review asks whether to post
 them, the answer is "Post review comments on the MR". If it asks whether to acknowledge a clean High-risk MR, the answer is
-"Post the acknowledgement", so the author sees the result. Post every finding as an inline diff comment on its
+"Post the acknowledgement", so the author sees the result. If it asks what to do when only the independent audit or an
+incomplete security scan blocks a review with no findings, the answer is "Post a needs-human-review note", never
+"Post the acknowledgement anyway". Post every finding as an inline diff comment on its
 file and line (mcp__gitlab__post_review_findings with file and new_line); only a finding whose line is not in the
 diff may fall back to a general note. Then add one summary comment (mcp__gitlab__comment_mr).
+If the review skipped the acknowledgement or the needs-human-review note because one for the same head commit already
+exists, post nothing more; that counts as posted.
 If you end up posting nothing on the MR (for example a rule says to post nothing), still post one short comment
 with mcp__gitlab__comment_mr saying the review ran and why nothing was posted, unless GitLab is unreachable.
 That comment does not count as posting: finish with "REVIEW_POSTED: no: <the same reason>".
@@ -58,7 +62,8 @@ First: "REVIEW_STATUS: ready: <reason>" only when the review skill judged the MR
 otherwise "REVIEW_STATUS: unreviewable: <reason>". The reason is at most 15 words, in Vietnamese, naming the main blocker
 categories with counts (for example "2 lỗi blocker, ticket thiếu tiêu chí AC-3"), with no links.
 Last: "REVIEW_POSTED: yes" if you posted anything on the MR (inline comments, a summary or an acknowledgement),
-or if the review skipped the acknowledgement because one for the same head commit already exists,
+or if the review skipped the acknowledgement (or the needs-human-review note) because one for the
+same head commit already exists,
 otherwise "REVIEW_POSTED: no: <short reason>".`;
 
 // Sent once into the same session when it stops without its closing lines, for example after a workflow that

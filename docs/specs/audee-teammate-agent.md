@@ -362,6 +362,10 @@ four templates: `✅ MR sẵn sàng merge, mình đã approve`, `✅ MR sẵn s�
 With `review.post_findings: true`, the session answers the skill's High-risk question with "Post the acknowledgement",
 so a clean High-risk MR gets its PASS comment (which states the 2 human approvals) and ends `ready` instead of
 `unreviewable`. Added 2026-10-28 after apollo-portal MR 530 passed with 0 findings but the author saw nothing.
+It answers the audit-only question with "Post a needs-human-review note" (never "Post the acknowledgement anyway"),
+so the MR gets the skill's rendered note listing reviewed and unreviewed files instead of a free-form comment, and
+the review ends blocked; a re-run on the same head that skips the existing note counts as posted. Added 2026-11-27
+after automation-collection MR 36.
 Finishing: the review session's input stays open while background work (the review workflow) runs. When a turn ends
 with no background work left and without the two closing lines, audee sends the same session one follow-up turn
 telling it to finish (review the diff itself if the workflow failed), publish and print the closing lines. Added
